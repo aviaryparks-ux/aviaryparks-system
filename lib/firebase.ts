@@ -10,7 +10,7 @@ const firebaseConfig = {
   storageBucket: "aviary-parks-system.firebasestorage.app",
   messagingSenderId: "563254318213",
   appId: "1:563254318213:web:562063b16fb85cee0e85ec",
-  measurementId: "G-2EYXMN6W1E"
+  measurementId: "G-2EYXMW6W1E"
 };
 
 const app = initializeApp(firebaseConfig);
