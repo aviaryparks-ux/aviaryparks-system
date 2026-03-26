@@ -1,163 +1,119 @@
+// components/MapPicker.tsx
 "use client";
 
-import {
-
- MapContainer,
- TileLayer,
- Marker,
- Circle,
- useMapEvents,
- useMap
-
-} from "react-leaflet";
-
-import { useState,useEffect } from "react";
-
+import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
+// Fix Leaflet icon
 delete (L.Icon.Default.prototype as any)._getIconUrl;
-
 L.Icon.Default.mergeOptions({
-
- iconRetinaUrl:
- "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
-
- iconUrl:
- "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
-
- shadowUrl:
- "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
-
+  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
 });
 
-export default function MapPicker({
+interface MapPickerProps {
+  setLat: (lat: string) => void;
+  setLng: (lng: string) => void;
+  radius?: number;
+  initialLat?: number;
+  initialLng?: number;
+}
 
- setLat,
- setLng,
- radius
+export default function MapPicker({ 
+  setLat, 
+  setLng, 
+  radius = 100, 
+  initialLat, 
+  initialLng 
+}: MapPickerProps) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const [map, setMap] = useState<L.Map | null>(null);
+  const [marker, setMarker] = useState<L.Marker | null>(null);
+  const [circle, setCircle] = useState<L.Circle | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-}:{
+  // Default center (Indonesia) - ini hanya fallback
+  const defaultLat = initialLat || -6.2;
+  const defaultLng = initialLng || 106.816;
 
- setLat:(v:string)=>void
- setLng:(v:string)=>void
- radius:number
+  useEffect(() => {
+    if (typeof setLat !== "function" || typeof setLng !== "function") {
+      console.error("MapPicker: setLat or setLng is not a function");
+      return;
+    }
 
-}){
+    if (!mapRef.current || map) return;
 
- const [position,setPosition] =
- useState<any>([-6.200000,106.816666]);
+    try {
+      const mapInstance = L.map(mapRef.current).setView([defaultLat, defaultLng], 15);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '© OpenStreetMap contributors',
+      }).addTo(mapInstance);
 
- // ambil GPS user
- useEffect(()=>{
+      // Create marker di posisi awal
+      const markerInstance = L.marker([defaultLat, defaultLng], { draggable: true }).addTo(mapInstance);
+      
+      // Create circle
+      const circleInstance = L.circle([defaultLat, defaultLng], {
+        radius: radius,
+        color: "#10b981",
+        fillColor: "#10b981",
+        fillOpacity: 0.2,
+      }).addTo(mapInstance);
 
-  navigator.geolocation.getCurrentPosition(
+      // Event ketika marker di-drag
+      markerInstance.on("dragend", () => {
+        const position = markerInstance.getLatLng();
+        console.log("Marker dragged to:", position);
+        setLat(position.lat.toFixed(6));
+        setLng(position.lng.toFixed(6));
+        circleInstance.setLatLng(position);
+      });
 
-   (pos)=>{
+      // Event ketika map diklik
+      mapInstance.on("click", (e) => {
+        const { lat, lng } = e.latlng;
+        console.log("Map clicked at:", { lat, lng });
+        markerInstance.setLatLng([lat, lng]);
+        setLat(lat.toFixed(6));
+        setLng(lng.toFixed(6));
+        circleInstance.setLatLng([lat, lng]);
+      });
 
-    const lat =
-    pos.coords.latitude;
+      // Set initial coordinates ke parent
+      console.log("Initial coordinates:", { defaultLat, defaultLng });
+      setLat(defaultLat.toFixed(6));
+      setLng(defaultLng.toFixed(6));
 
-    const lng =
-    pos.coords.longitude;
+      setMap(mapInstance);
+      setMarker(markerInstance);
+      setCircle(circleInstance);
+      setIsInitialized(true);
+    } catch (error) {
+      console.error("MapPicker error:", error);
+    }
+  }, [map, defaultLat, defaultLng, radius, setLat, setLng]);
 
-    setPosition([lat,lng]);
+  // Update circle radius when radius prop changes
+  useEffect(() => {
+    if (circle) {
+      circle.setRadius(radius);
+    }
+  }, [circle, radius]);
 
-    setLat(lat.toString());
-    setLng(lng.toString());
-
-   },
-
-   ()=>{
-
-    console.log("gps tidak diijinkan");
-
-   }
-
+  return (
+    <div className="relative w-full h-full">
+      <div ref={mapRef} className="w-full h-full rounded-lg" />
+      {!isInitialized && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-lg">
+          <p className="text-gray-500 text-sm">Memuat peta...</p>
+        </div>
+      )}
+      <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded shadow text-xs text-gray-600">
+        📍 Klik peta atau drag marker
+      </div>
+    </div>
   );
-
- },[]);
-
- function LocationMarker(){
-
-  const map = useMap();
-
-  useEffect(()=>{
-
-   map.setView(position,16);
-
-  },[position]);
-
-  useMapEvents({
-
-   click(e){
-
-    const lat =
-    e.latlng.lat;
-
-    const lng =
-    e.latlng.lng;
-
-    setPosition([lat,lng]);
-
-    setLat(lat.toString());
-    setLng(lng.toString());
-
-   }
-
-  });
-
-  return(
-
-   <>
-
-    <Marker position={position}/>
-
-    <Circle
-
-     center={position}
-
-     radius={radius || 100}
-
-     pathOptions={{
-
-      color:"green"
-
-     }}
-
-    />
-
-   </>
-
-  );
-
- }
-
- return(
-
-  <MapContainer
-
-   center={position}
-
-   zoom={16}
-
-   style={{
-
-    height:"350px",
-    width:"100%"
-
-   }}
-
-  >
-
-   <TileLayer
-
-    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-
-   />
-
-   <LocationMarker/>
-
-  </MapContainer>
-
- );
 }
