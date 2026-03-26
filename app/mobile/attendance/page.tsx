@@ -1,72 +1,87 @@
 // app/mobile/attendance/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, updateDoc, setDoc, Timestamp } from "firebase/firestore";
+import dynamic from "next/dynamic";
+
+// Import Leaflet
+const MapContainer = dynamic(
+  () => import("react-leaflet").then((mod) => mod.MapContainer),
+  { ssr: false }
+);
+const TileLayer = dynamic(
+  () => import("react-leaflet").then((mod) => mod.TileLayer),
+  { ssr: false }
+);
+const Circle = dynamic(
+  () => import("react-leaflet").then((mod) => mod.Circle),
+  { ssr: false }
+);
+const Marker = dynamic(
+  () => import("react-leaflet").then((mod) => mod.Marker),
+  { ssr: false }
+);
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+
+// Fix Leaflet marker icon
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+});
 
 export default function MobileAttendancePage() {
   const { user } = useAuth();
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [isWithinRadius, setIsWithinRadius] = useState(false);
+  
+  // States
   const [todayAttendance, setTodayAttendance] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Camera states
+  const [showCamera, setShowCamera] = useState(false);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  
+  // Location states
+  const [showMap, setShowMap] = useState(false);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [isWithinRadius, setIsWithinRadius] = useState(false);
   const [radiusInfo, setRadiusInfo] = useState<{ radius: number; distance: number } | null>(null);
+  const [officeLocation, setOfficeLocation] = useState<{ lat: number; lng: number; name: string; radius: number } | null>(null);
 
+  // Load data on mount
   useEffect(() => {
     if (user) {
-      checkLocation();
       loadTodayAttendance();
+      loadOfficeLocation();
     }
   }, [user]);
 
-  const getDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-    const R = 6371e3;
-    const φ1 = (lat1 * Math.PI) / 180;
-    const φ2 = (lat2 * Math.PI) / 180;
-    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-    const Δλ = ((lng2 - lng1) * Math.PI) / 180;
-    const a =
-      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  };
-
-  const checkLocation = () => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const currentLoc = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          };
-          setLocation(currentLoc);
-          
-          // Get office setting
-          const settingDoc = await getDoc(doc(db, "settings", "office"));
-          if (settingDoc.exists()) {
-            const data = settingDoc.data();
-            const distance = getDistance(
-              currentLoc.lat,
-              currentLoc.lng,
-              data.lat,
-              data.lng
-            );
-            setRadiusInfo({ radius: data.radius, distance });
-            setIsWithinRadius(distance <= data.radius);
-          } else {
-            setIsWithinRadius(true);
-          }
-        },
-        (error) => {
-          console.error("Location error:", error);
-          setIsWithinRadius(true);
-        }
-      );
+  const loadOfficeLocation = async () => {
+    const settingDoc = await getDoc(doc(db, "settings", "office"));
+    if (settingDoc.exists()) {
+      const data = settingDoc.data();
+      setOfficeLocation({
+        lat: data.lat,
+        lng: data.lng,
+        name: data.name || "Kantor",
+        radius: data.radius || 100,
+      });
     } else {
-      setIsWithinRadius(true);
+      // Default office location (ubah sesuai kantor Anda)
+      setOfficeLocation({
+        lat: -6.200000,
+        lng: 106.816666,
+        name: "Kantor Pusat",
+        radius: 100,
+      });
     }
   };
 
@@ -81,9 +96,111 @@ export default function MobileAttendancePage() {
     }
   };
 
+  // ================= CAMERA =================
+  const startCamera = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+      });
+      setStream(mediaStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
+      setShowCamera(true);
+    } catch (error) {
+      console.error("Camera error:", error);
+      alert("Tidak dapat mengakses kamera");
+    }
+  };
+
+  const takePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const photoDataUrl = canvas.toDataURL("image/jpeg");
+      setPhotoUri(photoDataUrl);
+      
+      // Stop camera stream
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        setStream(null);
+      }
+      setShowCamera(false);
+      
+      // Get location after photo
+      getLocation();
+    }
+  };
+
+  const retakePhoto = () => {
+    setPhotoUri(null);
+    setShowMap(false);
+    setLocation(null);
+    startCamera();
+  };
+
+  // ================= LOCATION =================
+  const getLocation = () => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const currentLoc = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          };
+          setLocation(currentLoc);
+          
+          // Check radius
+          if (officeLocation) {
+            const distance = getDistance(
+              currentLoc.lat,
+              currentLoc.lng,
+              officeLocation.lat,
+              officeLocation.lng
+            );
+            setRadiusInfo({ radius: officeLocation.radius, distance });
+            setIsWithinRadius(distance <= officeLocation.radius);
+          }
+          
+          setShowMap(true);
+        },
+        (error) => {
+          console.error("Location error:", error);
+          alert("Gagal mendapatkan lokasi. Pastikan GPS aktif.");
+          // Jika gagal, tetap tampilkan map dengan koordinat default
+          setShowMap(true);
+        }
+      );
+    } else {
+      alert("Perangkat tidak mendukung GPS");
+    }
+  };
+
+  const getDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+    const R = 6371e3;
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lng2 - lng1) * Math.PI) / 180;
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  // ================= CHECK IN =================
   const handleCheckIn = async () => {
     if (!isWithinRadius) {
-      alert("Anda berada di luar radius absensi!");
+      alert("Anda berada di luar radius absensi! Silakan mendekat ke lokasi kantor.");
+      return;
+    }
+    if (!photoUri) {
+      alert("Foto belum diambil!");
       return;
     }
     if (!location) {
@@ -103,11 +220,11 @@ export default function MobileAttendancePage() {
           time: Timestamp.now(),
           lat: location.lat,
           lng: location.lng,
+          photo: photoUri,
         },
       };
       
       if (!docSnap.exists()) {
-        // Jika dokumen belum ada, buat baru dengan setDoc
         await setDoc(docRef, {
           uid: user?.uid,
           name: user?.name,
@@ -116,11 +233,14 @@ export default function MobileAttendancePage() {
           createdAt: Timestamp.now(),
         });
       } else {
-        // Jika sudah ada, update saja
         await updateDoc(docRef, checkInData);
       }
       
       alert("✅ Check-in berhasil!");
+      // Reset states
+      setPhotoUri(null);
+      setShowMap(false);
+      setLocation(null);
       loadTodayAttendance();
     } catch (error: any) {
       console.error("Check-in error:", error);
@@ -130,6 +250,7 @@ export default function MobileAttendancePage() {
     }
   };
 
+  // ================= CHECK OUT =================
   const handleCheckOut = async () => {
     setIsLoading(true);
     try {
@@ -140,8 +261,6 @@ export default function MobileAttendancePage() {
       await updateDoc(docRef, {
         checkOut: {
           time: Timestamp.now(),
-          lat: location?.lat,
-          lng: location?.lng,
         },
       });
       
@@ -157,96 +276,205 @@ export default function MobileAttendancePage() {
   const isCheckedIn = todayAttendance?.checkIn;
   const isCheckedOut = todayAttendance?.checkOut;
 
-  return (
-    <div className="space-y-5">
-      {/* Location Status */}
-      <div className={`rounded-2xl p-4 ${isWithinRadius ? "bg-green-500/20" : "bg-red-500/20"}`}>
-        <div className="flex items-center gap-3">
-          <div className={`w-3 h-3 rounded-full ${isWithinRadius ? "bg-green-400 animate-pulse" : "bg-red-400"}`} />
-          <p className="text-white text-sm">
-            {isWithinRadius ? "✓ Dalam radius absensi" : "✗ Di luar radius absensi"}
-          </p>
-        </div>
-        {radiusInfo && (
-          <p className="text-white/60 text-xs mt-2">
-            📍 Jarak: {radiusInfo.distance.toFixed(0)}m / {radiusInfo.radius}m
-          </p>
-        )}
-        {location && (
-          <p className="text-white/40 text-[10px] mt-1">
-            {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
-          </p>
-        )}
-        <button 
-          onClick={checkLocation}
-          className="mt-3 text-xs text-white/60 underline"
-        >
-          ↻ Refresh lokasi
-        </button>
-      </div>
+  // ================= RENDER =================
 
-      {/* Attendance Card */}
-      <div className="bg-white rounded-3xl p-6 shadow-xl">
-        <div className="text-center mb-6">
-          <p className="text-gray-500 text-sm">Hari ini</p>
-          <p className="text-2xl font-bold text-gray-800">
-            {new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
-          </p>
-        </div>
-
-        <div className="flex justify-between items-center gap-4">
-          <div className="flex-1 text-center p-4 bg-gray-50 rounded-2xl">
-            <span className="text-3xl mb-2 block">📥</span>
+  // Jika sudah check-out
+  if (isCheckedOut) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-green-900 to-green-800 p-5 flex items-center justify-center">
+        <div className="bg-white rounded-3xl p-8 text-center w-full max-w-md">
+          <div className="text-6xl mb-4">✅</div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Absensi Selesai</h2>
+          <p className="text-gray-500 mb-6">Anda sudah menyelesaikan absensi hari ini</p>
+          <div className="bg-gray-100 rounded-2xl p-4 mb-6">
             <p className="text-sm text-gray-500">Check-in</p>
             <p className="text-xl font-bold text-gray-800">
-              {todayAttendance?.checkIn?.time?.toDate?.()?.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) || "--:--"}
+              {todayAttendance?.checkIn?.time?.toDate?.()?.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+            <p className="text-sm text-gray-500 mt-2">Check-out</p>
+            <p className="text-xl font-bold text-gray-800">
+              {todayAttendance?.checkOut?.time?.toDate?.()?.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
             </p>
           </div>
-          <div className="flex-1 text-center p-4 bg-gray-50 rounded-2xl">
-            <span className="text-3xl mb-2 block">📤</span>
-            <p className="text-sm text-gray-500">Check-out</p>
-            <p className="text-xl font-bold text-gray-800">
-              {todayAttendance?.checkOut?.time?.toDate?.()?.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) || "--:--"}
-            </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full py-3 bg-green-600 text-white font-bold rounded-2xl"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Jika sudah check-in (belum check-out)
+  if (isCheckedIn && !isCheckedOut) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-green-900 to-green-800 p-5 flex items-center justify-center">
+        <div className="bg-white rounded-3xl p-8 text-center w-full max-w-md">
+          <div className="text-6xl mb-4">📤</div>
+          <h2 className="text-xl font-bold text-gray-800">Anda sudah check-in</h2>
+          <p className="text-gray-500 mt-2">
+            Waktu check-in: {todayAttendance?.checkIn?.time?.toDate?.()?.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+          </p>
+          <button
+            onClick={handleCheckOut}
+            disabled={isLoading}
+            className="mt-6 w-full py-4 bg-orange-500 text-white font-bold rounded-2xl active:scale-95"
+          >
+            {isLoading ? "Processing..." : "Check-out"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Halaman utama (belum check-in)
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-green-900 to-green-800 p-5 flex items-center justify-center">
+      <div className="bg-white rounded-3xl p-8 text-center w-full max-w-md">
+        <div className="text-6xl mb-4">📸</div>
+        <h2 className="text-2xl font-bold text-gray-800">Absensi Hari Ini</h2>
+        <p className="text-gray-500 mt-2">
+          {new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
+        </p>
+        <button
+          onClick={startCamera}
+          className="mt-6 w-full py-4 bg-green-600 text-white font-bold rounded-2xl active:scale-95 transition-all"
+        >
+          Check-in
+        </button>
+        <div className="mt-6 text-xs text-gray-400">
+          Pastikan GPS aktif dan Anda berada di lokasi kantor
+        </div>
+      </div>
+
+      {/* Camera Modal */}
+      {showCamera && (
+        <div className="fixed inset-0 z-50 bg-black">
+          <div className="relative h-full">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              className="w-full h-full object-cover"
+            />
+            <canvas ref={canvasRef} className="hidden" />
+            <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/70 to-transparent">
+              <button
+                onClick={takePhoto}
+                className="w-full py-4 bg-white text-green-700 font-bold rounded-2xl active:scale-95 transition-all"
+              >
+                Ambil Foto
+              </button>
+              <button
+                onClick={() => {
+                  if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    setStream(null);
+                  }
+                  setShowCamera(false);
+                }}
+                className="w-full mt-3 py-3 bg-gray-500 text-white font-bold rounded-2xl"
+              >
+                Batal
+              </button>
+            </div>
           </div>
         </div>
+      )}
 
-        {!isCheckedOut && (
-          <button
-            onClick={isCheckedIn ? handleCheckOut : handleCheckIn}
-            disabled={isLoading || (!isWithinRadius && !isCheckedIn)}
-            className={`
-              w-full mt-6 py-4 rounded-2xl text-white font-bold text-lg transition-all active:scale-95
-              ${isCheckedIn 
-                ? "bg-orange-500 active:bg-orange-600" 
-                : "bg-green-600 active:bg-green-700"}
-              ${(!isWithinRadius && !isCheckedIn) && "opacity-50 active:scale-100"}
-            `}
-          >
-            {isLoading ? (
-              <div className="flex items-center justify-center gap-2">
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>Processing...</span>
+      {/* Map & Photo Preview Modal */}
+      {showMap && photoUri && location && (
+        <div className="fixed inset-0 z-50 bg-black/90 p-4 overflow-y-auto">
+          <div className="min-h-full flex items-center justify-center">
+            <div className="bg-white rounded-3xl w-full max-w-md p-5 space-y-4">
+              {/* Photo Preview */}
+              <div>
+                <p className="text-gray-500 text-sm mb-2">Foto Absensi</p>
+                <img src={photoUri} alt="Preview" className="w-full rounded-2xl" />
+                <button
+                  onClick={retakePhoto}
+                  className="mt-2 text-sm text-green-600 underline"
+                >
+                  ↻ Ambil ulang foto
+                </button>
               </div>
-            ) : (
-              isCheckedIn ? "Check-out" : "Check-in"
-            )}
-          </button>
-        )}
 
-        {isCheckedOut && (
-          <div className="mt-6 p-4 bg-green-50 rounded-2xl text-center">
-            <p className="text-green-600 font-medium">✓ Anda sudah menyelesaikan absensi hari ini</p>
+              {/* Map */}
+              <div>
+                <p className="text-gray-500 text-sm mb-2">Lokasi Anda</p>
+                <div className="h-64 rounded-2xl overflow-hidden">
+                  {officeLocation && location ? (
+                    <MapContainer
+                      center={[location.lat, location.lng]}
+                      zoom={17}
+                      style={{ height: "100%", width: "100%" }}
+                      zoomControl={false}
+                    >
+                      <TileLayer
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      />
+                      <Circle
+                        center={[officeLocation.lat, officeLocation.lng]}
+                        radius={officeLocation.radius}
+                        pathOptions={{ color: "#00C853", fillColor: "#00C853", fillOpacity: 0.2 }}
+                      />
+                      <Marker position={[officeLocation.lat, officeLocation.lng]} />
+                      <Marker position={[location.lat, location.lng]} />
+                    </MapContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center bg-gray-100">
+                      <p className="text-gray-500">Memuat peta...</p>
+                    </div>
+                  )}
+                </div>
+                <div className={`mt-3 p-3 rounded-xl text-center ${isWithinRadius ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                  {isWithinRadius ? (
+                    <div>✓ Dalam radius absensi ({radiusInfo?.distance?.toFixed(0)}m / {radiusInfo?.radius}m)</div>
+                  ) : (
+                    <div>✗ Di luar radius absensi ({radiusInfo?.distance?.toFixed(0)}m / {radiusInfo?.radius}m)</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Save Button */}
+              <button
+                onClick={handleCheckIn}
+                disabled={!isWithinRadius || isLoading}
+                className={`
+                  w-full py-4 rounded-2xl text-white font-bold text-lg transition-all
+                  ${isWithinRadius && !isLoading
+                    ? "bg-green-600 active:bg-green-700"
+                    : "bg-gray-400 cursor-not-allowed"
+                  }
+                `}
+              >
+                {isLoading ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Menyimpan...</span>
+                  </div>
+                ) : (
+                  "Simpan Absensi"
+                )}
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowMap(false);
+                  setPhotoUri(null);
+                  setLocation(null);
+                }}
+                className="w-full py-3 bg-gray-200 text-gray-700 font-bold rounded-2xl"
+              >
+                Batal
+              </button>
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* Info Card */}
-      <div className="bg-white/10 rounded-2xl p-4">
-        <p className="text-white/70 text-xs text-center">
-          Pastikan GPS aktif dan berada di lokasi kantor untuk melakukan absensi
-        </p>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
