@@ -238,6 +238,12 @@ export default function MobileAttendancePage() {
   // ================= SAVE =================
 
   const handleSave = async () => {
+    // CEK USER TERLEBIH DAHULU
+    if (!user) {
+      alert("User tidak ditemukan");
+      return;
+    }
+
     if (!photoUri || !location) {
       alert("foto / lokasi kosong");
       return;
