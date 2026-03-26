@@ -4,7 +4,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore";
+import { doc, getDoc, updateDoc, setDoc, Timestamp } from "firebase/firestore";
 
 export default function MobileAttendancePage() {
   const { user } = useAuth();
@@ -57,18 +57,15 @@ export default function MobileAttendancePage() {
             setRadiusInfo({ radius: data.radius, distance });
             setIsWithinRadius(distance <= data.radius);
           } else {
-            // Fallback jika tidak ada setting kantor
             setIsWithinRadius(true);
           }
         },
         (error) => {
           console.error("Location error:", error);
-          // Fallback jika gagal dapat lokasi
           setIsWithinRadius(true);
         }
       );
     } else {
-      // Fallback jika tidak support geolocation
       setIsWithinRadius(true);
     }
   };
@@ -98,18 +95,30 @@ export default function MobileAttendancePage() {
     try {
       const today = new Date();
       const docId = `${user?.uid}_${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, "0")}-${today.getDate().toString().padStart(2, "0")}`;
+      const docRef = doc(db, "attendance", docId);
+      const docSnap = await getDoc(docRef);
       
-      await updateDoc(doc(db, "attendance", docId), {
-        uid: user?.uid,
-        name: user?.name,
-        date: Timestamp.fromDate(new Date(today.getFullYear(), today.getMonth(), today.getDate())),
+      const checkInData = {
         checkIn: {
           time: Timestamp.now(),
           lat: location.lat,
           lng: location.lng,
         },
-        createdAt: Timestamp.now(),
-      }, { merge: true });
+      };
+      
+      if (!docSnap.exists()) {
+        // Jika dokumen belum ada, buat baru dengan setDoc
+        await setDoc(docRef, {
+          uid: user?.uid,
+          name: user?.name,
+          date: Timestamp.fromDate(new Date(today.getFullYear(), today.getMonth(), today.getDate())),
+          ...checkInData,
+          createdAt: Timestamp.now(),
+        });
+      } else {
+        // Jika sudah ada, update saja
+        await updateDoc(docRef, checkInData);
+      }
       
       alert("✅ Check-in berhasil!");
       loadTodayAttendance();
@@ -126,14 +135,15 @@ export default function MobileAttendancePage() {
     try {
       const today = new Date();
       const docId = `${user?.uid}_${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, "0")}-${today.getDate().toString().padStart(2, "0")}`;
+      const docRef = doc(db, "attendance", docId);
       
-      await updateDoc(doc(db, "attendance", docId), {
+      await updateDoc(docRef, {
         checkOut: {
           time: Timestamp.now(),
           lat: location?.lat,
           lng: location?.lng,
         },
-      }, { merge: true });
+      });
       
       alert("✅ Check-out berhasil!");
       loadTodayAttendance();
