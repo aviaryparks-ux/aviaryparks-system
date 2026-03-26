@@ -217,6 +217,8 @@ export default function UsersPage() {
       hr: "bg-blue-100 text-blue-700",
       spv: "bg-yellow-100 text-yellow-700",
       employee: "bg-gray-100 text-gray-700",
+      training: "bg-indigo-100 text-indigo-700",      // Tambahan untuk training
+      intern: "bg-cyan-100 text-cyan-700",            // Tambahan untuk magang
     };
     return styles[role] || styles.employee;
   };
@@ -228,6 +230,8 @@ export default function UsersPage() {
       hr: "HR",
       spv: "Supervisor",
       employee: "Employee",
+      training: "Training",      // Tambahan untuk training
+      intern: "Intern / Magang", // Tambahan untuk magang
     };
     return labels[role] || role;
   };
@@ -256,9 +260,19 @@ export default function UsersPage() {
     { value: "hr", label: "HR" },
     { value: "spv", label: "Supervisor" },
     { value: "employee", label: "Employee" },
+    { value: "training", label: "Training" },      // Tambahan
+    { value: "intern", label: "Intern / Magang" }, // Tambahan
   ];
 
-  const jabatanOptions = ["Casual", "Daily Worker", "Staff", "Supervisor", "Manager"];
+  const jabatanOptions = [
+    "Casual",
+    "Daily Worker",
+    "Staff",
+    "Supervisor",
+    "Manager",
+    "Training",      // Tambahan
+    "Intern / Magang", // Tambahan
+  ];
 
   if (loading) {
     return (
@@ -407,6 +421,8 @@ export default function UsersPage() {
                   <option value="hr">HR</option>
                   <option value="admin">Admin</option>
                   <option value="super_admin">Super Admin</option>
+                  <option value="training">Training</option>
+                  <option value="intern">Intern / Magang</option>
                 </select>
                 <input
                   placeholder="Department"
@@ -426,13 +442,22 @@ export default function UsersPage() {
                     </option>
                   ))}
                 </select>
-                <input
-                  placeholder="Daily Rate (Rp)"
-                  type="number"
-                  value={dailyRate}
-                  onChange={(e) => setDailyRate(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
-                />
+                {/* Daily Rate - hanya untuk Casual/DW */}
+                {(jabatan === "Casual" || jabatan === "Daily Worker") && (
+                  <input
+                    placeholder="Daily Rate (Rp)"
+                    type="number"
+                    value={dailyRate}
+                    onChange={(e) => setDailyRate(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
+                  />
+                )}
+                {/* Untuk Training/Magang, rate tidak perlu */}
+                {(jabatan === "Training" || jabatan === "Intern / Magang") && (
+                  <div className="border border-gray-300 rounded-lg px-3 py-2 bg-gray-50 text-gray-500">
+                    No daily rate (Training/Magang)
+                  </div>
+                )}
                 <input
                   placeholder="Company"
                   value={company}
@@ -552,7 +577,11 @@ export default function UsersPage() {
                     <td className="px-4 py-3">{user.department || "-"}</td>
                     <td className="px-4 py-3">{user.jabatan || "-"}</td>
                     <td className="px-4 py-3">
-                      {user.dailyRate ? `Rp ${user.dailyRate.toLocaleString()}` : "-"}
+                      {user.jabatan === "Training" || user.jabatan === "Intern / Magang" ? (
+                        <span className="text-gray-400">-</span>
+                      ) : user.dailyRate ? (
+                        `Rp ${user.dailyRate.toLocaleString()}`
+                      ) : "-"}
                     </td>
                     <td className="px-4 py-3">
                       <span

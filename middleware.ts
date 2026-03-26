@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 // Route yang bisa diakses tanpa login
-const publicRoutes = ['/login'];
+const publicRoutes = ['/login', '/profile', '/mobile/attendance', '/mobile/correction', '/mobile/history', '/mobile/profile'];
 
 // Route berdasarkan role
 const roleBasedRoutes: Record<string, string[]> = {
@@ -14,11 +14,62 @@ const roleBasedRoutes: Record<string, string[]> = {
     '/users',
     '/settings',
     '/approval-flow',
+    '/profile',
+    '/mobile/attendance',
+    '/mobile/correction',
+    '/mobile/history',
+    '/mobile/profile',
   ],
-  admin: ['/dashboard', '/attendance', '/attendance-corrections'],
-  hr: ['/dashboard', '/attendance', '/attendance-corrections', '/users'],
-  spv: ['/dashboard', '/attendance', '/attendance-corrections'],
-  employee: ['/dashboard', '/attendance'],
+  admin: [
+    '/dashboard',
+    '/attendance',
+    '/attendance-corrections',
+    '/profile',
+    '/mobile/attendance',
+    '/mobile/correction',
+    '/mobile/history',
+    '/mobile/profile',
+  ],
+  hr: [
+    '/dashboard',
+    '/attendance',
+    '/attendance-corrections',
+    '/users',
+    '/profile',
+    '/mobile/attendance',
+    '/mobile/correction',
+    '/mobile/history',
+    '/mobile/profile',
+  ],
+  manager: [
+    '/dashboard',
+    '/attendance',
+    '/attendance-corrections',
+    '/profile',
+    '/mobile/attendance',
+    '/mobile/correction',
+    '/mobile/history',
+    '/mobile/profile',
+  ],
+  spv: [
+    '/dashboard',
+    '/attendance',
+    '/attendance-corrections',
+    '/profile',
+    '/mobile/attendance',
+    '/mobile/correction',
+    '/mobile/history',
+    '/mobile/profile',
+  ],
+  employee: [
+    '/dashboard',
+    '/attendance',
+    '/profile',
+    '/mobile/attendance',
+    '/mobile/correction',
+    '/mobile/history',
+    '/mobile/profile',
+  ],
 };
 
 function hasAccess(role: string, pathname: string): boolean {
@@ -31,21 +82,21 @@ function hasAccess(role: string, pathname: string): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
-  // Fast check untuk public routes
+  // Public routes (bisa diakses tanpa login)
   if (publicRoutes.some(route => pathname === route)) {
     return NextResponse.next();
   }
 
-  // Fast check untuk static files
-  if (pathname.includes('/_next/') || pathname.includes('/favicon.ico')) {
+  // Skip static files
+  if (pathname.includes('/_next/') || pathname.includes('/favicon.ico') || pathname.includes('/icons/') || pathname.includes('/manifest.json') || pathname.includes('/sw.js')) {
     return NextResponse.next();
   }
 
-  // Ambil session dari cookie
   const session = request.cookies.get('__session')?.value;
   
   if (!session) {
     const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(loginUrl);
   }
 
@@ -65,13 +116,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match semua route kecuali:
-     * - _next/static (static files)
-     * - _next/image (image optimization)
-     * - favicon.ico
-     * - public folder
-     */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };
