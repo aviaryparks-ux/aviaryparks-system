@@ -25,6 +25,8 @@ export default function MobileCorrectionPage() {
       await addDoc(collection(db, "attendance_requests"), {
         uid: user?.uid,
         name: user?.name,
+        department: user?.department || "",
+        jabatan: user?.jabatan || "",
         date: Timestamp.fromDate(new Date(selectedDate)),
         checkIn: checkIn,
         checkOut: checkOut,
@@ -96,7 +98,7 @@ export default function MobileCorrectionPage() {
         <button
           onClick={handleSubmit}
           disabled={isLoading}
-          className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl active:scale-95 transition-all"
+          className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl active:scale-95 transition-all disabled:opacity-50"
         >
           {isLoading ? "Mengirim..." : "Kirim Pengajuan"}
         </button>

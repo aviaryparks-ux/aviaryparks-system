@@ -1,3 +1,4 @@
+// contexts/AuthContext.tsx
 "use client";
 
 import { createContext, useContext, useEffect, useState } from 'react';
@@ -13,6 +14,10 @@ type User = {
   role: string;
   photoUrl?: string;
   department?: string;
+  jabatan?: string;      // ← TAMBAHKAN
+  joinDate?: string;     // ← TAMBAHKAN
+  phone?: string;        // ← TAMBAHKAN
+  address?: string;      // ← TAMBAHKAN
 };
 
 type AuthContextType = {
@@ -24,12 +29,30 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Cache user data
+const CACHE_KEY = 'attendance_user_cache';
+const CACHE_DURATION = 5 * 60 * 1000;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
+    // Check cache first
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try {
+        const { data, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < CACHE_DURATION) {
+          setUser(data);
+          setLoading(false);
+        }
+      } catch (e) {
+        console.error('Cache parse error:', e);
+      }
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
@@ -43,10 +66,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               role: data.role || 'employee',
               photoUrl: data.photoUrl || undefined,
               department: data.department || '',
+              jabatan: data.jabatan || '',        // ← TAMBAHKAN
+              joinDate: data.joinDate || '',       // ← TAMBAHKAN
+              phone: data.phone || '',             // ← TAMBAHKAN
+              address: data.address || '',         // ← TAMBAHKAN
             };
             setUser(userData);
             
-            // Set session cookie untuk middleware
+            // Save to cache
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
+              data: userData,
+              timestamp: Date.now(),
+            }));
+            
+            // Set session cookie
             const session = btoa(JSON.stringify({
               uid: userData.uid,
               email: userData.email,
@@ -63,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } else {
         setUser(null);
-        // Hapus session cookie
+        localStorage.removeItem(CACHE_KEY);
         document.cookie = '__session=; path=/; max-age=0';
       }
       setLoading(false);
@@ -80,6 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       await firebaseSignOut(auth);
+      localStorage.removeItem(CACHE_KEY);
       document.cookie = '__session=; path=/; max-age=0';
       router.push('/login');
     } catch (error) {
