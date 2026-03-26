@@ -7,56 +7,71 @@ import { db } from "@/lib/firebase";
 import { doc, getDoc, updateDoc, setDoc, Timestamp } from "firebase/firestore";
 import dynamic from "next/dynamic";
 
-// Import Leaflet
+// leaflet
 const MapContainer = dynamic(
   () => import("react-leaflet").then((mod) => mod.MapContainer),
   { ssr: false }
 );
+
 const TileLayer = dynamic(
   () => import("react-leaflet").then((mod) => mod.TileLayer),
   { ssr: false }
 );
+
 const Circle = dynamic(
   () => import("react-leaflet").then((mod) => mod.Circle),
   { ssr: false }
 );
+
 const Marker = dynamic(
   () => import("react-leaflet").then((mod) => mod.Marker),
   { ssr: false }
 );
+
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
-// Fix Leaflet marker icon
+// fix icon leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
+
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
-  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
-  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+  iconRetinaUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+  iconUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+  shadowUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
 });
 
 export default function MobileAttendancePage() {
   const { user } = useAuth();
-  
-  // States
+
   const [todayAttendance, setTodayAttendance] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
-  
-  // Camera states
+
+  const [actionType, setActionType] = useState<"checkin" | "checkout" | null>(
+    null
+  );
+
+  // camera
   const [showCamera, setShowCamera] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [stream, setStream] = useState<MediaStream | null>(null);
-  
-  // Location states
-  const [showMap, setShowMap] = useState(false);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [isWithinRadius, setIsWithinRadius] = useState(false);
-  const [radiusInfo, setRadiusInfo] = useState<{ radius: number; distance: number } | null>(null);
-  const [officeLocation, setOfficeLocation] = useState<{ lat: number; lng: number; name: string; radius: number } | null>(null);
 
-  // Load data on mount
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+
+  // location
+  const [showMap, setShowMap] = useState(false);
+  const [location, setLocation] = useState<any>(null);
+  const [officeLocation, setOfficeLocation] = useState<any>(null);
+  const [isWithinRadius, setIsWithinRadius] = useState(false);
+  const [radiusInfo, setRadiusInfo] = useState<any>(null);
+
+  // load data
   useEffect(() => {
     if (user) {
       loadTodayAttendance();
@@ -64,225 +79,229 @@ export default function MobileAttendancePage() {
     }
   }, [user]);
 
+  // cleanup camera
+  useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, [stream]);
+
+  // ================= LOAD =================
+
   const loadOfficeLocation = async () => {
-    const settingDoc = await getDoc(doc(db, "settings", "office"));
-    if (settingDoc.exists()) {
-      const data = settingDoc.data();
-      setOfficeLocation({
-        lat: data.lat,
-        lng: data.lng,
-        name: data.name || "Kantor",
-        radius: data.radius || 100,
-      });
+    const docSnap = await getDoc(doc(db, "settings", "office"));
+
+    if (docSnap.exists()) {
+      setOfficeLocation(docSnap.data());
     } else {
-      // Default office location (ubah sesuai kantor Anda)
       setOfficeLocation({
-        lat: -6.200000,
-        lng: 106.816666,
-        name: "Kantor Pusat",
+        lat: -6.2,
+        lng: 106.816,
         radius: 100,
+        name: "Office",
       });
     }
   };
 
   const loadTodayAttendance = async () => {
     if (!user) return;
+
     const today = new Date();
-    const docId = `${user.uid}_${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, "0")}-${today.getDate().toString().padStart(2, "0")}`;
-    const docRef = doc(db, "attendance", docId);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      setTodayAttendance(docSnap.data());
+    const id = user.uid + "_" + today.toISOString().slice(0, 10);
+    const snap = await getDoc(doc(db, "attendance", id));
+
+    if (snap.exists()) {
+      setTodayAttendance(snap.data());
     }
   };
 
   // ================= CAMERA =================
-  const startCamera = async () => {
+
+  const startCamera = async (type: "checkin" | "checkout") => {
+    setActionType(type);
+    setCameraError(null);
+    setCameraReady(false);
+    setPhotoUri(null);
+
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-      });
-      setStream(mediaStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
+      if (!navigator.mediaDevices) {
+        setCameraError("browser tidak support kamera");
+        return;
       }
+
+      let mediaStream: MediaStream;
+
+      // coba kamera belakang dulu
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+          audio: false,
+        });
+      } catch {
+        // fallback kamera default
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
+
+      setStream(mediaStream);
       setShowCamera(true);
-    } catch (error) {
-      console.error("Camera error:", error);
-      alert("Tidak dapat mengakses kamera");
+
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
+          videoRef.current.onloadedmetadata = () => {
+            videoRef.current?.play();
+            setCameraReady(true);
+          };
+        }
+      }, 300);
+    } catch (err: any) {
+      setCameraError(err.message);
     }
   };
 
   const takePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d");
-      ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const photoDataUrl = canvas.toDataURL("image/jpeg");
-      setPhotoUri(photoDataUrl);
-      
-      // Stop camera stream
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-        setStream(null);
-      }
-      setShowCamera(false);
-      
-      // Get location after photo
-      getLocation();
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const ctx = canvas.getContext("2d");
+    ctx?.drawImage(video, 0, 0);
+
+    const image = canvas.toDataURL("image/jpeg");
+    setPhotoUri(image);
+
+    if (stream) {
+      stream.getTracks().forEach((t) => t.stop());
     }
+
+    setShowCamera(false);
+    getLocation();
   };
 
-  const retakePhoto = () => {
-    setPhotoUri(null);
-    setShowMap(false);
-    setLocation(null);
-    startCamera();
-  };
+  // ================= GPS =================
 
-  // ================= LOCATION =================
   const getLocation = () => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const currentLoc = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          };
-          setLocation(currentLoc);
-          
-          // Check radius
-          if (officeLocation) {
-            const distance = getDistance(
-              currentLoc.lat,
-              currentLoc.lng,
-              officeLocation.lat,
-              officeLocation.lng
-            );
-            setRadiusInfo({ radius: officeLocation.radius, distance });
-            setIsWithinRadius(distance <= officeLocation.radius);
-          }
-          
-          setShowMap(true);
-        },
-        (error) => {
-          console.error("Location error:", error);
-          alert("Gagal mendapatkan lokasi. Pastikan GPS aktif.");
-          // Jika gagal, tetap tampilkan map dengan koordinat default
-          setShowMap(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+
+        setLocation(loc);
+
+        if (officeLocation) {
+          const d = getDistance(
+            loc.lat,
+            loc.lng,
+            officeLocation.lat,
+            officeLocation.lng
+          );
+
+          setIsWithinRadius(d <= officeLocation.radius);
+          setRadiusInfo({
+            distance: d,
+            radius: officeLocation.radius,
+          });
         }
-      );
-    } else {
-      alert("Perangkat tidak mendukung GPS");
-    }
+
+        setShowMap(true);
+      },
+      () => alert("GPS tidak aktif")
+    );
   };
 
-  const getDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+  const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371e3;
-    const φ1 = (lat1 * Math.PI) / 180;
-    const φ2 = (lat2 * Math.PI) / 180;
-    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-    const Δλ = ((lng2 - lng1) * Math.PI) / 180;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+
     const a =
-      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+
+    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
   };
 
-  // ================= CHECK IN =================
-  const handleCheckIn = async () => {
+  // ================= SAVE =================
+
+  const handleSave = async () => {
+    if (!photoUri || !location) {
+      alert("foto / lokasi kosong");
+      return;
+    }
+
     if (!isWithinRadius) {
-      alert("Anda berada di luar radius absensi! Silakan mendekat ke lokasi kantor.");
-      return;
-    }
-    if (!photoUri) {
-      alert("Foto belum diambil!");
-      return;
-    }
-    if (!location) {
-      alert("Lokasi tidak ditemukan!");
+      alert("diluar radius kantor");
       return;
     }
 
     setIsLoading(true);
-    try {
-      const today = new Date();
-      const docId = `${user?.uid}_${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, "0")}-${today.getDate().toString().padStart(2, "0")}`;
-      const docRef = doc(db, "attendance", docId);
-      const docSnap = await getDoc(docRef);
-      
-      const checkInData = {
-        checkIn: {
-          time: Timestamp.now(),
-          lat: location.lat,
-          lng: location.lng,
-          photo: photoUri,
-        },
-      };
-      
-      if (!docSnap.exists()) {
-        await setDoc(docRef, {
-          uid: user?.uid,
-          name: user?.name,
-          date: Timestamp.fromDate(new Date(today.getFullYear(), today.getMonth(), today.getDate())),
-          ...checkInData,
-          createdAt: Timestamp.now(),
-        });
-      } else {
-        await updateDoc(docRef, checkInData);
-      }
-      
-      alert("✅ Check-in berhasil!");
-      // Reset states
-      setPhotoUri(null);
-      setShowMap(false);
-      setLocation(null);
-      loadTodayAttendance();
-    } catch (error: any) {
-      console.error("Check-in error:", error);
-      alert("❌ Gagal check-in: " + error.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  // ================= CHECK OUT =================
-  const handleCheckOut = async () => {
-    setIsLoading(true);
-    try {
-      const today = new Date();
-      const docId = `${user?.uid}_${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, "0")}-${today.getDate().toString().padStart(2, "0")}`;
-      const docRef = doc(db, "attendance", docId);
-      
-      await updateDoc(docRef, {
-        checkOut: {
-          time: Timestamp.now(),
-        },
+    const today = new Date();
+    const id = user.uid + "_" + today.toISOString().slice(0, 10);
+    const ref = doc(db, "attendance", id);
+
+    const data =
+      actionType === "checkin"
+        ? {
+            checkIn: {
+              time: Timestamp.now(),
+              lat: location.lat,
+              lng: location.lng,
+              photo: photoUri,
+            },
+          }
+        : {
+            checkOut: {
+              time: Timestamp.now(),
+              lat: location.lat,
+              lng: location.lng,
+              photo: photoUri,
+            },
+          };
+
+    const snap = await getDoc(ref);
+
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        uid: user.uid,
+        name: user.name,
+        date: Timestamp.fromDate(new Date(today.getFullYear(), today.getMonth(), today.getDate())),
+        ...data,
       });
-      
-      alert("✅ Check-out berhasil!");
-      loadTodayAttendance();
-    } catch (error: any) {
-      alert("❌ Gagal check-out: " + error.message);
-    } finally {
-      setIsLoading(false);
+    } else {
+      await updateDoc(ref, data);
     }
+
+    alert("absensi berhasil");
+    setShowMap(false);
+    loadTodayAttendance();
+    setIsLoading(false);
   };
 
   const isCheckedIn = todayAttendance?.checkIn;
   const isCheckedOut = todayAttendance?.checkOut;
 
-  // ================= RENDER =================
+  // ================= UI =================
 
   // Jika sudah check-out
   if (isCheckedOut) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-green-900 to-green-800 p-5 flex items-center justify-center">
-        <div className="bg-white rounded-3xl p-8 text-center w-full max-w-md">
+        <div className="bg-white rounded-3xl p-8 text-center w-full max-w-md shadow-xl">
           <div className="text-6xl mb-4">✅</div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Absensi Selesai</h2>
           <p className="text-gray-500 mb-6">Anda sudah menyelesaikan absensi hari ini</p>
@@ -311,18 +330,18 @@ export default function MobileAttendancePage() {
   if (isCheckedIn && !isCheckedOut) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-green-900 to-green-800 p-5 flex items-center justify-center">
-        <div className="bg-white rounded-3xl p-8 text-center w-full max-w-md">
+        <div className="bg-white rounded-3xl p-8 text-center w-full max-w-md shadow-xl">
           <div className="text-6xl mb-4">📤</div>
           <h2 className="text-xl font-bold text-gray-800">Anda sudah check-in</h2>
           <p className="text-gray-500 mt-2">
             Waktu check-in: {todayAttendance?.checkIn?.time?.toDate?.()?.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
           </p>
           <button
-            onClick={handleCheckOut}
+            onClick={() => startCamera("checkout")}
             disabled={isLoading}
-            className="mt-6 w-full py-4 bg-orange-500 text-white font-bold rounded-2xl active:scale-95"
+            className="mt-6 w-full py-4 bg-orange-500 text-white font-bold rounded-2xl active:scale-95 transition-all"
           >
-            {isLoading ? "Processing..." : "Check-out"}
+            Check-out
           </button>
         </div>
       </div>
@@ -332,17 +351,17 @@ export default function MobileAttendancePage() {
   // Halaman utama (belum check-in)
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-900 to-green-800 p-5 flex items-center justify-center">
-      <div className="bg-white rounded-3xl p-8 text-center w-full max-w-md">
+      <div className="bg-white rounded-3xl p-8 text-center w-full max-w-md shadow-xl">
         <div className="text-6xl mb-4">📸</div>
         <h2 className="text-2xl font-bold text-gray-800">Absensi Hari Ini</h2>
         <p className="text-gray-500 mt-2">
           {new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
         </p>
         <button
-          onClick={startCamera}
-          className="mt-6 w-full py-4 bg-green-600 text-white font-bold rounded-2xl active:scale-95 transition-all"
+          onClick={() => startCamera("checkin")}
+          className="mt-6 w-full py-4 bg-green-600 text-white font-bold rounded-2xl active:scale-95 transition-all shadow-lg"
         >
-          Check-in
+          Ambil Foto untuk Check-in
         </button>
         <div className="mt-6 text-xs text-gray-400">
           Pastikan GPS aktif dan Anda berada di lokasi kantor
@@ -355,15 +374,52 @@ export default function MobileAttendancePage() {
           <div className="relative h-full">
             <video
               ref={videoRef}
+              className="w-full h-full object-cover"
               autoPlay
               playsInline
-              className="w-full h-full object-cover"
+              muted
             />
             <canvas ref={canvasRef} className="hidden" />
+
+            {!cameraReady && !cameraError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+                <div className="text-white text-center">
+                  <div className="w-10 h-10 border-4 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-3" />
+                  <p>Mengaktifkan kamera...</p>
+                  <p className="text-xs text-white/50 mt-2">Izinkan akses kamera jika diminta</p>
+                </div>
+              </div>
+            )}
+
+            {cameraError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+                <div className="text-white text-center p-6">
+                  <div className="text-5xl mb-4">📷</div>
+                  <p className="font-medium mb-2">Kamera Tidak Tersedia</p>
+                  <p className="text-sm text-white/70">{cameraError}</p>
+                  <button
+                    onClick={() => {
+                      setShowCamera(false);
+                      setCameraError(null);
+                      setActionType(null);
+                    }}
+                    className="mt-4 px-6 py-2 bg-white text-black rounded-xl"
+                  >
+                    Tutup
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/70 to-transparent">
               <button
                 onClick={takePhoto}
-                className="w-full py-4 bg-white text-green-700 font-bold rounded-2xl active:scale-95 transition-all"
+                disabled={!cameraReady || !!cameraError}
+                className={`w-full py-4 font-bold rounded-2xl active:scale-95 transition-all ${
+                  cameraReady && !cameraError
+                    ? "bg-white text-green-700" 
+                    : "bg-gray-500 text-gray-300 cursor-not-allowed"
+                }`}
               >
                 Ambil Foto
               </button>
@@ -374,6 +430,9 @@ export default function MobileAttendancePage() {
                     setStream(null);
                   }
                   setShowCamera(false);
+                  setActionType(null);
+                  setCameraReady(false);
+                  setCameraError(null);
                 }}
                 className="w-full mt-3 py-3 bg-gray-500 text-white font-bold rounded-2xl"
               >
@@ -388,13 +447,15 @@ export default function MobileAttendancePage() {
       {showMap && photoUri && location && (
         <div className="fixed inset-0 z-50 bg-black/90 p-4 overflow-y-auto">
           <div className="min-h-full flex items-center justify-center">
-            <div className="bg-white rounded-3xl w-full max-w-md p-5 space-y-4">
+            <div className="bg-white rounded-3xl w-full max-w-md p-5 space-y-4 shadow-2xl">
               {/* Photo Preview */}
               <div>
-                <p className="text-gray-500 text-sm mb-2">Foto Absensi</p>
-                <img src={photoUri} alt="Preview" className="w-full rounded-2xl" />
+                <p className="text-gray-500 text-sm mb-2">
+                  {actionType === "checkin" ? "Foto Check-in" : "Foto Check-out"}
+                </p>
+                <img src={photoUri} alt="Preview" className="w-full rounded-2xl border border-gray-200" />
                 <button
-                  onClick={retakePhoto}
+                  onClick={() => startCamera(actionType!)}
                   className="mt-2 text-sm text-green-600 underline"
                 >
                   ↻ Ambil ulang foto
@@ -404,7 +465,7 @@ export default function MobileAttendancePage() {
               {/* Map */}
               <div>
                 <p className="text-gray-500 text-sm mb-2">Lokasi Anda</p>
-                <div className="h-64 rounded-2xl overflow-hidden">
+                <div className="h-64 rounded-2xl overflow-hidden border border-gray-200">
                   {officeLocation && location ? (
                     <MapContainer
                       center={[location.lat, location.lng]}
@@ -441,12 +502,12 @@ export default function MobileAttendancePage() {
 
               {/* Save Button */}
               <button
-                onClick={handleCheckIn}
+                onClick={handleSave}
                 disabled={!isWithinRadius || isLoading}
                 className={`
                   w-full py-4 rounded-2xl text-white font-bold text-lg transition-all
                   ${isWithinRadius && !isLoading
-                    ? "bg-green-600 active:bg-green-700"
+                    ? "bg-green-600 hover:bg-green-700 active:scale-95"
                     : "bg-gray-400 cursor-not-allowed"
                   }
                 `}
@@ -457,7 +518,7 @@ export default function MobileAttendancePage() {
                     <span>Menyimpan...</span>
                   </div>
                 ) : (
-                  "Simpan Absensi"
+                  actionType === "checkin" ? "Simpan Check-in" : "Simpan Check-out"
                 )}
               </button>
 
@@ -466,6 +527,7 @@ export default function MobileAttendancePage() {
                   setShowMap(false);
                   setPhotoUri(null);
                   setLocation(null);
+                  setActionType(null);
                 }}
                 className="w-full py-3 bg-gray-200 text-gray-700 font-bold rounded-2xl"
               >
