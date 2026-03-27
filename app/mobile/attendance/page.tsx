@@ -2,7 +2,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -16,34 +15,10 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import dynamic from "next/dynamic";
-
-// leaflet
-const MapContainer = dynamic(
-  () => import("react-leaflet").then((mod) => mod.MapContainer),
-  { ssr: false }
-);
-
-const TileLayer = dynamic(
-  () => import("react-leaflet").then((mod) => mod.TileLayer),
-  { ssr: false }
-);
-
-const Circle = dynamic(
-  () => import("react-leaflet").then((mod) => mod.Circle),
-  { ssr: false }
-);
-
-const Marker = dynamic(
-  () => import("react-leaflet").then((mod) => mod.Marker),
-  { ssr: false }
-);
-
-import "leaflet/dist/leaflet.css";
 import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
-// fix icon leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
-
 L.Icon.Default.mergeOptions({
   iconRetinaUrl:
     "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
@@ -53,426 +28,215 @@ L.Icon.Default.mergeOptions({
     "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
 });
 
-export default function MobileAttendancePage() {
-  const { user } = useAuth();
+const MapContainer = dynamic(() => import("react-leaflet").then(m => m.MapContainer), { ssr: false });
+const TileLayer = dynamic(() => import("react-leaflet").then(m => m.TileLayer), { ssr: false });
+const Circle = dynamic(() => import("react-leaflet").then(m => m.Circle), { ssr: false });
+const Marker = dynamic(() => import("react-leaflet").then(m => m.Marker), { ssr: false });
+const Polyline = dynamic(() => import("react-leaflet").then(m => m.Polyline), { ssr: false });
 
-  const [todayAttendance, setTodayAttendance] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const [actionType, setActionType] = useState<"checkin" | "checkout" | null>(
-    null
-  );
-
-  // camera
-  const [showCamera, setShowCamera] = useState(false);
+export default function Page() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const [cameraReady, setCameraReady] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // location
-  const [showMap, setShowMap] = useState(false);
   const [location, setLocation] = useState<any>(null);
   const [officeLocations, setOfficeLocations] = useState<any[]>([]);
   const [matchedLocation, setMatchedLocation] = useState<any>(null);
+  const [distance, setDistance] = useState(0);
   const [isWithinRadius, setIsWithinRadius] = useState(false);
-  const [radiusInfo, setRadiusInfo] = useState<any>(null);
-  const [officeLocationLoaded, setOfficeLocationLoaded] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
 
-  // load data
   useEffect(() => {
-    if (user) {
-      loadTodayAttendance();
-      loadOfficeLocations();
+    loadOffice();
+  }, []);
+
+  const loadOffice = async () => {
+    const q = query(collection(db, "settings"), where("isActive", "==", true));
+    const snap = await getDocs(q);
+    setOfficeLocations(snap.docs.map(d => d.data()));
+  };
+
+  // Switch camera
+  const switchCamera = async () => {
+    const newFacing = cameraFacing === "environment" ? "user" : "environment";
+    setCameraFacing(newFacing);
+    
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      setStream(null);
     }
-  }, [user]);
-
-  // cleanup camera
-  useEffect(() => {
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
-      }
-    };
-  }, [stream]);
-
-  // ================= LOAD SEMUA LOKASI AKTIF =================
-  const loadOfficeLocations = async () => {
+    
     try {
-      const q = query(
-        collection(db, "settings"),
-        where("isActive", "==", true)
-      );
-      const snapshot = await getDocs(q);
-
-      console.log("=== LOADED LOCATIONS FROM DB ===");
-      console.log("Total locations:", snapshot.size);
-
-      if (snapshot.empty) {
-        console.log("No active locations found!");
-        setOfficeLocations([]);
-      } else {
-        const locations = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          console.log(`- ${doc.id}:`, {
-            name: data.name,
-            lat: data.lat,
-            lng: data.lng,
-            radius: data.radius,
-          });
-          return { id: doc.id, ...data };
-        });
-        setOfficeLocations(locations);
+      const s = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: newFacing },
+      });
+      setStream(s);
+      if (videoRef.current) {
+        videoRef.current.srcObject = s;
+        videoRef.current.play();
       }
-      setOfficeLocationLoaded(true);
-    } catch (error) {
-      console.error("Error loading locations:", error);
-      setOfficeLocations([]);
-      setOfficeLocationLoaded(true);
+    } catch (err) {
+      console.error("Switch camera error:", err);
     }
   };
 
-  const loadTodayAttendance = async () => {
-    if (!user) return;
-    const today = new Date();
-    const id = user.uid + "_" + today.toISOString().slice(0, 10);
-    const snap = await getDoc(doc(db, "attendance", id));
-    if (snap.exists()) {
-      setTodayAttendance(snap.data());
-    }
-  };
-
-  // ================= CAMERA =================
-  const startCamera = async (type: "checkin" | "checkout") => {
-    setActionType(type);
-    setCameraError(null);
-    setCameraReady(false);
-    setPhotoUri(null);
+  // 📸 CAMERA
+  const startCamera = async () => {
+    if (stream) stream.getTracks().forEach(t => t.stop());
 
     try {
-      if (!navigator.mediaDevices) {
-        setCameraError("browser tidak support kamera");
-        return;
-      }
+      const s = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: cameraFacing },
+      });
 
-      let mediaStream: MediaStream;
-      try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-          audio: false,
-        });
-      } catch {
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: false,
-        });
-      }
-
-      setStream(mediaStream);
+      setStream(s);
       setShowCamera(true);
 
       setTimeout(() => {
         if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream;
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current?.play();
-            setCameraReady(true);
-          };
+          videoRef.current.srcObject = s;
+          videoRef.current.play();
         }
-      }, 300);
-    } catch (err: any) {
-      setCameraError(err.message);
+      }, 100);
+    } catch (err) {
+      alert("Izin kamera diperlukan");
     }
   };
 
   const takePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    const video = videoRef.current!;
+    const canvas = canvasRef.current!;
 
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d");
-    ctx?.drawImage(video, 0, 0);
-    const image = canvas.toDataURL("image/jpeg");
+    const maxWidth = 720;
+    const scale = maxWidth / video.videoWidth;
+
+    canvas.width = maxWidth;
+    canvas.height = video.videoHeight * scale;
+
+    canvas.getContext("2d")!.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const image = canvas.toDataURL("image/jpeg", 0.4);
+
     setPhotoUri(image);
 
-    if (stream) {
-      stream.getTracks().forEach((t) => t.stop());
-    }
-
+    stream?.getTracks().forEach(t => t.stop());
     setShowCamera(false);
+
     getLocation();
   };
 
-  // ================= GPS =================
-  const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const getDistance = (a: any, b: any) => {
     const R = 6371e3;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+    const dLat = (b.lat - a.lat) * Math.PI / 180;
+    const dLon = (b.lng - a.lng) * Math.PI / 180;
+    const x =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(a.lat * Math.PI / 180) *
+      Math.cos(b.lat * Math.PI / 180) *
+      Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
   };
 
   const getLocation = () => {
+    setIsLoadingLocation(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const userLoc = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
         };
+
         setLocation(userLoc);
 
-        console.log("=== USER LOCATION ===");
-        console.log("Lat:", userLoc.lat);
-        console.log("Lng:", userLoc.lng);
-
-        // Cari lokasi terdekat dari semua lokasi yang aktif
-        let nearestLocation = null;
-        let minDistance = Infinity;
+        let nearest = null;
+        let min = Infinity;
 
         for (const loc of officeLocations) {
-          const distance = getDistance(
-            userLoc.lat,
-            userLoc.lng,
-            loc.lat,
-            loc.lng
-          );
-          console.log(`Distance to ${loc.name}: ${distance.toFixed(2)}m, Radius: ${loc.radius}m`);
-          
-          if (distance < minDistance) {
-            minDistance = distance;
-            nearestLocation = loc;
+          const d = getDistance(userLoc, loc);
+          if (d < min) {
+            min = d;
+            nearest = loc;
           }
         }
 
-        if (nearestLocation) {
-          console.log("Nearest location:", nearestLocation.name);
-          const isInRadius = minDistance <= nearestLocation.radius;
-          setIsWithinRadius(isInRadius);
-          setRadiusInfo({
-            distance: minDistance,
-            radius: nearestLocation.radius,
-            name: nearestLocation.name,
-            lat: nearestLocation.lat,
-            lng: nearestLocation.lng,
-          });
-          setMatchedLocation(nearestLocation);
-        } else {
-          setIsWithinRadius(false);
-          setMatchedLocation(null);
-        }
-
+        setMatchedLocation(nearest);
+        setDistance(min);
+        setIsWithinRadius(min <= nearest?.radius);
         setShowMap(true);
+        setIsLoadingLocation(false);
       },
       (err) => {
         console.error("GPS Error:", err);
         alert("GPS tidak aktif, nyalakan GPS untuk absensi");
+        setIsLoadingLocation(false);
       }
     );
   };
 
-  // ================= SAVE =================
-  const handleSave = async () => {
-    if (!user) {
-      alert("User tidak ditemukan");
-      return;
-    }
-
-    if (!photoUri || !location) {
-      alert("foto / lokasi kosong");
-      return;
-    }
-
-    if (!isWithinRadius) {
-      alert(`Anda berada di luar radius ${matchedLocation?.name || "kantor"}!`);
-      return;
-    }
-
-    setIsLoading(true);
-
-    const today = new Date();
-    const id = user.uid + "_" + today.toISOString().slice(0, 10);
-    const ref = doc(db, "attendance", id);
-
-    const data =
-      actionType === "checkin"
-        ? {
-            checkIn: {
-              time: Timestamp.now(),
-              lat: location.lat,
-              lng: location.lng,
-              photo: photoUri,
-              locationName: matchedLocation?.name || "Unknown",
-            },
-          }
-        : {
-            checkOut: {
-              time: Timestamp.now(),
-              lat: location.lat,
-              lng: location.lng,
-              photo: photoUri,
-              locationName: matchedLocation?.name || "Unknown",
-            },
-          };
-
-    const snap = await getDoc(ref);
-
-    if (!snap.exists()) {
-      await setDoc(ref, {
-        uid: user.uid,
-        name: user.name,
-        date: Timestamp.fromDate(new Date(today.getFullYear(), today.getMonth(), today.getDate())),
-        ...data,
-      });
-    } else {
-      await updateDoc(ref, data);
-    }
-
-    alert("✅ Absensi berhasil!");
-    setShowMap(false);
-    loadTodayAttendance();
-    setIsLoading(false);
+  const refreshLocation = () => {
+    getLocation();
   };
 
-  const isCheckedIn = todayAttendance?.checkIn;
-  const isCheckedOut = todayAttendance?.checkOut;
-
-  // Loading state
-  if (!officeLocationLoaded) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-green-900 to-green-800 flex items-center justify-center">
-        <div className="text-white text-center">
-          <div className="w-10 h-10 border-4 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-3" />
-          <p>Memuat lokasi...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Jika tidak ada lokasi aktif
-  if (officeLocations.length === 0) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-green-900 to-green-800 flex items-center justify-center">
-        <div className="bg-white rounded-3xl p-8 text-center w-full max-w-md shadow-xl">
-          <div className="text-6xl mb-4">📍</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">
-            Belum Ada Lokasi Absensi
-          </h2>
-          <p className="text-gray-500 mb-6">
-            Hubungi admin untuk mengatur lokasi absensi
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // Jika sudah check-out
-  if (isCheckedOut) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-green-900 to-green-800 p-5 flex items-center justify-center">
-        <div className="bg-white rounded-3xl p-8 text-center w-full max-w-md shadow-xl">
-          <div className="text-6xl mb-4">✅</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Absensi Selesai</h2>
-          <p className="text-gray-500 mb-6">Anda sudah menyelesaikan absensi hari ini</p>
-          <div className="bg-gray-100 rounded-2xl p-4 mb-6">
-            <p className="text-sm text-gray-500">Check-in</p>
-            <p className="text-xl font-bold text-gray-800">
-              {todayAttendance?.checkIn?.time?.toDate?.()?.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-            </p>
-            <p className="text-sm text-gray-500 mt-2">Check-out</p>
-            <p className="text-xl font-bold text-gray-800">
-              {todayAttendance?.checkOut?.time?.toDate?.()?.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-            </p>
-          </div>
-          <button onClick={() => window.location.reload()} className="w-full py-3 bg-green-600 text-white font-bold rounded-2xl">
-            Refresh
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Jika sudah check-in (belum check-out)
-  if (isCheckedIn && !isCheckedOut) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-green-900 to-green-800 p-5 flex items-center justify-center">
-        <div className="bg-white rounded-3xl p-8 text-center w-full max-w-md shadow-xl">
-          <div className="text-6xl mb-4">📤</div>
-          <h2 className="text-xl font-bold text-gray-800">Anda sudah check-in</h2>
-          <p className="text-gray-500 mt-2">
-            Waktu check-in:{" "}
-            {todayAttendance?.checkIn?.time?.toDate?.()?.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-          </p>
-          <button onClick={() => startCamera("checkout")} disabled={isLoading} className="mt-6 w-full py-4 bg-orange-500 text-white font-bold rounded-2xl active:scale-95 transition-all">
-            Check-out
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Halaman utama (belum check-in)
   return (
-    <div className="min-h-screen bg-gradient-to-b from-green-900 to-green-800 p-5 flex items-center justify-center">
-      <div className="bg-white rounded-3xl p-8 text-center w-full max-w-md shadow-xl">
-        <div className="text-6xl mb-4">📸</div>
-        <h2 className="text-2xl font-bold text-gray-800">Absensi Hari Ini</h2>
-        <p className="text-gray-500 mt-2">
-          {new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
-        </p>
-        <button onClick={() => startCamera("checkin")} className="mt-6 w-full py-4 bg-green-600 text-white font-bold rounded-2xl active:scale-95 transition-all shadow-lg">
-          Ambil Foto untuk Check-in
-        </button>
-        <div className="mt-6 text-xs text-gray-400">
-          Anda bisa absen di lokasi yang sudah ditentukan oleh admin
+    <div className="min-h-screen bg-gradient-to-br from-green-900 to-green-800 p-4">
+      {/* Main Card */}
+      <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 text-center max-w-md mx-auto border border-white/20">
+        <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+          <span className="text-4xl">📸</span>
         </div>
+        <h1 className="text-2xl font-bold text-gray-800 mb-2">Absensi Lokasi</h1>
+        <p className="text-gray-500 text-sm mb-6">Ambil foto untuk verifikasi kehadiran</p>
+        <button
+          onClick={startCamera}
+          className="w-full py-4 bg-gradient-to-r from-green-600 to-green-700 text-white font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all active:scale-95"
+        >
+          📸 Ambil Foto
+        </button>
+        <p className="text-xs text-gray-400 mt-4">Pastikan GPS aktif dan berada di lokasi kantor</p>
       </div>
 
       {/* Camera Modal */}
       {showCamera && (
         <div className="fixed inset-0 z-50 bg-black">
           <div className="relative h-full">
-            <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover"
+              autoPlay
+              playsInline
+              muted
+            />
             <canvas ref={canvasRef} className="hidden" />
 
-            {!cameraReady && !cameraError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/80">
-                <div className="text-white text-center">
-                  <div className="w-10 h-10 border-4 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-3" />
-                  <p>Mengaktifkan kamera...</p>
-                  <p className="text-xs text-white/50 mt-2">Izinkan akses kamera jika diminta</p>
-                </div>
-              </div>
-            )}
-
-            {cameraError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/80">
-                <div className="text-white text-center p-6">
-                  <div className="text-5xl mb-4">📷</div>
-                  <p className="font-medium mb-2">Kamera Tidak Tersedia</p>
-                  <p className="text-sm text-white/70">{cameraError}</p>
-                  <button onClick={() => { setShowCamera(false); setCameraError(null); setActionType(null); }} className="mt-4 px-6 py-2 bg-white text-black rounded-xl">
-                    Tutup
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* Camera Switch Button */}
+            <button
+              onClick={switchCamera}
+              className="absolute top-6 right-6 bg-black/50 backdrop-blur-sm text-white p-3 rounded-full shadow-lg active:scale-95 transition-all"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+              </svg>
+            </button>
 
             <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/70 to-transparent">
-              <button onClick={takePhoto} disabled={!cameraReady || !!cameraError} className={`w-full py-4 font-bold rounded-2xl active:scale-95 transition-all ${cameraReady && !cameraError ? "bg-white text-green-700" : "bg-gray-500 text-gray-300 cursor-not-allowed"}`}>
-                Ambil Foto
+              <button
+                onClick={takePhoto}
+                className="w-full py-4 bg-white text-green-700 font-bold rounded-2xl shadow-lg active:scale-95 transition-all"
+              >
+                📸 Ambil Foto
               </button>
-              <button onClick={() => { if (stream) { stream.getTracks().forEach((track) => track.stop()); setStream(null); } setShowCamera(false); setActionType(null); setCameraReady(false); setCameraError(null); }} className="w-full mt-3 py-3 bg-gray-500 text-white font-bold rounded-2xl">
+              <button
+                onClick={() => {
+                  if (stream) stream.getTracks().forEach(t => t.stop());
+                  setShowCamera(false);
+                }}
+                className="w-full mt-3 py-3 bg-gray-500/80 text-white font-bold rounded-2xl"
+              >
                 Batal
               </button>
             </div>
@@ -480,55 +244,186 @@ export default function MobileAttendancePage() {
         </div>
       )}
 
-      {/* Map & Photo Preview Modal */}
+      {/* Map Modal */}
       {showMap && photoUri && location && matchedLocation && (
-        <div className="fixed inset-0 z-50 bg-black/90 p-4 overflow-y-auto">
-          <div className="min-h-full flex items-center justify-center">
-            <div className="bg-white rounded-3xl w-full max-w-md p-5 space-y-4 shadow-2xl">
-              {/* Photo Preview */}
-              <div>
-                <p className="text-gray-500 text-sm mb-2">{actionType === "checkin" ? "Foto Check-in" : "Foto Check-out"}</p>
-                <img src={photoUri} alt="Preview" className="w-full rounded-2xl border border-gray-200" />
-                <button onClick={() => startCamera(actionType!)} className="mt-2 text-sm text-green-600 underline">↻ Ambil ulang foto</button>
-              </div>
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-green-600 to-green-700 p-4 text-white flex justify-between items-center">
+              <h2 className="text-lg font-bold text-center flex-1">Verifikasi Lokasi</h2>
+              <button
+                onClick={refreshLocation}
+                disabled={isLoadingLocation}
+                className="bg-white/20 rounded-full p-2 hover:bg-white/30 transition-all"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className={`h-5 w-5 ${isLoadingLocation ? "animate-spin" : ""}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+              </button>
+            </div>
 
-              {/* Map */}
-              <div>
-                <p className="text-gray-500 text-sm mb-2">Lokasi Kantor: {matchedLocation.name}</p>
-                <div className="h-64 rounded-2xl overflow-hidden border border-gray-200">
-                  <MapContainer center={[matchedLocation.lat, matchedLocation.lng]} zoom={17} style={{ height: "100%", width: "100%" }} zoomControl={false}>
-                    <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                    <Circle center={[matchedLocation.lat, matchedLocation.lng]} radius={matchedLocation.radius} pathOptions={{ color: "#00C853", fillColor: "#00C853", fillOpacity: 0.2 }} />
-                    <Marker position={[matchedLocation.lat, matchedLocation.lng]} />
-                    <Marker position={[location.lat, location.lng]} />
-                  </MapContainer>
-                </div>
-                <div className={`mt-3 p-3 rounded-xl text-center ${isWithinRadius ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                  {isWithinRadius ? (
-                    <div>✓ Dalam radius {matchedLocation.name} ({radiusInfo?.distance?.toFixed(0)}m / {radiusInfo?.radius}m)</div>
-                  ) : (
-                    <div>✗ Di luar radius {matchedLocation.name} ({radiusInfo?.distance?.toFixed(0)}m / {radiusInfo?.radius}m)</div>
-                  )}
+            {/* Photo Preview */}
+            <div className="p-4 border-b border-gray-100">
+              <p className="text-sm text-gray-500 mb-2">Foto Absensi</p>
+              <div className="relative rounded-xl overflow-hidden">
+                <img src={photoUri} alt="Preview" className="w-full rounded-xl" />
+                <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full">
+                  {new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
                 </div>
               </div>
+            </div>
 
-              {/* Save Button */}
-              <button onClick={handleSave} disabled={!isWithinRadius || isLoading} className={`w-full py-4 rounded-2xl text-white font-bold text-lg transition-all ${isWithinRadius && !isLoading ? "bg-green-600 hover:bg-green-700 active:scale-95" : "bg-gray-400 cursor-not-allowed"}`}>
-                {isLoading ? (
-                  <div className="flex items-center justify-center gap-2">
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Menyimpan...</span>
+            {/* Map */}
+            <div className="p-4">
+              <div className="flex justify-between items-center mb-2">
+                <p className="text-sm text-gray-500 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                  Lokasi Kantor: {matchedLocation.name}
+                </p>
+                {isLoadingLocation && (
+                  <div className="text-xs text-gray-400 flex items-center gap-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
+                    Memperbarui...
                   </div>
-                ) : actionType === "checkin" ? "Simpan Check-in" : "Simpan Check-out"}
+                )}
+              </div>
+              <div className="h-64 rounded-xl overflow-hidden border border-gray-200">
+                <MapContainer
+                  bounds={[
+                    [location.lat, location.lng],
+                    [matchedLocation.lat, matchedLocation.lng],
+                  ]}
+                  style={{ height: "100%", width: "100%" }}
+                  zoomControl={false}
+                >
+                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+
+                  <Circle
+                    center={[matchedLocation.lat, matchedLocation.lng]}
+                    radius={matchedLocation.radius}
+                    pathOptions={{
+                      color: "#22c55e",
+                      fillColor: "#22c55e",
+                      fillOpacity: 0.2,
+                      weight: 2,
+                    }}
+                  />
+
+                  <Marker
+                    position={[matchedLocation.lat, matchedLocation.lng]}
+                    icon={L.divIcon({
+                      html: '<div style="background-color: #22c55e; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>',
+                      className: "custom-marker",
+                      iconSize: [16, 16],
+                    })}
+                  />
+                  <Marker
+                    position={[location.lat, location.lng]}
+                    icon={L.divIcon({
+                      html: '<div style="background-color: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>',
+                      className: "custom-marker",
+                      iconSize: [16, 16],
+                    })}
+                  />
+
+                  <Polyline
+                    positions={[
+                      [location.lat, location.lng],
+                      [matchedLocation.lat, matchedLocation.lng],
+                    ]}
+                    pathOptions={{ color: "#3b82f6", weight: 2, dashArray: "5, 5" }}
+                  />
+                </MapContainer>
+              </div>
+
+              {/* Legend */}
+              <div className="flex justify-center gap-4 mt-2 text-xs">
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="text-gray-500">Radius Kantor</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <span className="text-gray-500">Jarak</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                  <span className="text-gray-500">Lokasi Anda</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Status & Button */}
+            <div className="p-4 pt-0 space-y-3">
+              <div
+                className={`p-3 rounded-xl text-center ${
+                  isWithinRadius
+                    ? "bg-green-100 text-green-700 border border-green-200"
+                    : "bg-red-100 text-red-700 border border-red-200"
+                }`}
+              >
+                <div className="font-bold text-lg">
+                  {isWithinRadius ? "✓ Dalam Radius Kantor" : "✗ Di Luar Radius Kantor"}
+                </div>
+                <div className="text-sm mt-1">
+                  Jarak: {distance.toFixed(0)}m 
+                  {matchedLocation && <span className="ml-1">(Maks: {matchedLocation.radius}m)</span>}
+                </div>
+              </div>
+
+              <button
+                className={`w-full py-4 rounded-2xl font-bold text-lg transition-all ${
+                  isWithinRadius
+                    ? "bg-gradient-to-r from-green-600 to-green-700 text-white shadow-lg hover:shadow-xl active:scale-95"
+                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                }`}
+                disabled={!isWithinRadius}
+              >
+                {isWithinRadius ? "✅ Simpan Absensi" : "❌ Tidak Dapat Absen"}
               </button>
 
-              <button onClick={() => { setShowMap(false); setPhotoUri(null); setLocation(null); setActionType(null); }} className="w-full py-3 bg-gray-200 text-gray-700 font-bold rounded-2xl">
-                Batal
+              <button
+                onClick={() => {
+                  setShowMap(false);
+                  setPhotoUri(null);
+                  setLocation(null);
+                  setMatchedLocation(null);
+                }}
+                className="w-full py-3 bg-gray-200 text-gray-700 font-bold rounded-2xl transition-all hover:bg-gray-300"
+              >
+                Kembali
               </button>
             </div>
           </div>
         </div>
       )}
+
+      <style jsx>{`
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+            transform: scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.2s ease-out;
+        }
+      `}</style>
     </div>
   );
 }
