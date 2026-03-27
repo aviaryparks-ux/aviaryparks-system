@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { db } from "@/lib/firebase";
+import { db, storage } from "@/lib/firebase";
 import {
   collection,
   query,
@@ -15,6 +15,7 @@ import {
   setDoc,
   Timestamp,
 } from "firebase/firestore";
+import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import dynamic from "next/dynamic";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -56,6 +57,7 @@ export default function Page() {
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   // Load data
   useEffect(() => {
@@ -90,6 +92,28 @@ export default function Page() {
 
   const isCheckedIn = todayAttendance?.checkIn;
   const isCheckedOut = todayAttendance?.checkOut;
+
+  // 🔥 UPLOAD FOTO KE FIREBASE STORAGE
+  const uploadPhotoToStorage = async (base64Data: string): Promise<string> => {
+    if (!user) throw new Error("User not found");
+    
+    const timestamp = Date.now();
+    const fileName = `${user.uid}_${timestamp}.jpg`;
+    const storageRef = ref(storage, `attendance/${fileName}`);
+    
+    // Remove base64 header if present
+    let imageData = base64Data;
+    if (base64Data.includes("base64,")) {
+      imageData = base64Data.split("base64,")[1];
+    }
+    
+    // Upload dengan progress tracking
+    await uploadString(storageRef, imageData, "base64");
+    
+    // Get download URL
+    const downloadUrl = await getDownloadURL(storageRef);
+    return downloadUrl;
+  };
 
   // Camera functions
   const switchCamera = async () => {
@@ -149,7 +173,7 @@ export default function Page() {
 
     canvas.getContext("2d")!.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const image = canvas.toDataURL("image/jpeg", 0.4);
+    const image = canvas.toDataURL("image/jpeg", 0.7); // Quality 70%
 
     setPhotoUri(image);
 
@@ -211,6 +235,7 @@ export default function Page() {
     getLocation();
   };
 
+  // 🔥 SAVE DENGAN UPLOAD FOTO KE STORAGE
   const saveAttendance = async () => {
     if (!user) {
       alert("User tidak ditemukan, silakan login ulang");
@@ -233,8 +258,12 @@ export default function Page() {
     }
 
     setIsSaving(true);
+    setUploadProgress(0);
 
     try {
+      // Upload foto ke Firebase Storage
+      const photoUrl = await uploadPhotoToStorage(photoUri);
+      
       const today = new Date();
       const docId = user.uid + "_" + today.toISOString().slice(0, 10);
       const ref = doc(db, "attendance", docId);
@@ -248,7 +277,7 @@ export default function Page() {
           date: Timestamp.fromDate(today),
           checkIn: {
             time: Timestamp.now(),
-            photo: photoUri,
+            photo: photoUrl,
             lat: location.lat,
             lng: location.lng,
           },
@@ -268,7 +297,7 @@ export default function Page() {
         await updateDoc(ref, {
           checkOut: {
             time: Timestamp.now(),
-            photo: photoUri,
+            photo: photoUrl,
             lat: location.lat,
             lng: location.lng,
           },
@@ -289,6 +318,7 @@ export default function Page() {
       alert("❌ Gagal menyimpan absensi: " + error);
     } finally {
       setIsSaving(false);
+      setUploadProgress(0);
     }
   };
 
@@ -530,7 +560,7 @@ export default function Page() {
                 {isSaving ? (
                   <>
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Menyimpan...</span>
+                    <span>Mengupload foto...</span>
                   </>
                 ) : (
                   isCheckedIn ? "✅ Simpan Check-out" : "✅ Simpan Check-in"
