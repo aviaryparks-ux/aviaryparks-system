@@ -6,7 +6,6 @@ import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/aut
 import { auth, db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -52,10 +51,14 @@ export default function LoginPage() {
 
       alert(`Login successful! Welcome ${userData.name}`);
 
-      if (role === "super_admin" || role === "admin" || role === "hr" || role === "spv") {
+      // Role yang diizinkan untuk web admin
+      const adminRoles = ["super_admin", "admin", "hr", "spv"];
+      
+      if (adminRoles.includes(role)) {
         router.push("/dashboard");
       } else {
-        router.push("/dashboard");
+        // Employee, Training, Intern langsung ke mobile PWA
+        router.push("/mobile/attendance");
       }
     } catch (e: any) {
       let errorMessage = "";
@@ -94,10 +97,6 @@ export default function LoginPage() {
     setResetMessage(null);
 
     try {
-      // Cek apakah email terdaftar di Firestore
-      const usersSnap = await getDoc(doc(db, "users", resetEmail));
-      // Karena UID bukan email, kita perlu query cari user berdasarkan email
-      // Cara alternatif: cek di Firebase Auth terlebih dahulu
       await sendPasswordResetEmail(auth, resetEmail);
       setResetMessage({
         type: "success",
