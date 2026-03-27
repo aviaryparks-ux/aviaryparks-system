@@ -232,6 +232,79 @@ export default function UsersPage() {
     reader.readAsBinaryString(file);
   };
 
+  const triggerFileUpload = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx, .xls';
+    input.onchange = (e) => {
+      const event = e as unknown as React.ChangeEvent<HTMLInputElement>;
+      handleFileUpload(event);
+    };
+    input.click();
+  };
+
+  const importFromGoogleSheets = () => {
+    const url = prompt("Enter Google Sheets shareable link or ID:");
+    if (!url) return;
+    
+    let sheetId = url;
+    if (url.includes("/d/")) {
+      const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      if (match) sheetId = match[1];
+    }
+    
+    const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
+    
+    fetch(exportUrl)
+      .then(response => response.arrayBuffer())
+      .then(data => {
+        const workbook = XLSX.read(data);
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet);
+        setImportData(rows);
+        setShowImportModal(true);
+      })
+      .catch(error => {
+        alert("Failed to fetch Google Sheet. Make sure it's public or accessible.");
+        console.error(error);
+      });
+  };
+
+  const downloadTemplate = () => {
+    const template = [
+      {
+        Nama: "John Doe",
+        Email: "john@example.com",
+        Password: "password123",
+        Role: "employee",
+        Department: "IT",
+        Jabatan: "Staff",
+        DailyRate: 0,
+        Company: "AviaryParks",
+        Location: "Jakarta",
+        JoinDate: "2024-01-01",
+      },
+      {
+        Nama: "Jane Smith",
+        Email: "jane@example.com",
+        Password: "password123",
+        Role: "hr",
+        Department: "HR",
+        Jabatan: "HR Staff",
+        DailyRate: 0,
+        Company: "AviaryParks",
+        Location: "Jakarta",
+        JoinDate: "2024-01-01",
+      },
+    ];
+    
+    const ws = XLSX.utils.json_to_sheet(template);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Users Template");
+    XLSX.writeFile(wb, "user_import_template.xlsx");
+  };
+
   const importUsers = async () => {
     if (importData.length === 0) return;
     
@@ -244,20 +317,6 @@ export default function UsersPage() {
       setImportProgress({ current: i + 1, total: importData.length, success, failed });
       
       try {
-        // Validate required fields
-        if (!row.Nama && !row.name) {
-          failed++;
-          continue;
-        }
-        if (!row.Email && !row.email) {
-          failed++;
-          continue;
-        }
-        if (!row.Password && !row.password) {
-          failed++;
-          continue;
-        }
-        
         const name = row.Nama || row.name;
         const email = row.Email || row.email;
         const password = row.Password || row.password;
@@ -269,11 +328,14 @@ export default function UsersPage() {
         const location = row.Location || row.location || "";
         const joinDate = row.JoinDate || row.joinDate || "";
         
-        // Create user in Firebase Auth
+        if (!name || !email || !password) {
+          failed++;
+          continue;
+        }
+        
         const cred = await createUserWithEmailAndPassword(auth, email, password);
         const uid = cred.user.uid;
         
-        // Save to Firestore
         await setDoc(doc(db, "users", uid), {
           name,
           email,
@@ -298,7 +360,6 @@ export default function UsersPage() {
     setImportProgress({ current: importData.length, total: importData.length, success, failed });
     alert(`✅ Import selesai!\nBerhasil: ${success}\nGagal: ${failed}`);
     
-    // Reset and reload
     setImportData([]);
     setShowImportModal(false);
     setImporting(false);
@@ -369,41 +430,6 @@ export default function UsersPage() {
     "Intern / Magang",
   ];
 
-  // Download template Excel
-  const downloadTemplate = () => {
-    const template = [
-      {
-        Nama: "John Doe",
-        Email: "john@example.com",
-        Password: "password123",
-        Role: "employee",
-        Department: "IT",
-        Jabatan: "Staff",
-        DailyRate: 0,
-        Company: "AviaryParks",
-        Location: "Jakarta",
-        JoinDate: "2024-01-01",
-      },
-      {
-        Nama: "Jane Smith",
-        Email: "jane@example.com",
-        Password: "password123",
-        Role: "hr",
-        Department: "HR",
-        Jabatan: "HR Staff",
-        DailyRate: 0,
-        Company: "AviaryParks",
-        Location: "Jakarta",
-        JoinDate: "2024-01-01",
-      },
-    ];
-    
-    const ws = XLSX.utils.json_to_sheet(template);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Users Template");
-    XLSX.writeFile(wb, "user_import_template.xlsx");
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -426,7 +452,7 @@ export default function UsersPage() {
             </h1>
             <p className="text-gray-500 mt-1">Manage employee accounts and permissions</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => {
                 resetForm();
@@ -438,17 +464,18 @@ export default function UsersPage() {
               {showForm ? "Close Form" : "Add User"}
             </button>
             <button
-              onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.xlsx, .xls';
-                input.onchange = handleFileUpload;
-                input.click();
-              }}
+              onClick={triggerFileUpload}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shadow-sm"
             >
+              <span className="text-xl">📁</span>
+              Upload Excel
+            </button>
+            <button
+              onClick={importFromGoogleSheets}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shadow-sm"
+            >
               <span className="text-xl">📊</span>
-              Import Excel
+              Google Sheets
             </button>
             <button
               onClick={downloadTemplate}
@@ -630,7 +657,7 @@ export default function UsersPage() {
           </div>
         )}
 
-        {/* User Form (sama seperti sebelumnya) */}
+        {/* User Form */}
         {showForm && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
