@@ -18,6 +18,7 @@ import {
 } from "firebase/auth";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import * as XLSX from "xlsx";
 
 type User = {
   id: string;
@@ -40,6 +41,10 @@ export default function UsersPage() {
   const [showForm, setShowForm] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importData, setImportData] = useState<any[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0, success: 0, failed: 0 });
 
   // Form state
   const [name, setName] = useState("");
@@ -93,7 +98,6 @@ export default function UsersPage() {
     setFormLoading(true);
     try {
       if (editingId) {
-        // Update existing user
         const updateData: any = {
           name,
           email,
@@ -110,7 +114,6 @@ export default function UsersPage() {
         await updateDoc(doc(db, "users", editingId), updateData);
         alert("✅ User berhasil diupdate");
       } else {
-        // Create new user
         if (!password) {
           alert("Password wajib diisi untuk user baru");
           setFormLoading(false);
@@ -210,6 +213,98 @@ export default function UsersPage() {
     setEditingId(null);
   };
 
+  // ================= IMPORT EXCEL =================
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const data = event.target?.result;
+      const workbook = XLSX.read(data, { type: "binary" });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(sheet);
+      
+      setImportData(rows);
+      setShowImportModal(true);
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const importUsers = async () => {
+    if (importData.length === 0) return;
+    
+    setImporting(true);
+    let success = 0;
+    let failed = 0;
+    
+    for (let i = 0; i < importData.length; i++) {
+      const row = importData[i];
+      setImportProgress({ current: i + 1, total: importData.length, success, failed });
+      
+      try {
+        // Validate required fields
+        if (!row.Nama && !row.name) {
+          failed++;
+          continue;
+        }
+        if (!row.Email && !row.email) {
+          failed++;
+          continue;
+        }
+        if (!row.Password && !row.password) {
+          failed++;
+          continue;
+        }
+        
+        const name = row.Nama || row.name;
+        const email = row.Email || row.email;
+        const password = row.Password || row.password;
+        const role = (row.Role || row.role || "employee").toLowerCase();
+        const department = row.Department || row.department || "";
+        const jabatan = row.Jabatan || row.jabatan || "";
+        const dailyRate = row.DailyRate || row.dailyRate || 0;
+        const company = row.Company || row.company || "";
+        const location = row.Location || row.location || "";
+        const joinDate = row.JoinDate || row.joinDate || "";
+        
+        // Create user in Firebase Auth
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        const uid = cred.user.uid;
+        
+        // Save to Firestore
+        await setDoc(doc(db, "users", uid), {
+          name,
+          email,
+          role,
+          department,
+          jabatan,
+          dailyRate: dailyRate ? Number(dailyRate) : null,
+          company,
+          location,
+          joinDate,
+          isActive: true,
+          createdAt: Timestamp.now(),
+        });
+        
+        success++;
+      } catch (error: any) {
+        console.error("Import error:", error);
+        failed++;
+      }
+    }
+    
+    setImportProgress({ current: importData.length, total: importData.length, success, failed });
+    alert(`✅ Import selesai!\nBerhasil: ${success}\nGagal: ${failed}`);
+    
+    // Reset and reload
+    setImportData([]);
+    setShowImportModal(false);
+    setImporting(false);
+    loadUsers();
+  };
+
   const getRoleBadge = (role: string) => {
     const styles: Record<string, string> = {
       super_admin: "bg-purple-100 text-purple-700",
@@ -217,8 +312,8 @@ export default function UsersPage() {
       hr: "bg-blue-100 text-blue-700",
       spv: "bg-yellow-100 text-yellow-700",
       employee: "bg-gray-100 text-gray-700",
-      training: "bg-indigo-100 text-indigo-700",      // Tambahan untuk training
-      intern: "bg-cyan-100 text-cyan-700",            // Tambahan untuk magang
+      training: "bg-indigo-100 text-indigo-700",
+      intern: "bg-cyan-100 text-cyan-700",
     };
     return styles[role] || styles.employee;
   };
@@ -230,8 +325,8 @@ export default function UsersPage() {
       hr: "HR",
       spv: "Supervisor",
       employee: "Employee",
-      training: "Training",      // Tambahan untuk training
-      intern: "Intern / Magang", // Tambahan untuk magang
+      training: "Training",
+      intern: "Intern / Magang",
     };
     return labels[role] || role;
   };
@@ -260,8 +355,8 @@ export default function UsersPage() {
     { value: "hr", label: "HR" },
     { value: "spv", label: "Supervisor" },
     { value: "employee", label: "Employee" },
-    { value: "training", label: "Training" },      // Tambahan
-    { value: "intern", label: "Intern / Magang" }, // Tambahan
+    { value: "training", label: "Training" },
+    { value: "intern", label: "Intern / Magang" },
   ];
 
   const jabatanOptions = [
@@ -270,9 +365,44 @@ export default function UsersPage() {
     "Staff",
     "Supervisor",
     "Manager",
-    "Training",      // Tambahan
-    "Intern / Magang", // Tambahan
+    "Training",
+    "Intern / Magang",
   ];
+
+  // Download template Excel
+  const downloadTemplate = () => {
+    const template = [
+      {
+        Nama: "John Doe",
+        Email: "john@example.com",
+        Password: "password123",
+        Role: "employee",
+        Department: "IT",
+        Jabatan: "Staff",
+        DailyRate: 0,
+        Company: "AviaryParks",
+        Location: "Jakarta",
+        JoinDate: "2024-01-01",
+      },
+      {
+        Nama: "Jane Smith",
+        Email: "jane@example.com",
+        Password: "password123",
+        Role: "hr",
+        Department: "HR",
+        Jabatan: "HR Staff",
+        DailyRate: 0,
+        Company: "AviaryParks",
+        Location: "Jakarta",
+        JoinDate: "2024-01-01",
+      },
+    ];
+    
+    const ws = XLSX.utils.json_to_sheet(template);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Users Template");
+    XLSX.writeFile(wb, "user_import_template.xlsx");
+  };
 
   if (loading) {
     return (
@@ -296,16 +426,38 @@ export default function UsersPage() {
             </h1>
             <p className="text-gray-500 mt-1">Manage employee accounts and permissions</p>
           </div>
-          <button
-            onClick={() => {
-              resetForm();
-              setShowForm(!showForm);
-            }}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shadow-sm"
-          >
-            <span className="text-xl">+</span>
-            {showForm ? "Close Form" : "Add User"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                resetForm();
+                setShowForm(!showForm);
+              }}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shadow-sm"
+            >
+              <span className="text-xl">+</span>
+              {showForm ? "Close Form" : "Add User"}
+            </button>
+            <button
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.xlsx, .xls';
+                input.onchange = handleFileUpload;
+                input.click();
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shadow-sm"
+            >
+              <span className="text-xl">📊</span>
+              Import Excel
+            </button>
+            <button
+              onClick={downloadTemplate}
+              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shadow-sm"
+            >
+              <span className="text-xl">📄</span>
+              Template
+            </button>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -378,7 +530,107 @@ export default function UsersPage() {
           </select>
         </div>
 
-        {/* User Form */}
+        {/* Import Modal */}
+        {showImportModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white flex justify-between items-center">
+                <h2 className="text-lg font-semibold text-gray-800">Import Users from Excel</h2>
+                <button
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setImportData([]);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              <div className="p-6 overflow-auto max-h-[60vh]">
+                {importing ? (
+                  <div className="text-center py-8">
+                    <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                    <p className="text-gray-600">
+                      Importing... ({importProgress.current} / {importProgress.total})
+                    </p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      ✅ Success: {importProgress.success} | ❌ Failed: {importProgress.failed}
+                    </p>
+                    <div className="w-full bg-gray-200 rounded-full h-2 mt-4">
+                      <div
+                        className="bg-green-500 h-2 rounded-full transition-all"
+                        style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-4">
+                      <p className="text-sm text-gray-600 mb-2">
+                        Found <strong>{importData.length}</strong> records to import
+                      </p>
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+                        <strong>⚠️ Note:</strong> Email must be unique. Password will be used for initial login.
+                      </div>
+                    </div>
+                    
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="px-3 py-2 text-left">Name</th>
+                            <th className="px-3 py-2 text-left">Email</th>
+                            <th className="px-3 py-2 text-left">Role</th>
+                            <th className="px-3 py-2 text-left">Department</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importData.slice(0, 10).map((row, idx) => (
+                            <tr key={idx} className="border-b">
+                              <td className="px-3 py-2">{row.Nama || row.name || "-"}</td>
+                              <td className="px-3 py-2">{row.Email || row.email || "-"}</td>
+                              <td className="px-3 py-2">{row.Role || row.role || "employee"}</td>
+                              <td className="px-3 py-2">{row.Department || row.department || "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {importData.length > 10 && (
+                        <p className="text-xs text-gray-400 mt-2 text-center">
+                          and {importData.length - 10} more records...
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+              
+              <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setImportData([]);
+                  }}
+                  className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                  disabled={importing}
+                >
+                  Cancel
+                </button>
+                {!importing && (
+                  <button
+                    onClick={importUsers}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                  >
+                    Import {importData.length} Users
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* User Form (sama seperti sebelumnya) */}
         {showForm && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
@@ -442,7 +694,6 @@ export default function UsersPage() {
                     </option>
                   ))}
                 </select>
-                {/* Daily Rate - hanya untuk Casual/DW */}
                 {(jabatan === "Casual" || jabatan === "Daily Worker") && (
                   <input
                     placeholder="Daily Rate (Rp)"
@@ -452,7 +703,6 @@ export default function UsersPage() {
                     className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
                   />
                 )}
-                {/* Untuk Training/Magang, rate tidak perlu */}
                 {(jabatan === "Training" || jabatan === "Intern / Magang") && (
                   <div className="border border-gray-300 rounded-lg px-3 py-2 bg-gray-50 text-gray-500">
                     No daily rate (Training/Magang)
@@ -595,7 +845,7 @@ export default function UsersPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <button
                           onClick={() => editUser(user)}
                           className="px-2 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-xs transition-colors"
