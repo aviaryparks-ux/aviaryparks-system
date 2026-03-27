@@ -40,6 +40,8 @@ export default function Page() {
   
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
+  const [todayAttendance, setTodayAttendance] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -55,9 +57,13 @@ export default function Page() {
   const [isSaving, setIsSaving] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
 
+  // Load data
   useEffect(() => {
     loadOffice();
-  }, []);
+    if (user) {
+      loadTodayAttendance();
+    }
+  }, [user]);
 
   const loadOffice = async () => {
     const q = query(collection(db, "settings"), where("isActive", "==", true));
@@ -65,6 +71,27 @@ export default function Page() {
     setOfficeLocations(snap.docs.map(d => d.data()));
   };
 
+  const loadTodayAttendance = async () => {
+    if (!user) return;
+    const today = new Date();
+    const docId = user.uid + "_" + today.toISOString().slice(0, 10);
+    const snap = await getDoc(doc(db, "attendance", docId));
+    if (snap.exists()) {
+      setTodayAttendance(snap.data());
+    } else {
+      setTodayAttendance(null);
+    }
+  };
+
+  const formatTime = (timestamp: any) => {
+    if (!timestamp?.toDate) return "--:--";
+    return timestamp.toDate().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const isCheckedIn = todayAttendance?.checkIn;
+  const isCheckedOut = todayAttendance?.checkOut;
+
+  // Camera functions
   const switchCamera = async () => {
     const newFacing = cameraFacing === "environment" ? "user" : "environment";
     setCameraFacing(newFacing);
@@ -184,7 +211,6 @@ export default function Page() {
     getLocation();
   };
 
-  // 🔥 FUNGSI SAVE KE FIRESTORE
   const saveAttendance = async () => {
     if (!user) {
       alert("User tidak ditemukan, silakan login ulang");
@@ -214,50 +240,46 @@ export default function Page() {
       const ref = doc(db, "attendance", docId);
       const snap = await getDoc(ref);
 
-      const attendanceData = {
-        uid: user.uid,
-        name: user.name,
-        date: Timestamp.fromDate(today),
-        photo: photoUri,
-        location: {
-          lat: location.lat,
-          lng: location.lng,
-        },
-        officeLocation: matchedLocation ? {
-          name: matchedLocation.name,
-          lat: matchedLocation.lat,
-          lng: matchedLocation.lng,
-          radius: matchedLocation.radius,
-        } : null,
-        distance: distance,
-        isWithinRadius: isWithinRadius,
-        updatedAt: Timestamp.now(),
-      };
-
       if (!snap.exists()) {
         // Check-in
         await setDoc(ref, {
-          ...attendanceData,
+          uid: user.uid,
+          name: user.name,
+          date: Timestamp.fromDate(today),
           checkIn: {
             time: Timestamp.now(),
             photo: photoUri,
+            lat: location.lat,
+            lng: location.lng,
           },
+          officeLocation: matchedLocation ? {
+            name: matchedLocation.name,
+            lat: matchedLocation.lat,
+            lng: matchedLocation.lng,
+            radius: matchedLocation.radius,
+          } : null,
+          distance: distance,
+          isWithinRadius: isWithinRadius,
           createdAt: Timestamp.now(),
         });
         alert("✅ Check-in berhasil!");
-      } else {
+      } else if (!snap.data()?.checkOut) {
         // Check-out
         await updateDoc(ref, {
           checkOut: {
             time: Timestamp.now(),
             photo: photoUri,
+            lat: location.lat,
+            lng: location.lng,
           },
           updatedAt: Timestamp.now(),
         });
         alert("✅ Check-out berhasil!");
+      } else {
+        alert("Anda sudah melakukan absensi lengkap hari ini");
       }
 
-      // Reset state
+      await loadTodayAttendance();
       setShowMap(false);
       setPhotoUri(null);
       setLocation(null);
@@ -270,22 +292,76 @@ export default function Page() {
     }
   };
 
+  const today = new Date();
+  const formattedDate = today.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-900 to-green-800 p-4">
       {/* Main Card */}
-      <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 text-center max-w-md mx-auto border border-white/20">
-        <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-          <span className="text-4xl">📸</span>
+      <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 max-w-md mx-auto border border-white/20">
+        {/* Header */}
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
+            <span className="text-3xl">📸</span>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800">Absensi Lokasi</h1>
+          <p className="text-gray-500 text-sm mt-1">{formattedDate}</p>
         </div>
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">Absensi Lokasi</h1>
-        <p className="text-gray-500 text-sm mb-6">Ambil foto untuk verifikasi kehadiran</p>
-        <button
-          onClick={startCamera}
-          className="w-full py-4 bg-gradient-to-r from-green-600 to-green-700 text-white font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all active:scale-95"
-        >
-          📸 Ambil Foto
-        </button>
-        <p className="text-xs text-gray-400 mt-4">Pastikan GPS aktif dan berada di lokasi kantor</p>
+
+        {/* Status Absensi */}
+        <div className="space-y-3 mb-6">
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isCheckedIn ? "bg-green-100" : "bg-gray-200"}`}>
+                <span className="text-xl">📥</span>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Check-in</p>
+                <p className="font-semibold text-gray-800">
+                  {isCheckedIn ? formatTime(isCheckedIn.time) : "Belum absen"}
+                </p>
+              </div>
+            </div>
+            {isCheckedIn?.photo && (
+              <img src={isCheckedIn.photo} className="w-10 h-10 rounded-full object-cover" />
+            )}
+          </div>
+
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isCheckedOut ? "bg-blue-100" : "bg-gray-200"}`}>
+                <span className="text-xl">📤</span>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Check-out</p>
+                <p className="font-semibold text-gray-800">
+                  {isCheckedOut ? formatTime(isCheckedOut.time) : "Belum absen"}
+                </p>
+              </div>
+            </div>
+            {isCheckedOut?.photo && (
+              <img src={isCheckedOut.photo} className="w-10 h-10 rounded-full object-cover" />
+            )}
+          </div>
+        </div>
+
+        {/* Tombol Absen */}
+        {!isCheckedOut ? (
+          <button
+            onClick={startCamera}
+            className="w-full py-4 bg-gradient-to-r from-green-600 to-green-700 text-white font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all active:scale-95"
+          >
+            {isCheckedIn ? "📤 Ambil Foto Check-out" : "📸 Ambil Foto Check-in"}
+          </button>
+        ) : (
+          <div className="text-center p-4 bg-green-100 rounded-2xl">
+            <p className="text-green-700 font-medium">✅ Absensi selesai hari ini</p>
+          </div>
+        )}
+
+        <p className="text-xs text-gray-400 text-center mt-4">
+          Pastikan GPS aktif dan berada di lokasi kantor
+        </p>
       </div>
 
       {/* Camera Modal */}
@@ -335,9 +411,10 @@ export default function Page() {
       {showMap && photoUri && location && matchedLocation && (
         <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
-            {/* Header */}
             <div className="bg-gradient-to-r from-green-600 to-green-700 p-4 text-white flex justify-between items-center">
-              <h2 className="text-lg font-bold text-center flex-1">Verifikasi Lokasi</h2>
+              <h2 className="text-lg font-bold text-center flex-1">
+                {isCheckedIn ? "Check-out" : "Check-in"}
+              </h2>
               <button
                 onClick={refreshLocation}
                 disabled={isLoadingLocation}
@@ -360,7 +437,6 @@ export default function Page() {
               </button>
             </div>
 
-            {/* Photo Preview */}
             <div className="p-4 border-b border-gray-100">
               <p className="text-sm text-gray-500 mb-2">Foto Absensi</p>
               <div className="relative rounded-xl overflow-hidden">
@@ -371,19 +447,12 @@ export default function Page() {
               </div>
             </div>
 
-            {/* Map */}
             <div className="p-4">
               <div className="flex justify-between items-center mb-2">
                 <p className="text-sm text-gray-500 flex items-center gap-2">
                   <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                   Lokasi Kantor: {matchedLocation.name}
                 </p>
-                {isLoadingLocation && (
-                  <div className="text-xs text-gray-400 flex items-center gap-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
-                    Memperbarui...
-                  </div>
-                )}
               </div>
               <div className="h-64 rounded-xl overflow-hidden border border-gray-200">
                 <MapContainer
@@ -395,22 +464,15 @@ export default function Page() {
                   zoomControl={false}
                 >
                   <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-
                   <Circle
                     center={[matchedLocation.lat, matchedLocation.lng]}
                     radius={matchedLocation.radius}
-                    pathOptions={{
-                      color: "#22c55e",
-                      fillColor: "#22c55e",
-                      fillOpacity: 0.2,
-                      weight: 2,
-                    }}
+                    pathOptions={{ color: "#22c55e", fillColor: "#22c55e", fillOpacity: 0.2, weight: 2 }}
                   />
-
                   <Marker
                     position={[matchedLocation.lat, matchedLocation.lng]}
                     icon={L.divIcon({
-                      html: '<div style="background-color: #22c55e; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>',
+                      html: '<div style="background-color: #22c55e; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white;"></div>',
                       className: "custom-marker",
                       iconSize: [16, 16],
                     })}
@@ -418,54 +480,41 @@ export default function Page() {
                   <Marker
                     position={[location.lat, location.lng]}
                     icon={L.divIcon({
-                      html: '<div style="background-color: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>',
+                      html: '<div style="background-color: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white;"></div>',
                       className: "custom-marker",
                       iconSize: [16, 16],
                     })}
                   />
-
                   <Polyline
-                    positions={[
-                      [location.lat, location.lng],
-                      [matchedLocation.lat, matchedLocation.lng],
-                    ]}
+                    positions={[[location.lat, location.lng], [matchedLocation.lat, matchedLocation.lng]]}
                     pathOptions={{ color: "#3b82f6", weight: 2, dashArray: "5, 5" }}
                   />
                 </MapContainer>
               </div>
 
-              {/* Legend */}
               <div className="flex justify-center gap-4 mt-2 text-xs">
                 <div className="flex items-center gap-1">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-gray-500">Radius Kantor</span>
+                  <span>Radius Kantor</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <span className="text-gray-500">Jarak</span>
+                  <span>Jarak</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                  <span className="text-gray-500">Lokasi Anda</span>
+                  <span>Lokasi Anda</span>
                 </div>
               </div>
             </div>
 
-            {/* Status & Button */}
             <div className="p-4 pt-0 space-y-3">
-              <div
-                className={`p-3 rounded-xl text-center ${
-                  isWithinRadius
-                    ? "bg-green-100 text-green-700 border border-green-200"
-                    : "bg-red-100 text-red-700 border border-red-200"
-                }`}
-              >
+              <div className={`p-3 rounded-xl text-center ${isWithinRadius ? "bg-green-100 text-green-700 border border-green-200" : "bg-red-100 text-red-700 border border-red-200"}`}>
                 <div className="font-bold text-lg">
                   {isWithinRadius ? "✓ Dalam Radius Kantor" : "✗ Di Luar Radius Kantor"}
                 </div>
                 <div className="text-sm mt-1">
-                  Jarak: {distance.toFixed(0)}m 
-                  {matchedLocation && <span className="ml-1">(Maks: {matchedLocation.radius}m)</span>}
+                  Jarak: {distance.toFixed(0)}m {matchedLocation && `(Maks: ${matchedLocation.radius}m)`}
                 </div>
               </div>
 
@@ -484,7 +533,7 @@ export default function Page() {
                     <span>Menyimpan...</span>
                   </>
                 ) : (
-                  isWithinRadius ? "✅ Simpan Absensi" : "❌ Tidak Dapat Absen"
+                  isCheckedIn ? "✅ Simpan Check-out" : "✅ Simpan Check-in"
                 )}
               </button>
 
