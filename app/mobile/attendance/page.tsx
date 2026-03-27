@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -35,6 +36,8 @@ const Marker = dynamic(() => import("react-leaflet").then(m => m.Marker), { ssr:
 const Polyline = dynamic(() => import("react-leaflet").then(m => m.Polyline), { ssr: false });
 
 export default function Page() {
+  const { user } = useAuth();
+  
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
 
@@ -49,6 +52,7 @@ export default function Page() {
   const [isWithinRadius, setIsWithinRadius] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
 
   useEffect(() => {
@@ -61,7 +65,6 @@ export default function Page() {
     setOfficeLocations(snap.docs.map(d => d.data()));
   };
 
-  // Switch camera
   const switchCamera = async () => {
     const newFacing = cameraFacing === "environment" ? "user" : "environment";
     setCameraFacing(newFacing);
@@ -85,7 +88,6 @@ export default function Page() {
     }
   };
 
-  // 📸 CAMERA
   const startCamera = async () => {
     if (stream) stream.getTracks().forEach(t => t.stop());
 
@@ -182,6 +184,92 @@ export default function Page() {
     getLocation();
   };
 
+  // 🔥 FUNGSI SAVE KE FIRESTORE
+  const saveAttendance = async () => {
+    if (!user) {
+      alert("User tidak ditemukan, silakan login ulang");
+      return;
+    }
+
+    if (!isWithinRadius) {
+      alert("Anda berada di luar radius kantor!");
+      return;
+    }
+
+    if (!photoUri) {
+      alert("Foto belum diambil!");
+      return;
+    }
+
+    if (!location) {
+      alert("Lokasi tidak ditemukan!");
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const today = new Date();
+      const docId = user.uid + "_" + today.toISOString().slice(0, 10);
+      const ref = doc(db, "attendance", docId);
+      const snap = await getDoc(ref);
+
+      const attendanceData = {
+        uid: user.uid,
+        name: user.name,
+        date: Timestamp.fromDate(today),
+        photo: photoUri,
+        location: {
+          lat: location.lat,
+          lng: location.lng,
+        },
+        officeLocation: matchedLocation ? {
+          name: matchedLocation.name,
+          lat: matchedLocation.lat,
+          lng: matchedLocation.lng,
+          radius: matchedLocation.radius,
+        } : null,
+        distance: distance,
+        isWithinRadius: isWithinRadius,
+        updatedAt: Timestamp.now(),
+      };
+
+      if (!snap.exists()) {
+        // Check-in
+        await setDoc(ref, {
+          ...attendanceData,
+          checkIn: {
+            time: Timestamp.now(),
+            photo: photoUri,
+          },
+          createdAt: Timestamp.now(),
+        });
+        alert("✅ Check-in berhasil!");
+      } else {
+        // Check-out
+        await updateDoc(ref, {
+          checkOut: {
+            time: Timestamp.now(),
+            photo: photoUri,
+          },
+          updatedAt: Timestamp.now(),
+        });
+        alert("✅ Check-out berhasil!");
+      }
+
+      // Reset state
+      setShowMap(false);
+      setPhotoUri(null);
+      setLocation(null);
+      setMatchedLocation(null);
+    } catch (error) {
+      console.error("Save error:", error);
+      alert("❌ Gagal menyimpan absensi: " + error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-900 to-green-800 p-4">
       {/* Main Card */}
@@ -213,7 +301,6 @@ export default function Page() {
             />
             <canvas ref={canvasRef} className="hidden" />
 
-            {/* Camera Switch Button */}
             <button
               onClick={switchCamera}
               className="absolute top-6 right-6 bg-black/50 backdrop-blur-sm text-white p-3 rounded-full shadow-lg active:scale-95 transition-all"
@@ -383,14 +470,22 @@ export default function Page() {
               </div>
 
               <button
-                className={`w-full py-4 rounded-2xl font-bold text-lg transition-all ${
-                  isWithinRadius
+                onClick={saveAttendance}
+                disabled={!isWithinRadius || isSaving}
+                className={`w-full py-4 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-2 ${
+                  isWithinRadius && !isSaving
                     ? "bg-gradient-to-r from-green-600 to-green-700 text-white shadow-lg hover:shadow-xl active:scale-95"
                     : "bg-gray-300 text-gray-500 cursor-not-allowed"
                 }`}
-                disabled={!isWithinRadius}
               >
-                {isWithinRadius ? "✅ Simpan Absensi" : "❌ Tidak Dapat Absen"}
+                {isSaving ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Menyimpan...</span>
+                  </>
+                ) : (
+                  isWithinRadius ? "✅ Simpan Absensi" : "❌ Tidak Dapat Absen"
+                )}
               </button>
 
               <button
