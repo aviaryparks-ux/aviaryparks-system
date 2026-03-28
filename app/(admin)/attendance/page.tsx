@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, doc, getDoc } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -40,6 +40,8 @@ type Attendance = {
   workHours?: string;
   status?: string;
   isCorrected?: boolean;
+  correctedCheckIn?: string;
+  correctedCheckOut?: string;
 };
 
 type CorrectionRequest = {
@@ -111,31 +113,35 @@ const onlyDate = (date: Date): Date => {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 };
 
-const calculateWorkHoursFromTime = (checkIn: any, checkOut: any): number => {
-  if (!checkIn?.time || !checkOut?.time) return 0;
+const calculateWorkHoursFromTimes = (checkInTime: Date, checkOutTime: Date): number => {
+  if (!checkInTime || !checkOutTime) return 0;
+  if (checkOutTime <= checkInTime) return 0;
   
-  try {
-    const masuk = toDate(checkIn.time);
-    const pulang = toDate(checkOut.time);
-    
-    if (!masuk || !pulang) return 0;
-    if (pulang <= masuk) return 0;
-    
-    const diffMs = pulang.getTime() - masuk.getTime();
-    const diffHours = diffMs / (1000 * 60 * 60);
-    
-    return Math.round(diffHours * 100) / 100;
-  } catch (error) {
-    console.error("Error calculating work hours:", error);
-    return 0;
-  }
+  const diffMs = checkOutTime.getTime() - checkInTime.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  return Math.round(diffHours * 100) / 100;
 };
 
 const getWorkHours = (attendance: Attendance): number => {
-  if (attendance.isCorrected && attendance.checkIn?.time && attendance.checkOut?.time) {
-    return calculateWorkHoursFromTime(attendance.checkIn, attendance.checkOut);
+  // PRIORITAS 1: Jika ada koreksi yang sudah approved, gunakan jam koreksi
+  if (attendance.isCorrected && attendance.correctedCheckIn && attendance.correctedCheckOut) {
+    const dateObj = toDate(attendance.date);
+    if (dateObj) {
+      const checkInTime = formatTimeFromString(attendance.correctedCheckIn, dateObj);
+      const checkOutTime = formatTimeFromString(attendance.correctedCheckOut, dateObj);
+      return calculateWorkHoursFromTimes(checkInTime, checkOutTime);
+    }
   }
   
+  // PRIORITAS 2: Hitung dari checkIn dan checkOut yang sudah ada
+  const checkInDate = toDate(attendance.checkIn?.time);
+  const checkOutDate = toDate(attendance.checkOut?.time);
+  
+  if (checkInDate && checkOutDate) {
+    return calculateWorkHoursFromTimes(checkInDate, checkOutDate);
+  }
+  
+  // PRIORITAS 3: Gunakan workHours yang sudah tersimpan
   if (attendance.workHours && attendance.workHours !== "-") {
     const hours = parseFloat(attendance.workHours);
     if (!isNaN(hours) && hours > 0) return hours;
@@ -147,7 +153,7 @@ const getWorkHours = (attendance: Attendance): number => {
     }
   }
   
-  return calculateWorkHoursFromTime(attendance.checkIn, attendance.checkOut);
+  return 0;
 };
 
 const formatWorkHours = (hours: number): string => {
@@ -159,6 +165,7 @@ const formatWorkHours = (hours: number): string => {
   return `${wholeHours} jam ${minutes} menit`;
 };
 
+// ================= KOMPONEN UTAMA =================
 export default function AttendancePage() {
   // ================= STATE =================
   const [data, setData] = useState<Attendance[]>([]);
@@ -223,7 +230,13 @@ export default function AttendancePage() {
         snap.forEach((doc) => {
           const data = doc.data();
           if (data.status === "approved") {
-            const dateKey = `${data.uid}_${data.date?.toDate?.()?.toISOString().split("T")[0] || ""}`;
+            // Buat key untuk mapping
+            let dateStr = "";
+            if (data.date?.toDate) {
+              const d = data.date.toDate();
+              dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            }
+            const dateKey = `${data.uid}_${dateStr}`;
             obj[dateKey] = {
               id: doc.id,
               uid: data.uid,
@@ -263,29 +276,46 @@ export default function AttendancePage() {
         snap.forEach((doc) => {
           const d = doc.data();
           const user = users[d.uid] || {};
-          const dateKey = `${d.uid}_${d.date?.toDate?.()?.toISOString().split("T")[0] || ""}`;
+          
+          // Buat key untuk cek koreksi
+          let dateStr = "";
+          if (d.date?.toDate) {
+            const dateObj = d.date.toDate();
+            dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+          }
+          const dateKey = `${d.uid}_${dateStr}`;
           const correction = corrections[dateKey];
           
+          let isCorrected = false;
+          let correctedCheckIn: string | undefined;
+          let correctedCheckOut: string | undefined;
           let checkInData = d.checkIn;
           let checkOutData = d.checkOut;
-          let isCorrected = false;
           
+          // Jika ada koreksi yang sudah approved, gunakan jam koreksi
           if (correction && correction.status === "approved") {
             isCorrected = true;
+            correctedCheckIn = correction.checkIn;
+            correctedCheckOut = correction.checkOut;
+            
             const dateObj = d.date?.toDate ? d.date.toDate() : new Date();
-            if (dateObj && correction.checkIn) {
-              const correctedCheckInTime = formatTimeFromString(correction.checkIn, dateObj);
+            
+            // Buat checkIn dengan waktu yang dikoreksi
+            if (correction.checkIn) {
+              const correctedTime = formatTimeFromString(correction.checkIn, dateObj);
               checkInData = {
                 ...d.checkIn,
-                time: correctedCheckInTime,
+                time: correctedTime,
                 isCorrected: true,
               };
             }
-            if (dateObj && correction.checkOut) {
-              const correctedCheckOutTime = formatTimeFromString(correction.checkOut, dateObj);
+            
+            // Buat checkOut dengan waktu yang dikoreksi
+            if (correction.checkOut) {
+              const correctedTime = formatTimeFromString(correction.checkOut, dateObj);
               checkOutData = {
                 ...d.checkOut,
-                time: correctedCheckOutTime,
+                time: correctedTime,
                 isCorrected: true,
               };
             }
@@ -301,6 +331,8 @@ export default function AttendancePage() {
             checkIn: checkInData,
             checkOut: checkOutData,
             isCorrected: isCorrected,
+            correctedCheckIn: correctedCheckIn,
+            correctedCheckOut: correctedCheckOut,
           } as Attendance);
         });
         setData(arr);
@@ -366,6 +398,7 @@ export default function AttendancePage() {
         };
       }
       
+      // Hanya hitung jika ada checkIn (hadir)
       if (a.checkIn) {
         recap[a.uid].totalHari++;
         const jamKerja = getWorkHours(a);
@@ -462,13 +495,13 @@ export default function AttendancePage() {
     setExporting("detail-excel");
     try {
       const rows = filtered.map((a) => ({
-        Nama: a.name,
-        Department: a.department,
-        Jabatan: a.jabatan,
-        Tanggal: formatDate(a.date),
-        Jam_Masuk: formatTime(a.checkIn?.time),
-        Jam_Pulang: formatTime(a.checkOut?.time),
-        Jam_Kerja: formatWorkHours(getWorkHours(a)),
+        Nama: a.name || "-",
+        Department: a.department || "-",
+        Jabatan: a.jabatan || "-",
+        Tanggal: formatDate(a.date) || "-",
+        Jam_Masuk: a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
+        Jam_Pulang: a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
+        Jam_Kerja: formatWorkHours(getWorkHours(a)) || "-",
         Status_Koreksi: a.isCorrected ? "Sudah Dikoreksi" : "Normal",
       }));
       
@@ -489,20 +522,18 @@ export default function AttendancePage() {
     try {
       const doc = new jsPDF({ orientation: "landscape" });
       
-      const tableBody = filtered.map((a) => [
-      a.name ?? "-",
-      a.department ?? "-",
-      a.jabatan ?? "-",
-      formatDate(a.date) ?? "-",
-      formatTime(a.checkIn?.time) ?? "--:--",
-      formatTime(a.checkOut?.time) ?? "--:--",
-      formatWorkHours(getWorkHours(a)) ?? "-",
-      a.isCorrected ? "✓ Dikoreksi" : "-",
-    ]);
-      
       autoTable(doc, {
         head: [["Nama", "Dept", "Jabatan", "Tanggal", "Masuk", "Pulang", "Jam Kerja", "Status"]],
-        body: tableBody,
+        body: filtered.map((a) => [
+          a.name || "-",
+          a.department || "-",
+          a.jabatan || "-",
+          formatDate(a.date) || "-",
+          a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
+          a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
+          formatWorkHours(getWorkHours(a)) || "-",
+          a.isCorrected ? "✓ Dikoreksi" : "-",
+        ]) as any,
         headStyles: { fillColor: [5, 150, 105] },
         startY: 20,
       });
@@ -520,9 +551,9 @@ export default function AttendancePage() {
     setExporting("recap-excel");
     try {
       const rows = recapList.map((r) => ({
-        Nama: r.name,
-        Department: r.department,
-        Jabatan: r.jabatan,
+        Nama: r.name || "-",
+        Department: r.department || "-",
+        Jabatan: r.jabatan || "-",
         Hari_Kerja: r.totalHari,
         Total_Jam: `${r.totalJam.toFixed(2)} jam`,
         Rata_Rata_Jam: r.totalHari > 0 ? `${(r.totalJam / r.totalHari).toFixed(2)} jam` : "-",
@@ -547,20 +578,18 @@ export default function AttendancePage() {
     try {
       const doc = new jsPDF({ orientation: "landscape" });
       
-      const tableBody: (string | number)[][] = recapList.map((r) => [
-        r.name,
-        r.department,
-        r.jabatan,
-        r.totalHari,
-        `${r.totalJam.toFixed(2)} jam`,
-        r.totalHari > 0 ? `${(r.totalJam / r.totalHari).toFixed(2)} jam` : "-",
-        r.rate ? `Rp ${r.rate.toLocaleString()}` : "-",
-        r.totalGaji ? `Rp ${r.totalGaji.toLocaleString()}` : "-",
-      ]);
-      
       autoTable(doc, {
         head: [["Nama", "Dept", "Jabatan", "Hari", "Total Jam", "Rata-rata", "Rate", "Total Gaji"]],
-        body: tableBody,
+        body: recapList.map((r) => [
+          r.name || "-",
+          r.department || "-",
+          r.jabatan || "-",
+          r.totalHari,
+          `${r.totalJam.toFixed(2)} jam`,
+          r.totalHari > 0 ? `${(r.totalJam / r.totalHari).toFixed(2)} jam` : "-",
+          r.rate ? `Rp ${r.rate.toLocaleString()}` : "-",
+          r.totalGaji ? `Rp ${r.totalGaji.toLocaleString()}` : "-",
+        ]) as any,
         headStyles: { fillColor: [5, 150, 105] },
         startY: 20,
       });
@@ -822,11 +851,18 @@ export default function AttendancePage() {
                   <th className="px-4 py-3 text-left">Pulang</th>
                   <th className="px-4 py-3 text-left">Jam Kerja</th>
                   <th className="px-4 py-3 text-left">Status</th>
-                </tr>
+                 </tr>
               </thead>
               <tbody>
                 {filtered.slice(0, 100).map((a, idx) => {
                   const workHours = getWorkHours(a);
+                  const masukDisplay = a.isCorrected && a.correctedCheckIn 
+                    ? a.correctedCheckIn 
+                    : formatTime(a.checkIn?.time);
+                  const pulangDisplay = a.isCorrected && a.correctedCheckOut 
+                    ? a.correctedCheckOut 
+                    : formatTime(a.checkOut?.time);
+                  
                   return (
                     <tr key={a.id} className={`border-b ${idx % 2 === 0 ? "bg-white" : "bg-gray-50"} hover:bg-gray-100`}>
                       <td className="px-4 py-3 font-medium">{a.name}</td>
@@ -835,12 +871,12 @@ export default function AttendancePage() {
                       <td className="px-4 py-3">{formatDate(a.date)}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded-full text-xs ${a.checkIn ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                          {formatTime(a.checkIn?.time)}
+                          {masukDisplay || "--:--"}
                         </span>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded-full text-xs ${a.checkOut ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
-                          {formatTime(a.checkOut?.time)}
+                          {pulangDisplay || "--:--"}
                         </span>
                       </td>
                       <td className="px-4 py-3 font-mono">
