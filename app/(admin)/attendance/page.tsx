@@ -489,16 +489,16 @@ export default function AttendancePage() {
     try {
       const doc = new jsPDF({ orientation: "landscape" });
       
-      const tableBody: (string | number)[][] = filtered.map((a) => [
-        a.name,
-        a.department,
-        a.jabatan,
-        formatDate(a.date),
-        formatTime(a.checkIn?.time),
-        formatTime(a.checkOut?.time),
-        formatWorkHours(getWorkHours(a)),
-        a.isCorrected ? "✓ Dikoreksi" : "-",
-      ]);
+      const tableBody = filtered.map((a) => [
+      a.name ?? "-",
+      a.department ?? "-",
+      a.jabatan ?? "-",
+      formatDate(a.date) ?? "-",
+      formatTime(a.checkIn?.time) ?? "--:--",
+      formatTime(a.checkOut?.time) ?? "--:--",
+      formatWorkHours(getWorkHours(a)) ?? "-",
+      a.isCorrected ? "✓ Dikoreksi" : "-",
+    ]);
       
       autoTable(doc, {
         head: [["Nama", "Dept", "Jabatan", "Tanggal", "Masuk", "Pulang", "Jam Kerja", "Status"]],
