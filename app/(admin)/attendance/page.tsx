@@ -39,6 +39,20 @@ type Attendance = {
   };
   workHours?: string;
   status?: string;
+  isCorrected?: boolean;
+};
+
+type CorrectionRequest = {
+  id: string;
+  uid: string;
+  name: string;
+  date: any;
+  checkIn: string;
+  checkOut: string;
+  status: string;
+  approvedBy?: string;
+  approvedByName?: string;
+  approvedAt?: any;
 };
 
 type RecapItem = {
@@ -54,9 +68,24 @@ type RecapItem = {
 };
 
 // ================= HELPER FUNCTIONS =================
+const toDate = (timestamp: any): Date | null => {
+  if (!timestamp) return null;
+  if (timestamp instanceof Date) return timestamp;
+  if (typeof timestamp?.toDate === 'function') return timestamp.toDate();
+  if (typeof timestamp === 'string') {
+    const date = new Date(timestamp);
+    if (!isNaN(date.getTime())) return date;
+  }
+  if (typeof timestamp === 'number') {
+    const date = new Date(timestamp);
+    if (!isNaN(date.getTime())) return date;
+  }
+  return null;
+};
+
 const formatDate = (timestamp: any, locale: string = "id-ID"): string => {
-  if (!timestamp?.toDate) return "-";
-  const date = timestamp.toDate();
+  const date = toDate(timestamp);
+  if (!date) return "-";
   return date.toLocaleDateString(locale, {
     day: "2-digit",
     month: "long",
@@ -65,37 +94,36 @@ const formatDate = (timestamp: any, locale: string = "id-ID"): string => {
 };
 
 const formatTime = (timestamp: any): string => {
-  if (!timestamp?.toDate) return "--:--";
-  return timestamp.toDate().toLocaleTimeString("id-ID", {
+  const date = toDate(timestamp);
+  if (!date) return "--:--";
+  return date.toLocaleTimeString("id-ID", {
     hour: "2-digit",
     minute: "2-digit",
   });
+};
+
+const formatTimeFromString = (timeStr: string, date: Date): Date => {
+  const [hour, minute] = timeStr.split(":").map(Number);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute);
 };
 
 const onlyDate = (date: Date): Date => {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 };
 
-/**
- * Menghitung total jam kerja dari checkIn dan checkOut
- * @returns jumlah jam dalam format desimal (contoh: 8.5 untuk 8 jam 30 menit)
- */
 const calculateWorkHoursFromTime = (checkIn: any, checkOut: any): number => {
   if (!checkIn?.time || !checkOut?.time) return 0;
   
   try {
-    const masuk = checkIn.time.toDate();
-    const pulang = checkOut.time.toDate();
+    const masuk = toDate(checkIn.time);
+    const pulang = toDate(checkOut.time);
     
-    // Validasi waktu
+    if (!masuk || !pulang) return 0;
     if (pulang <= masuk) return 0;
     
-    // Hitung selisih dalam milidetik
     const diffMs = pulang.getTime() - masuk.getTime();
-    // Konversi ke jam
     const diffHours = diffMs / (1000 * 60 * 60);
     
-    // Bulatkan ke 2 desimal untuk akurasi
     return Math.round(diffHours * 100) / 100;
   } catch (error) {
     console.error("Error calculating work hours:", error);
@@ -103,45 +131,31 @@ const calculateWorkHoursFromTime = (checkIn: any, checkOut: any): number => {
   }
 };
 
-/**
- * Mendapatkan total jam kerja dengan prioritas:
- * 1. Menggunakan workHours jika tersedia dan valid
- * 2. Menghitung dari checkIn/checkOut jika workHours tidak tersedia
- */
 const getWorkHours = (attendance: Attendance): number => {
-  // Prioritas 1: Gunakan workHours yang sudah tersimpan
+  if (attendance.isCorrected && attendance.checkIn?.time && attendance.checkOut?.time) {
+    return calculateWorkHoursFromTime(attendance.checkIn, attendance.checkOut);
+  }
+  
   if (attendance.workHours && attendance.workHours !== "-") {
-    // Coba parse sebagai angka desimal
     const hours = parseFloat(attendance.workHours);
-    if (!isNaN(hours) && hours > 0) {
-      return hours;
-    }
+    if (!isNaN(hours) && hours > 0) return hours;
     
-    // Jika formatnya "8 jam" atau "8 jam 30 menit"
     const hourMatch = attendance.workHours.match(/(\d+(?:[.,]\d+)?)/);
     if (hourMatch) {
       const parsed = parseFloat(hourMatch[1].replace(",", "."));
-      if (!isNaN(parsed) && parsed > 0) {
-        return parsed;
-      }
+      if (!isNaN(parsed) && parsed > 0) return parsed;
     }
   }
   
-  // Prioritas 2: Hitung dari checkIn dan checkOut
   return calculateWorkHoursFromTime(attendance.checkIn, attendance.checkOut);
 };
 
-/**
- * Format jam kerja untuk ditampilkan
- */
 const formatWorkHours = (hours: number): string => {
   if (hours === 0) return "-";
   const wholeHours = Math.floor(hours);
   const minutes = Math.round((hours - wholeHours) * 60);
   
-  if (minutes === 0) {
-    return `${wholeHours} jam`;
-  }
+  if (minutes === 0) return `${wholeHours} jam`;
   return `${wholeHours} jam ${minutes} menit`;
 };
 
@@ -149,8 +163,10 @@ export default function AttendancePage() {
   // ================= STATE =================
   const [data, setData] = useState<Attendance[]>([]);
   const [users, setUsers] = useState<Record<string, User>>({});
+  const [corrections, setCorrections] = useState<Record<string, CorrectionRequest>>({});
   const [loading, setLoading] = useState(true);
   const [usersLoading, setUsersLoading] = useState(true);
+  const [correctionsLoading, setCorrectionsLoading] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -190,9 +206,52 @@ export default function AttendancePage() {
     return () => unsub();
   }, []);
 
-  // ================= LOAD ATTENDANCE =================
+  // ================= LOAD APPROVED CORRECTIONS =================
   useEffect(() => {
     if (usersLoading) return;
+    
+    setCorrectionsLoading(true);
+    const q = query(
+      collection(db, "attendance_requests"),
+      orderBy("createdAt", "desc")
+    );
+    
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const obj: Record<string, CorrectionRequest> = {};
+        snap.forEach((doc) => {
+          const data = doc.data();
+          if (data.status === "approved") {
+            const dateKey = `${data.uid}_${data.date?.toDate?.()?.toISOString().split("T")[0] || ""}`;
+            obj[dateKey] = {
+              id: doc.id,
+              uid: data.uid,
+              name: data.name,
+              date: data.date,
+              checkIn: data.checkIn,
+              checkOut: data.checkOut,
+              status: data.status,
+              approvedBy: data.approvedBy,
+              approvedByName: data.approvedByName,
+              approvedAt: data.approvedAt,
+            };
+          }
+        });
+        setCorrections(obj);
+        setCorrectionsLoading(false);
+      },
+      (err) => {
+        console.error("Error loading corrections:", err);
+        setCorrectionsLoading(false);
+      }
+    );
+    return () => unsub();
+  }, [usersLoading]);
+
+  // ================= LOAD ATTENDANCE =================
+  useEffect(() => {
+    if (usersLoading || correctionsLoading) return;
     
     setLoading(true);
     const q = query(collection(db, "attendance"), orderBy("date", "desc"));
@@ -204,6 +263,34 @@ export default function AttendancePage() {
         snap.forEach((doc) => {
           const d = doc.data();
           const user = users[d.uid] || {};
+          const dateKey = `${d.uid}_${d.date?.toDate?.()?.toISOString().split("T")[0] || ""}`;
+          const correction = corrections[dateKey];
+          
+          let checkInData = d.checkIn;
+          let checkOutData = d.checkOut;
+          let isCorrected = false;
+          
+          if (correction && correction.status === "approved") {
+            isCorrected = true;
+            const dateObj = d.date?.toDate ? d.date.toDate() : new Date();
+            if (dateObj && correction.checkIn) {
+              const correctedCheckInTime = formatTimeFromString(correction.checkIn, dateObj);
+              checkInData = {
+                ...d.checkIn,
+                time: correctedCheckInTime,
+                isCorrected: true,
+              };
+            }
+            if (dateObj && correction.checkOut) {
+              const correctedCheckOutTime = formatTimeFromString(correction.checkOut, dateObj);
+              checkOutData = {
+                ...d.checkOut,
+                time: correctedCheckOutTime,
+                isCorrected: true,
+              };
+            }
+          }
+          
           arr.push({
             id: doc.id,
             ...d,
@@ -211,6 +298,9 @@ export default function AttendancePage() {
             department: user.department || d.department || "-",
             jabatan: user.jabatan || d.jabatan || "-",
             dailyRate: user.dailyRate || d.dailyRate || 0,
+            checkIn: checkInData,
+            checkOut: checkOutData,
+            isCorrected: isCorrected,
           } as Attendance);
         });
         setData(arr);
@@ -224,7 +314,7 @@ export default function AttendancePage() {
       }
     );
     return () => unsub();
-  }, [users, usersLoading]);
+  }, [users, usersLoading, corrections, correctionsLoading]);
 
   // ================= FILTERED DATA (MEMOIZED) =================
   const filtered = useMemo(() => {
@@ -241,10 +331,16 @@ export default function AttendancePage() {
         ok = ok && a.uid === employee;
       }
       if (startDate) {
-        ok = ok && onlyDate(a.date.toDate()) >= onlyDate(new Date(startDate));
+        const date = toDate(a.date);
+        if (date) {
+          ok = ok && onlyDate(date) >= onlyDate(new Date(startDate));
+        }
       }
       if (endDate) {
-        ok = ok && onlyDate(a.date.toDate()) <= onlyDate(new Date(endDate));
+        const date = toDate(a.date);
+        if (date) {
+          ok = ok && onlyDate(date) <= onlyDate(new Date(endDate));
+        }
       }
       
       return ok;
@@ -270,23 +366,16 @@ export default function AttendancePage() {
         };
       }
       
-      // Hitung hanya jika checkIn ada (hadir)
       if (a.checkIn) {
         recap[a.uid].totalHari++;
-        
-        // Hitung jam kerja dengan fungsi yang sudah diperbaiki
         const jamKerja = getWorkHours(a);
         recap[a.uid].totalJam += jamKerja;
-        
-        // Simpan detail untuk keperluan debugging jika perlu
         recap[a.uid].attendanceDetails.push(a);
       }
       
-      // Hitung total gaji
       recap[a.uid].totalGaji = recap[a.uid].totalHari * (recap[a.uid].rate || 0);
     });
     
-    // Sort by total gaji tertinggi
     return Object.values(recap).sort((a, b) => b.totalGaji - a.totalGaji);
   }, [filtered]);
 
@@ -294,13 +383,16 @@ export default function AttendancePage() {
   const stats = useMemo(() => {
     const total = filtered.length;
     const hadir = filtered.filter((a) => a.checkIn).length;
+    const corrected = filtered.filter((a) => a.isCorrected).length;
     const terlambat = filtered.filter((a) => {
       if (!a.checkIn) return false;
-      const hour = a.checkIn.time?.toDate().getHours();
+      const date = toDate(a.checkIn.time);
+      if (!date) return false;
+      const hour = date.getHours();
       return hour && hour > 8;
     }).length;
     
-    return { total, hadir, terlambat };
+    return { total, hadir, terlambat, corrected };
   }, [filtered]);
 
   // ================= FILTER OPTIONS =================
@@ -340,7 +432,6 @@ export default function AttendancePage() {
   }, []);
 
   const applyFilter = useCallback(() => {
-    // Validasi tanggal
     if (tempStartDate && tempEndDate && new Date(tempStartDate) > new Date(tempEndDate)) {
       alert("Tanggal mulai harus lebih kecil dari tanggal akhir");
       return;
@@ -377,8 +468,8 @@ export default function AttendancePage() {
         Tanggal: formatDate(a.date),
         Jam_Masuk: formatTime(a.checkIn?.time),
         Jam_Pulang: formatTime(a.checkOut?.time),
-        Jam_Kerja: a.workHours || formatWorkHours(getWorkHours(a)),
-        Status: a.checkIn ? "Hadir" : "Tidak Hadir",
+        Jam_Kerja: formatWorkHours(getWorkHours(a)),
+        Status_Koreksi: a.isCorrected ? "Sudah Dikoreksi" : "Normal",
       }));
       
       const ws = XLSX.utils.json_to_sheet(rows);
@@ -397,19 +488,25 @@ export default function AttendancePage() {
     setExporting("detail-pdf");
     try {
       const doc = new jsPDF({ orientation: "landscape" });
+      
+      const tableBody: (string | number)[][] = filtered.map((a) => [
+        a.name,
+        a.department,
+        a.jabatan,
+        formatDate(a.date),
+        formatTime(a.checkIn?.time),
+        formatTime(a.checkOut?.time),
+        formatWorkHours(getWorkHours(a)),
+        a.isCorrected ? "✓ Dikoreksi" : "-",
+      ]);
+      
       autoTable(doc, {
-        head: [["Nama", "Dept", "Jabatan", "Tanggal", "Masuk", "Pulang", "Jam Kerja"]],
-        body: filtered.map((a) => [
-          a.name,
-          a.department,
-          a.jabatan,
-          formatDate(a.date),
-          formatTime(a.checkIn?.time),
-          formatTime(a.checkOut?.time),
-          a.workHours || formatWorkHours(getWorkHours(a)),
-        ]),
+        head: [["Nama", "Dept", "Jabatan", "Tanggal", "Masuk", "Pulang", "Jam Kerja", "Status"]],
+        body: tableBody,
         headStyles: { fillColor: [5, 150, 105] },
+        startY: 20,
       });
+      
       doc.save(`attendance_detail_${new Date().toISOString().split("T")[0]}.pdf`);
     } catch (err) {
       console.error("Export error:", err);
@@ -427,7 +524,7 @@ export default function AttendancePage() {
         Department: r.department,
         Jabatan: r.jabatan,
         Hari_Kerja: r.totalHari,
-        Total_Jam: `${r.totalJam} jam`,
+        Total_Jam: `${r.totalJam.toFixed(2)} jam`,
         Rata_Rata_Jam: r.totalHari > 0 ? `${(r.totalJam / r.totalHari).toFixed(2)} jam` : "-",
         Rate: r.rate ? `Rp ${r.rate.toLocaleString()}` : "-",
         Total_Gaji: r.totalGaji ? `Rp ${r.totalGaji.toLocaleString()}` : "-",
@@ -449,20 +546,25 @@ export default function AttendancePage() {
     setExporting("recap-pdf");
     try {
       const doc = new jsPDF({ orientation: "landscape" });
+      
+      const tableBody: (string | number)[][] = recapList.map((r) => [
+        r.name,
+        r.department,
+        r.jabatan,
+        r.totalHari,
+        `${r.totalJam.toFixed(2)} jam`,
+        r.totalHari > 0 ? `${(r.totalJam / r.totalHari).toFixed(2)} jam` : "-",
+        r.rate ? `Rp ${r.rate.toLocaleString()}` : "-",
+        r.totalGaji ? `Rp ${r.totalGaji.toLocaleString()}` : "-",
+      ]);
+      
       autoTable(doc, {
         head: [["Nama", "Dept", "Jabatan", "Hari", "Total Jam", "Rata-rata", "Rate", "Total Gaji"]],
-        body: recapList.map((r) => [
-          r.name,
-          r.department,
-          r.jabatan,
-          r.totalHari,
-          `${r.totalJam} jam`,
-          r.totalHari > 0 ? `${(r.totalJam / r.totalHari).toFixed(2)} jam` : "-",
-          r.rate ? `Rp ${r.rate.toLocaleString()}` : "-",
-          r.totalGaji ? `Rp ${r.totalGaji.toLocaleString()}` : "-",
-        ]),
+        body: tableBody,
         headStyles: { fillColor: [5, 150, 105] },
+        startY: 20,
       });
+      
       doc.save(`attendance_rekap_${new Date().toISOString().split("T")[0]}.pdf`);
     } catch (err) {
       console.error("Export error:", err);
@@ -473,7 +575,7 @@ export default function AttendancePage() {
   };
 
   // ================= RENDER LOADING =================
-  if (loading || usersLoading) {
+  if (loading || usersLoading || correctionsLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
@@ -484,7 +586,6 @@ export default function AttendancePage() {
     );
   }
 
-  // ================= RENDER ERROR =================
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -521,7 +622,7 @@ export default function AttendancePage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
             <div className="flex justify-between items-center">
               <div>
@@ -547,6 +648,15 @@ export default function AttendancePage() {
                 <p className="text-2xl font-bold text-yellow-800">{stats.terlambat}</p>
               </div>
               <span className="text-3xl">⏰</span>
+            </div>
+          </div>
+          <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-sm text-purple-600">Dikoreksi</p>
+                <p className="text-2xl font-bold text-purple-800">{stats.corrected}</p>
+              </div>
+              <span className="text-3xl">✏️</span>
             </div>
           </div>
         </div>
@@ -711,6 +821,7 @@ export default function AttendancePage() {
                   <th className="px-4 py-3 text-left">Masuk</th>
                   <th className="px-4 py-3 text-left">Pulang</th>
                   <th className="px-4 py-3 text-left">Jam Kerja</th>
+                  <th className="px-4 py-3 text-left">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -735,6 +846,17 @@ export default function AttendancePage() {
                       <td className="px-4 py-3 font-mono">
                         {workHours > 0 ? formatWorkHours(workHours) : "-"}
                       </td>
+                      <td className="px-4 py-3">
+                        {a.isCorrected ? (
+                          <span className="px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-700">
+                            ✏️ Dikoreksi
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-500">
+                            Normal
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -755,7 +877,7 @@ export default function AttendancePage() {
           </div>
         </div>
 
-        {/* Recap Table with Total Jam */}
+        {/* Recap Table */}
         {recapList.length > 0 && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
