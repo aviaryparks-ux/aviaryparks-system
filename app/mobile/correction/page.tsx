@@ -4,7 +4,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, Timestamp, query, where, getDocs } from "firebase/firestore";
+import { collection, addDoc, Timestamp, query, where, getDocs, getDoc, doc } from "firebase/firestore";
 
 export default function MobileCorrectionPage() {
   const { user } = useAuth();
@@ -29,9 +29,9 @@ export default function MobileCorrectionPage() {
   const loadUserData = async () => {
     if (!user) return;
     try {
-      const userDoc = await getDocs(query(collection(db, "users"), where("uid", "==", user.uid)));
-      if (!userDoc.empty) {
-        setUserData(userDoc.docs[0].data());
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      if (userDoc.exists()) {
+        setUserData(userDoc.data());
       }
     } catch (error) {
       console.error("Error loading user data:", error);
@@ -162,8 +162,8 @@ export default function MobileCorrectionPage() {
       await addDoc(collection(db, "attendance_requests"), {
         uid: user?.uid,
         name: user?.name,
-        department: user?.department || userData?.department || "",
-        jabatan: user?.jabatan || userData?.jabatan || "",
+        department: userData?.department || user?.department || "",
+        jabatan: userData?.jabatan || user?.jabatan || "",
         date: Timestamp.fromDate(new Date(selectedDate)),
         checkIn: checkIn,
         checkOut: checkOut,
@@ -194,7 +194,8 @@ export default function MobileCorrectionPage() {
     }
   };
 
-  const getDepartmentName = (deptCode: string) => {
+  // 🔥 FIX: Tambahkan default value untuk department
+  const getDepartmentName = (dept: string | undefined | null) => {
     const departments: Record<string, string> = {
       hrd: "HRD",
       it: "IT",
@@ -205,7 +206,8 @@ export default function MobileCorrectionPage() {
       customer_service: "Customer Service",
       wildlife: "Wildlife",
     };
-    return departments[deptCode?.toLowerCase()] || deptCode || "-";
+    const deptKey = dept?.toLowerCase() || "";
+    return departments[deptKey] || dept || "-";
   };
 
   return (
@@ -230,10 +232,10 @@ export default function MobileCorrectionPage() {
               <p className="font-semibold text-gray-800">{user?.name}</p>
               <div className="flex gap-2 mt-1">
                 <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">
-                  {getDepartmentName(user?.department)}
+                  {getDepartmentName(userData?.department || user?.department)}
                 </span>
                 <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
-                  {user?.jabatan || "-"}
+                  {userData?.jabatan || user?.jabatan || "-"}
                 </span>
               </div>
             </div>
