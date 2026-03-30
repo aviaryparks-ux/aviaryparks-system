@@ -14,6 +14,8 @@ import {
   updateDoc,
   setDoc,
   Timestamp,
+  orderBy,
+  limit,
 } from "firebase/firestore";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import dynamic from "next/dynamic";
@@ -43,6 +45,8 @@ export default function Page() {
   const [showCamera, setShowCamera] = useState(false);
   const [todayAttendance, setTodayAttendance] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -64,6 +68,7 @@ export default function Page() {
     loadOffice();
     if (user) {
       loadTodayAttendance();
+      loadHistory();
     }
   }, [user]);
 
@@ -85,15 +90,72 @@ export default function Page() {
     }
   };
 
+  // 🔥 LOAD HISTORY ABSENSI
+  const loadHistory = async () => {
+    if (!user) return;
+    setIsLoadingHistory(true);
+    
+    try {
+      const q = query(
+        collection(db, "attendance"),
+        where("uid", "==", user.uid),
+        orderBy("date", "desc"),
+        limit(10)
+      );
+      const snap = await getDocs(q);
+      const historyData = snap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setHistory(historyData);
+    } catch (error) {
+      console.error("Error loading history:", error);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
   const formatTime = (timestamp: any) => {
     if (!timestamp?.toDate) return "--:--";
     return timestamp.toDate().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
   };
 
+  const formatDate = (timestamp: any) => {
+    if (!timestamp?.toDate) return "--";
+    return timestamp.toDate().toLocaleDateString("id-ID", { 
+      weekday: "long", 
+      day: "numeric", 
+      month: "long",
+      year: "numeric"
+    });
+  };
+
+  const formatShortDate = (timestamp: any) => {
+    if (!timestamp?.toDate) return "--";
+    return timestamp.toDate().toLocaleDateString("id-ID", { 
+      day: "numeric", 
+      month: "short" 
+    });
+  };
+
+  const calculateWorkHours = (checkIn: any, checkOut: any) => {
+    if (!checkIn?.time || !checkOut?.time) return "-";
+    const masuk = checkIn.time.toDate();
+    const pulang = checkOut.time.toDate();
+    const diffMs = pulang.getTime() - masuk.getTime();
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (hours === 0 && minutes === 0) return "-";
+    if (hours === 0) return `${minutes} menit`;
+    if (minutes === 0) return `${hours} jam`;
+    return `${hours} jam ${minutes} menit`;
+  };
+
   const isCheckedIn = todayAttendance?.checkIn;
   const isCheckedOut = todayAttendance?.checkOut;
 
-  // 🔥 UPLOAD FOTO KE FIREBASE STORAGE
+  // Upload foto ke Firebase Storage
   const uploadPhotoToStorage = async (base64Data: string): Promise<string> => {
     if (!user) throw new Error("User not found");
     
@@ -101,16 +163,12 @@ export default function Page() {
     const fileName = `${user.uid}_${timestamp}.jpg`;
     const storageRef = ref(storage, `attendance/${fileName}`);
     
-    // Remove base64 header if present
     let imageData = base64Data;
     if (base64Data.includes("base64,")) {
       imageData = base64Data.split("base64,")[1];
     }
     
-    // Upload dengan progress tracking
     await uploadString(storageRef, imageData, "base64");
-    
-    // Get download URL
     const downloadUrl = await getDownloadURL(storageRef);
     return downloadUrl;
   };
@@ -173,7 +231,7 @@ export default function Page() {
 
     canvas.getContext("2d")!.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const image = canvas.toDataURL("image/jpeg", 0.7); // Quality 70%
+    const image = canvas.toDataURL("image/jpeg", 0.7);
 
     setPhotoUri(image);
 
@@ -235,7 +293,6 @@ export default function Page() {
     getLocation();
   };
 
-  // 🔥 SAVE DENGAN UPLOAD FOTO KE STORAGE
   const saveAttendance = async () => {
     if (!user) {
       alert("User tidak ditemukan, silakan login ulang");
@@ -261,7 +318,6 @@ export default function Page() {
     setUploadProgress(0);
 
     try {
-      // Upload foto ke Firebase Storage
       const photoUrl = await uploadPhotoToStorage(photoUri);
       
       const today = new Date();
@@ -270,7 +326,6 @@ export default function Page() {
       const snap = await getDoc(ref);
 
       if (!snap.exists()) {
-        // Check-in
         await setDoc(ref, {
           uid: user.uid,
           name: user.name,
@@ -293,7 +348,6 @@ export default function Page() {
         });
         alert("✅ Check-in berhasil!");
       } else if (!snap.data()?.checkOut) {
-        // Check-out
         await updateDoc(ref, {
           checkOut: {
             time: Timestamp.now(),
@@ -309,6 +363,7 @@ export default function Page() {
       }
 
       await loadTodayAttendance();
+      await loadHistory(); // 🔥 Refresh history setelah absen
       setShowMap(false);
       setPhotoUri(null);
       setLocation(null);
@@ -328,7 +383,7 @@ export default function Page() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-900 to-green-800 p-4">
       {/* Main Card */}
-      <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 max-w-md mx-auto border border-white/20">
+      <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 max-w-md mx-auto border border-white/20 mb-4">
         {/* Header */}
         <div className="text-center mb-6">
           <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
@@ -392,6 +447,103 @@ export default function Page() {
         <p className="text-xs text-gray-400 text-center mt-4">
           Pastikan GPS aktif dan berada di lokasi kantor
         </p>
+      </div>
+
+      {/* 🔥 HISTORY SECTION */}
+      <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 max-w-md mx-auto border border-white/20">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+            <span className="text-xl">📋</span>
+            Riwayat Absensi
+          </h2>
+          <button
+            onClick={loadHistory}
+            className="text-green-600 text-sm hover:text-green-700 transition-colors"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {isLoadingHistory ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="animate-pulse bg-gray-100 rounded-xl p-4">
+                <div className="h-12 bg-gray-200 rounded-lg"></div>
+              </div>
+            ))}
+          </div>
+        ) : history.length === 0 ? (
+          <div className="text-center py-8">
+            <div className="text-5xl mb-3">📭</div>
+            <p className="text-gray-500">Belum ada riwayat absensi</p>
+            <p className="text-gray-400 text-sm mt-1">Mulai absen hari ini</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {history.map((item, index) => {
+              const date = item.date?.toDate();
+              const checkIn = item.checkIn;
+              const checkOut = item.checkOut;
+              const workHours = calculateWorkHours(checkIn, checkOut);
+              const isComplete = checkIn && checkOut;
+              
+              return (
+                <div
+                  key={item.id || index}
+                  className={`p-3 rounded-xl transition-all hover:scale-[1.02] cursor-pointer ${
+                    isComplete ? "bg-green-50 border border-green-200" : "bg-gray-50 border border-gray-200"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                        isComplete ? "bg-green-100" : "bg-orange-100"
+                      }`}>
+                        <span className="text-sm">{isComplete ? "✅" : "⏳"}</span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-800 text-sm">
+                          {date?.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {formatShortDate(item.date)} • {workHours !== "-" ? workHours : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-mono">
+                        {checkIn ? formatTime(checkIn.time) : "--:--"} - {checkOut ? formatTime(checkOut.time) : "--:--"}
+                      </p>
+                      {!checkOut && checkIn && (
+                        <span className="text-xs text-orange-500">Belum checkout</span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Foto Thumbnail */}
+                  {(checkIn?.photo || checkOut?.photo) && (
+                    <div className="flex gap-2 mt-2">
+                      {checkIn?.photo && (
+                        <img
+                          src={checkIn.photo}
+                          alt="Check-in"
+                          className="w-8 h-8 rounded-lg object-cover"
+                        />
+                      )}
+                      {checkOut?.photo && (
+                        <img
+                          src={checkOut.photo}
+                          alt="Check-out"
+                          className="w-8 h-8 rounded-lg object-cover"
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Camera Modal */}

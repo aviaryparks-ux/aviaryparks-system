@@ -3,9 +3,12 @@
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import Image from "next/image";
 
 export default function MobileLayout({
   children,
@@ -15,12 +18,31 @@ export default function MobileLayout({
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const [userData, setUserData] = useState<any>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login");
     }
+    if (user) {
+      loadUserData();
+    }
   }, [user, loading, router]);
+
+  const loadUserData = async () => {
+    if (!user) return;
+    try {
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        setUserData(data);
+        setPhotoUrl(data.photoUrl || null);
+      }
+    } catch (error) {
+      console.error("Error loading user data:", error);
+    }
+  };
 
   if (loading) {
     return (
@@ -42,19 +64,32 @@ export default function MobileLayout({
     { name: "Profil", path: "/mobile/profile", icon: "👤" },
   ];
 
+  // Ambil nama depan untuk display
+  const displayName = userData?.name?.split(" ")[0] || user?.email?.split("@")[0] || "User";
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-900 to-green-800 pb-20">
       {/* Header */}
       <div className="bg-white/10 backdrop-blur-md sticky top-0 z-10">
         <div className="flex items-center justify-between p-4">
           <div>
-            <h1 className="text-white text-xl font-bold">AviaryParks</h1>
-            <p className="text-green-200 text-xs">Attendance System</p>
+            <h1 className="text-white text-xl font-bold">AviaryPark</h1>
+            <p className="text-green-200 text-xs">Managemant System</p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-white/70 text-xs">{user?.name?.split(" ")[0]}</span>
-            <div className="w-9 h-9 rounded-full bg-green-500 flex items-center justify-center">
-              <span className="text-white font-bold">{user?.name?.[0] || "U"}</span>
+            <span className="text-white/70 text-xs">{displayName}</span>
+            <div className="w-9 h-9 rounded-full bg-gradient-to-r from-green-500 to-green-600 flex items-center justify-center overflow-hidden">
+              {photoUrl ? (
+                <img
+                  src={photoUrl}
+                  alt="Profile"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-white font-bold text-sm">
+                  {userData?.name?.[0] || user?.email?.[0]?.toUpperCase() || "U"}
+                </span>
+              )}
             </div>
           </div>
         </div>
