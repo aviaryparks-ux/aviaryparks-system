@@ -1,15 +1,15 @@
 // app/api/holidays/[year]/route.ts
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
-  request: Request,
-  { params }: { params: { year: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ year: string }> }
 ) {
-  // Pastikan params sudah di-await (Next.js 15+)
+  // 🔥 WAJIB: await params karena sekarang berupa Promise
   const resolvedParams = await params;
   const year = resolvedParams.year;
   
-  console.log('Received year param:', year); // Debug log
+  console.log('Received year param:', year);
   
   // Validasi tahun
   const yearNum = parseInt(year);
