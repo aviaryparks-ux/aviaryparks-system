@@ -1,7 +1,7 @@
 // app/(admin)/schedule-shift/page.tsx
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -10,7 +10,6 @@ import {
   setDoc,
   deleteDoc,
   getDoc,
-  writeBatch,
 } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/contexts/AuthContext";
@@ -45,6 +44,9 @@ type Schedule = {
 type Holiday = {
   date: string;
   name: string;
+  nameEn?: string;
+  types?: string[];
+  isNational?: boolean;
 };
 
 export default function ScheduleShiftPage() {
@@ -53,24 +55,28 @@ export default function ScheduleShiftPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [schedules, setSchedules] = useState<Record<string, Schedule>>({});
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [dateRange, setDateRange] = useState({ start: "", end: "" });
   const [selectedDepartment, setSelectedDepartment] = useState("ALL");
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [userDepartment, setUserDepartment] = useState<string>("");
+  const [currentView, setCurrentView] = useState<"calendar" | "table">("calendar");
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedEmployee, setSelectedEmployee] = useState<string>("ALL");
+  const [holidaysLoading, setHolidaysLoading] = useState(false);
   const [allowHolidayAssign, setAllowHolidayAssign] = useState(true);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+  
+  // Modal states
   const [showRangeModal, setShowRangeModal] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
   const [rangeShiftId, setRangeShiftId] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [userSearchTerm, setUserSearchTerm] = useState("");
   const [selectAll, setSelectAll] = useState(false);
-  const [datesList, setDatesList] = useState<Date[]>([]);
-  const [importPreview, setImportPreview] = useState<any[]>([]);
   
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Role checking
@@ -82,9 +88,11 @@ export default function ScheduleShiftPage() {
   const canManage = isSuperAdmin || isAdmin || isHR || isSPV;
   const canBulkAssign = isSuperAdmin || isHR;
   const canSeeAllDepartments = isSuperAdmin || isHR;
+  const canImport = isSuperAdmin || isHR;
 
   // Fetch holidays from API
   const fetchHolidays = async (year: number) => {
+    setHolidaysLoading(true);
     try {
       const response = await fetch(`/api/holidays/${year}`);
       const data = await response.json();
@@ -93,30 +101,10 @@ export default function ScheduleShiftPage() {
       }
     } catch (error) {
       console.error("Error fetching holidays:", error);
+    } finally {
+      setHolidaysLoading(false);
     }
   };
-
-  // Generate dates from range
-  const generateDatesFromRange = () => {
-    if (!dateRange.start || !dateRange.end) return [];
-    const start = new Date(dateRange.start);
-    const end = new Date(dateRange.end);
-    const dates = [];
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      dates.push(new Date(d));
-    }
-    return dates;
-  };
-
-  // Update dates list when range changes
-  useEffect(() => {
-    const dates = generateDatesFromRange();
-    setDatesList(dates);
-    if (dates.length > 0) {
-      const year = dates[0].getFullYear();
-      fetchHolidays(year);
-    }
-  }, [dateRange]);
 
   // Load department user
   useEffect(() => {
@@ -135,12 +123,18 @@ export default function ScheduleShiftPage() {
     loadUserDepartment();
   }, [currentUser, isAdmin, isSPV, canSeeAllDepartments]);
 
+  // Fetch holidays when month changes
+  useEffect(() => {
+    const year = currentMonth.getFullYear();
+    fetchHolidays(year);
+  }, [currentMonth]);
+
   // Load data
   useEffect(() => {
-    if (canManage && datesList.length > 0) {
+    if (canManage) {
       loadData();
     }
-  }, [selectedDepartment, userDepartment, datesList]);
+  }, [selectedDate, selectedDepartment, userDepartment, currentMonth, selectedEmployee]);
 
   const loadData = async () => {
     setLoading(true);
@@ -181,6 +175,10 @@ export default function ScheduleShiftPage() {
         usersList = usersList.filter(u => u.department === selectedDepartment);
       }
 
+      if (selectedEmployee !== "ALL") {
+        usersList = usersList.filter(u => u.uid === selectedEmployee);
+      }
+
       setUsers(usersList);
 
       // Load shifts
@@ -202,14 +200,16 @@ export default function ScheduleShiftPage() {
       });
       setShifts(shiftsList);
 
-      // Load schedules untuk range tanggal
+      // Load schedules untuk bulan ini
+      const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+      const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+      
       const schedulesSnap = await getDocs(collection(db, "shift_schedules"));
       const schedulesMap: Record<string, Schedule> = {};
       schedulesSnap.forEach(doc => {
         const data = doc.data();
         const scheduleDate = new Date(data.date);
-        const isInRange = datesList.some(d => d.toISOString().split("T")[0] === data.date);
-        if (isInRange) {
+        if (scheduleDate >= startOfMonth && scheduleDate <= endOfMonth) {
           const shift = shiftsList.find(s => s.id === data.shiftId);
           schedulesMap[`${data.userId}_${data.date}`] = {
             userId: data.userId,
@@ -223,6 +223,7 @@ export default function ScheduleShiftPage() {
       setSchedules(schedulesMap);
     } catch (error) {
       console.error("Error loading data:", error);
+      showToast("❌ Gagal memuat data", "error");
     } finally {
       setLoading(false);
     }
@@ -242,6 +243,7 @@ export default function ScheduleShiftPage() {
           delete newSchedules[scheduleId];
           return newSchedules;
         });
+        showToast("✅ Shift berhasil dihapus");
       } else {
         await setDoc(doc(db, "shift_schedules", scheduleId), {
           userId,
@@ -264,191 +266,40 @@ export default function ScheduleShiftPage() {
             shiftColor: shift?.color,
           }
         }));
+        showToast(`✅ Shift ${shift?.name} berhasil diassign`);
       }
     } catch (error) {
       console.error("Error assigning shift:", error);
-      alert("Gagal menyimpan jadwal");
+      showToast("❌ Gagal menyimpan jadwal", "error");
     }
   };
 
-  // Import from Excel/Spreadsheet
-  const handleImportExcel = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setImporting(true);
-    const reader = new FileReader();
-    
-    reader.onload = async (e) => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet);
-        
-        // Preview data
-        const previewData = rows.slice(0, 10).map((row: any) => ({
-          nama: row.Nama || row.name || row.NAME || row.Karyawan,
-          tanggal: row.Tanggal || row.date || row.DATE,
-          shift: row.Shift || row.shift || row.SHIFT,
-        }));
-        setImportPreview(previewData);
-        
-        // Store full data for import
-        const importData = rows.map((row: any) => ({
-          nama: row.Nama || row.name || row.NAME || row.Karyawan,
-          tanggal: row.Tanggal || row.date || row.DATE,
-          shift: row.Shift || row.shift || row.SHIFT,
-        }));
-        
-        // Show modal with preview
-        setShowImportModal(true);
-        
-        // Store data to import after confirmation
-        window.tempImportData = importData;
-        
-      } catch (error) {
-        console.error("Import error:", error);
-        alert("❌ Gagal membaca file. Pastikan format file benar.");
-      } finally {
-        setImporting(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      }
-    };
-    
-    reader.readAsArrayBuffer(file);
-  };
-
-  // Confirm import
-  const confirmImport = async () => {
-    const importData = (window as any).tempImportData;
-    if (!importData || importData.length === 0) {
-      alert("Tidak ada data untuk diimport");
-      return;
-    }
-
-    setImporting(true);
-    let successCount = 0;
-    let errorCount = 0;
-    const errors: string[] = [];
-
-    try {
-      for (const item of importData) {
-        // Find user by name
-        const user = users.find(u => 
-          u.name.toLowerCase() === item.nama?.toLowerCase() ||
-          u.name.toLowerCase().includes(item.nama?.toLowerCase())
-        );
-        
-        // Find shift by name
-        const shift = shifts.find(s => 
-          s.name.toLowerCase() === item.shift?.toLowerCase() ||
-          s.code.toLowerCase() === item.shift?.toLowerCase()
-        );
-        
-        // Validate date
-        const date = item.tanggal;
-        const isValidDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date);
-        
-        if (!user) {
-          errorCount++;
-          errors.push(`Karyawan "${item.nama}" tidak ditemukan`);
-          continue;
-        }
-        
-        if (!shift) {
-          errorCount++;
-          errors.push(`Shift "${item.shift}" tidak ditemukan`);
-          continue;
-        }
-        
-        if (!isValidDate) {
-          errorCount++;
-          errors.push(`Tanggal "${date}" tidak valid (format: YYYY-MM-DD)`);
-          continue;
-        }
-        
-        await handleAssign(user.uid, shift.id, date);
-        successCount++;
-      }
-      
-      if (successCount > 0) {
-        alert(`✅ Berhasil import ${successCount} data jadwal\n❌ Gagal: ${errorCount} data`);
-        if (errors.length > 0) {
-          console.log("Import errors:", errors.slice(0, 5));
-        }
-        await loadData(); // Refresh data
-      } else {
-        alert("❌ Tidak ada data yang berhasil diimport. Periksa format file.");
-      }
-      
-      setShowImportModal(false);
-      setImportPreview([]);
-      delete (window as any).tempImportData;
-      
-    } catch (error) {
-      console.error("Import error:", error);
-      alert("❌ Gagal mengimport data");
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  // Download template Excel
-  const downloadTemplate = () => {
-    const template = [
-      { Nama: "Budi Santoso", Tanggal: "2025-01-01", Shift: "AM1" },
-      { Nama: "Siti Aminah", Tanggal: "2025-01-01", Shift: "PM1" },
-      { Nama: "Joko Widodo", Tanggal: "2025-01-02", Shift: "AM2" },
-      { Nama: "Example", Tanggal: "2025-01-02", Shift: "Libur" },
-    ];
-    const ws = XLSX.utils.json_to_sheet(template);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Template Schedule");
-    XLSX.writeFile(wb, "template_schedule_shift.xlsx");
-  };
-
-  // Export to Excel
-  const exportToExcel = () => {
-    const exportData = filteredUsers.flatMap(user => {
-      return datesList.map(date => {
-        const schedule = getScheduleForUserDate(user.uid, date);
-        const shift = schedule ? shifts.find(s => s.id === schedule.shiftId) : null;
-        const holiday = isHoliday(date);
-        
-        return {
-          Nama: user.name,
-          Department: user.department,
-          Jabatan: user.jabatan,
-          Tanggal: date.toISOString().split("T")[0],
-          Hari: dayNames[date.getDay()],
-          Status: holiday.isHoliday ? "Libur Nasional" : (isWeekend(date) ? "Weekend" : "Hari Kerja"),
-          Shift: shift?.name || "-",
-          Jam_Masuk: shift?.startTime || "-",
-          Jam_Keluar: shift?.endTime || "-",
-        };
-      });
-    });
-
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Schedule Shift");
-    XLSX.writeFile(wb, `schedule_shift_${dateRange.start}_to_${dateRange.end}.xlsx`);
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    setSuccessMessage(message);
+    setShowSuccessToast(true);
+    setTimeout(() => setShowSuccessToast(false), 3000);
   };
 
   // Assign shift untuk range tanggal ke karyawan terpilih
   const assignDateRangeToSelectedUsers = async () => {
     if (!dateRange.start || !dateRange.end || !rangeShiftId) {
-      alert("Pilih tanggal mulai, tanggal akhir, dan shift terlebih dahulu");
+      showToast("Pilih tanggal mulai, tanggal akhir, dan shift terlebih dahulu", "error");
       return;
     }
 
     if (selectedUserIds.size === 0) {
-      alert("Pilih minimal 1 karyawan");
+      showToast("Pilih minimal 1 karyawan", "error");
       return;
     }
 
-    const dates = generateDatesFromRange();
+    const start = new Date(dateRange.start);
+    const end = new Date(dateRange.end);
+    const dates = [];
+    
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      dates.push(new Date(d).toISOString().split("T")[0]);
+    }
+
     setSaving(true);
     let successCount = 0;
     const selectedUsersList = users.filter(u => selectedUserIds.has(u.uid));
@@ -456,14 +307,13 @@ export default function ScheduleShiftPage() {
     try {
       for (const user of selectedUsersList) {
         for (const date of dates) {
-          const dateStr = date.toISOString().split("T")[0];
-          const scheduleId = `${user.uid}_${dateStr}`;
+          const scheduleId = `${user.uid}_${date}`;
           const shift = shifts.find(s => s.id === rangeShiftId);
           
           await setDoc(doc(db, "shift_schedules", scheduleId), {
             userId: user.uid,
             shiftId: rangeShiftId,
-            date: dateStr,
+            date,
             shiftName: shift?.name,
             shiftColor: shift?.color,
             updatedBy: currentUser?.uid,
@@ -477,7 +327,7 @@ export default function ScheduleShiftPage() {
             [scheduleId]: {
               userId: user.uid,
               shiftId: rangeShiftId,
-              date: dateStr,
+              date,
               shiftName: shift?.name,
               shiftColor: shift?.color,
             }
@@ -486,7 +336,7 @@ export default function ScheduleShiftPage() {
         }
       }
       
-      alert(`✅ Berhasil assign shift ke ${selectedUsersList.length} karyawan untuk ${dates.length} hari (${successCount} total assign)`);
+      showToast(`✅ Berhasil assign shift ke ${selectedUsersList.length} karyawan untuk ${dates.length} hari`);
       setShowRangeModal(false);
       setDateRange({ start: "", end: "" });
       setRangeShiftId("");
@@ -494,7 +344,7 @@ export default function ScheduleShiftPage() {
       setSelectAll(false);
     } catch (error) {
       console.error(error);
-      alert("❌ Gagal melakukan assign range");
+      showToast("❌ Gagal melakukan assign range", "error");
     } finally {
       setSaving(false);
     }
@@ -514,13 +364,39 @@ export default function ScheduleShiftPage() {
     return day === 0 || day === 6;
   };
 
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const days: (Date | null)[] = [];
+    
+    for (let i = 0; i < firstDay.getDay(); i++) {
+      days.push(null);
+    }
+    
+    for (let i = 1; i <= lastDay.getDate(); i++) {
+      days.push(new Date(year, month, i));
+    }
+    
+    return days;
+  };
+
   const getScheduleForUserDate = (userId: string, date: Date) => {
     const dateStr = date.toISOString().split("T")[0];
     return schedules[`${userId}_${dateStr}`];
   };
 
+  const prevMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+  };
+
+  const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
   const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
   const filteredUsers = users.filter(user => 
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -534,436 +410,802 @@ export default function ScheduleShiftPage() {
     user.jabatan.toLowerCase().includes(userSearchTerm.toLowerCase())
   );
 
+  // Stats
+  const stats = useMemo(() => {
+    const daysInMonth = getDaysInMonth(currentMonth).filter(d => d !== null);
+    const totalAssignments = Object.keys(schedules).length;
+    const totalUsers = filteredUsers.length;
+    const totalDays = daysInMonth.length;
+    const filledPercentage = totalUsers > 0 && totalDays > 0 
+      ? Math.round((totalAssignments / (totalUsers * totalDays)) * 100) 
+      : 0;
+    
+    return { totalAssignments, totalUsers, totalDays, filledPercentage };
+  }, [schedules, filteredUsers, currentMonth]);
+
   if (!canManage) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="text-6xl mb-4">🔒</div>
-          <p className="text-gray-500">Anda tidak memiliki akses ke halaman ini</p>
+      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv"]}>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <div className="text-7xl mb-4">🔒</div>
+            <h2 className="text-2xl font-semibold text-gray-700 mb-2">Akses Terbatas</h2>
+            <p className="text-gray-500">Anda tidak memiliki akses ke halaman ini</p>
+          </div>
         </div>
-      </div>
+      </ProtectedRoute>
     );
   }
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv"]}>
-      <div className="space-y-4 p-4">
-        {/* Header */}
-        <div className="flex justify-between items-center flex-wrap gap-3">
-          <div>
-            <h1 className="text-xl font-bold text-gray-800">📅 Penjadwalan Shift</h1>
-            <p className="text-xs text-gray-500">Atur shift karyawan dengan mudah</p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importing}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"
-            >
-              <span>📥</span> {importing ? "Memproses..." : "Import Excel"}
-            </button>
-            <button
-              onClick={downloadTemplate}
-              className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"
-            >
-              <span>📄</span> Template
-            </button>
-            <button
-              onClick={exportToExcel}
-              className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"
-            >
-              <span>📤</span> Export
-            </button>
-            <button
-              onClick={() => setShowRangeModal(true)}
-              className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"
-            >
-              <span>📅</span> Assign Range
-            </button>
-            <label className="flex items-center gap-1 text-sm">
-              <input
-                type="checkbox"
-                checked={allowHolidayAssign}
-                onChange={(e) => setAllowHolidayAssign(e.target.checked)}
-                className="w-3.5 h-3.5"
-              />
-              <span className="text-xs text-gray-600">Assign libur</span>
-            </label>
-          </div>
-        </div>
-
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleImportExcel}
-          accept=".xlsx, .xls, .csv, .xlsm"
-          className="hidden"
-        />
-
-        {/* Filter Bar - Kiri */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3">
-          <div className="flex flex-wrap gap-3">
-            <div className="flex-1 min-w-[150px]">
-              <select
-                value={selectedDepartment}
-                onChange={(e) => setSelectedDepartment(e.target.value)}
-                disabled={!canSeeAllDepartments}
-                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
-              >
-                <option value="ALL">🏢 All Dept</option>
-                {canSeeAllDepartments && [...new Set(users.map(u => u.department))].map(dept => (
-                  <option key={dept} value={dept}>{dept}</option>
-                ))}
-              </select>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <div className="space-y-6 p-6 max-w-[1600px] mx-auto">
+          {/* Toast Notification */}
+          {showSuccessToast && (
+            <div className="fixed top-20 right-6 z-50 animate-slide-in">
+              <div className="bg-green-500 text-white px-5 py-3 rounded-xl shadow-lg flex items-center gap-2">
+                <span>✅</span>
+                <span className="text-sm font-medium">{successMessage}</span>
+              </div>
             </div>
-            <div className="flex-1 min-w-[200px]">
-              <input
-                type="text"
-                placeholder="🔍 Cari karyawan..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
-              />
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="date"
-                value={dateRange.start}
-                onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
-                placeholder="Start"
-              />
-              <span className="text-gray-400 self-center">-</span>
-              <input
-                type="date"
-                value={dateRange.end}
-                onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
-                placeholder="End"
-              />
-            </div>
-            <button
-              onClick={loadData}
-              className="bg-gray-500 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-gray-600"
-            >
-              🔄
-            </button>
-          </div>
-        </div>
+          )}
 
-        {/* Info Range */}
-        {datesList.length > 0 && (
-          <div className="bg-blue-50 rounded-lg px-3 py-1.5 text-xs text-blue-700 flex justify-between items-center">
-            <span>📆 {datesList.length} hari: {dateRange.start} s/d {dateRange.end}</span>
-            <span>👥 {filteredUsers.length} karyawan</span>
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
+                📅 Penjadwalan Shift
+              </h1>
+              <p className="text-gray-500 mt-1">Atur dan kelola jadwal shift karyawan dengan mudah</p>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-400 bg-gray-100 px-3 py-1.5 rounded-lg">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              <span>Data real-time</span>
+            </div>
           </div>
-        )}
 
-        {/* Main Table with Sticky Column & Horizontal Scroll */}
-        {datesList.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-            <div className="text-5xl mb-3">📅</div>
-            <p className="text-gray-500">Pilih rentang tanggal terlebih dahulu</p>
-            <p className="text-xs text-gray-400 mt-1">Gunakan date range picker di atas</p>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-blue-600">Total Jadwal</p>
+                  <p className="text-2xl font-bold text-blue-800">{stats.totalAssignments}</p>
+                </div>
+                <span className="text-3xl">📅</span>
+              </div>
+            </div>
+            <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-green-600">Karyawan</p>
+                  <p className="text-2xl font-bold text-green-800">{stats.totalUsers}</p>
+                </div>
+                <span className="text-3xl">👥</span>
+              </div>
+            </div>
+            <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-purple-600">Periode</p>
+                  <p className="text-2xl font-bold text-purple-800">{stats.totalDays}</p>
+                </div>
+                <span className="text-3xl">📆</span>
+              </div>
+            </div>
+            <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-orange-600">Terisi</p>
+                  <p className="text-2xl font-bold text-orange-800">{stats.filledPercentage}%</p>
+                </div>
+                <span className="text-3xl">📊</span>
+              </div>
+            </div>
           </div>
-        ) : loading ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-            <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto" />
+
+          {/* Filter Section */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              </svg>
+              Filter Data
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">🏢 Departemen</label>
+                <select
+                  value={selectedDepartment}
+                  onChange={(e) => setSelectedDepartment(e.target.value)}
+                  disabled={!canSeeAllDepartments}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 disabled:bg-gray-100"
+                >
+                  <option value="ALL">Semua Departemen</option>
+                  {canSeeAllDepartments && [...new Set(users.map(u => u.department))].map(dept => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">👤 Karyawan</label>
+                <select
+                  value={selectedEmployee}
+                  onChange={(e) => setSelectedEmployee(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="ALL">Semua Karyawan</option>
+                  {users.map(user => (
+                    <option key={user.uid} value={user.uid}>{user.name} - {user.department}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">🔍 Cari</label>
+                <input
+                  type="text"
+                  placeholder="Nama atau jabatan..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+              <div className="flex gap-2 items-end">
+                <button
+                  onClick={loadData}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <span>🔄</span>
+                  Refresh
+                </button>
+                <button
+                  onClick={() => setCurrentView(currentView === "calendar" ? "table" : "calendar")}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <span>{currentView === "calendar" ? "📋" : "📅"}</span>
+                  {currentView === "calendar" ? "Tabel" : "Kalender"}
+                </button>
+              </div>
+            </div>
           </div>
-        ) : (
-          <div 
-            ref={scrollContainerRef}
-            className="overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-200"
-            style={{ scrollBehavior: 'smooth' }}
-          >
-            <table className="min-w-full text-sm border-collapse">
-              <thead className="bg-gray-50 sticky top-0 z-10">
-                <tr>
-                  {/* Sticky Employee Column Header */}
-                  <th className="sticky left-0 bg-gray-50 z-20 px-3 py-2 text-left border-r border-gray-200 min-w-[180px]">
-                    <div className="font-semibold text-gray-700">👥 Karyawan</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{filteredUsers.length} orang</div>
-                  </th>
-                  {/* Date Headers */}
-                  {datesList.map((date, idx) => {
-                    const holiday = isHoliday(date);
-                    const weekend = isWeekend(date);
-                    const isToday = date.toDateString() === new Date().toISOString().split("T")[0];
-                    return (
-                      <th key={idx} className={`px-1 py-2 text-center min-w-[70px] border-r ${isToday ? 'bg-green-50' : ''}`}>
-                        <div className="text-[10px] text-gray-400">{dayNames[date.getDay()]}</div>
-                        <div className={`text-sm font-bold ${
-                          holiday.isHoliday ? "text-red-600" : 
-                          weekend ? "text-gray-400" : "text-gray-700"
-                        }`}>
-                          {date.getDate()}
-                        </div>
-                        <div className="text-[9px] text-gray-400">{monthNames[date.getMonth()]}</div>
-                        {holiday.isHoliday && (
-                          <div className="text-[8px] text-red-500 truncate max-w-[60px]" title={holiday.name}>
-                            {holiday.name?.substring(0, 8)}
-                          </div>
-                        )}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredUsers.map((user) => (
-                  <tr key={user.uid} className="border-t hover:bg-gray-50">
-                    {/* Sticky Employee Column */}
-                    <td className="sticky left-0 bg-white z-10 px-3 py-2 border-r border-gray-200 min-w-[180px]">
-                      <div className="font-medium text-gray-800 text-sm">{user.name}</div>
-                      <div className="text-[10px] text-gray-400">{user.department} • {user.jabatan}</div>
-                    </td>
-                    {/* Shift Cells */}
-                    {datesList.map((date, idx) => {
-                      const schedule = getScheduleForUserDate(user.uid, date);
+
+          {/* Action Buttons */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              Aksi Cepat
+            </h2>
+            <div className="flex flex-wrap gap-3">
+              {canBulkAssign && (
+                <>
+                  <button
+                    onClick={() => setShowRangeModal(true)}
+                    className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all duration-200"
+                  >
+                    <span>📅</span>
+                    Assign Rentang
+                  </button>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all duration-200"
+                  >
+                    <span>📥</span>
+                    Import Excel
+                  </button>
+                  <button
+                    onClick={() => {
+                      const template = [
+                        { Nama: "Budi Santoso", Tanggal: new Date().toISOString().split("T")[0], Shift: "Pagi" },
+                        { Nama: "Siti Aminah", Tanggal: new Date().toISOString().split("T")[0], Shift: "Malam" },
+                      ];
+                      const ws = XLSX.utils.json_to_sheet(template);
+                      const wb = XLSX.utils.book_new();
+                      XLSX.utils.book_append_sheet(wb, ws, "Template Schedule");
+                      XLSX.writeFile(wb, "template_schedule_shift.xlsx");
+                      showToast("✅ Template berhasil diunduh");
+                    }}
+                    className="bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all duration-200"
+                  >
+                    <span>📄</span>
+                    Download Template
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => {
+                  const exportData = filteredUsers.flatMap(user => {
+                    const daysInMonth = getDaysInMonth(currentMonth).filter(d => d !== null);
+                    return daysInMonth.map(date => {
+                      const schedule = getScheduleForUserDate(user.uid, date!);
                       const shift = schedule ? shifts.find(s => s.id === schedule.shiftId) : null;
-                      const holiday = isHoliday(date);
-                      const weekend = isWeekend(date);
-                      const isLibur = holiday.isHoliday || weekend;
-                      const isToday = date.toDateString() === new Date().toISOString().split("T")[0];
-                      
-                      return (
-                        <td 
-                          key={idx} 
-                          className={`px-1 py-1 text-center border-r ${
-                            holiday.isHoliday ? "bg-red-50" : 
-                            weekend ? "bg-gray-50" : ""
-                          } ${isToday ? "ring-1 ring-green-300" : ""}`}
-                        >
-                          {!isLibur || allowHolidayAssign ? (
-                            <select
-                              value={schedule?.shiftId || ""}
-                              onChange={(e) => handleAssign(user.uid, e.target.value, date.toISOString().split("T")[0])}
-                              className="w-full text-[10px] border rounded px-1 py-1.5 bg-white cursor-pointer"
-                              style={{
-                                backgroundColor: shift?.color ? `${shift.color}20` : "#fff",
-                                borderColor: shift?.color || "#e5e7eb",
-                                fontWeight: shift ? "500" : "normal",
-                              }}
-                            >
-                              <option value="">-</option>
-                              {shifts.map(s => (
-                                <option key={s.id} value={s.id}>{s.name}</option>
-                              ))}
-                              {schedule && <option value="unassign">✕</option>}
-                            </select>
-                          ) : (
-                            <div className="text-[9px] text-gray-400 py-1.5">
-                              {holiday.isHoliday ? "Libur" : "Weekend"}
-                            </div>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            
-            {filteredUsers.length === 0 && !loading && (
-              <div className="p-8 text-center text-gray-500">
-                <div className="text-4xl mb-2">📭</div>
-                <p className="text-sm">Tidak ada karyawan ditemukan</p>
-              </div>
-            )}
+                      const holiday = isHoliday(date!);
+                      return {
+                        Nama: user.name,
+                        Departemen: user.department,
+                        Jabatan: user.jabatan,
+                        Tanggal: date?.toISOString().split("T")[0],
+                        Hari: dayNames[date?.getDay() || 0],
+                        Status: holiday.isHoliday ? "Libur Nasional" : "",
+                        Shift: shift?.name || "-",
+                        Jam_Masuk: shift?.startTime || "-",
+                        Jam_Keluar: shift?.endTime || "-",
+                      };
+                    });
+                  });
+                  const ws = XLSX.utils.json_to_sheet(exportData);
+                  const wb = XLSX.utils.book_new();
+                  XLSX.utils.book_append_sheet(wb, ws, "Schedule Shift");
+                  XLSX.writeFile(wb, `schedule_shift_${currentMonth.getFullYear()}_${currentMonth.getMonth() + 1}.xlsx`);
+                  showToast("✅ Data berhasil diexport");
+                }}
+                className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all duration-200"
+              >
+                <span>📤</span>
+                Export Excel
+              </button>
+              <label className="flex items-center gap-2 ml-auto px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition">
+                <input
+                  type="checkbox"
+                  checked={allowHolidayAssign}
+                  onChange={(e) => setAllowHolidayAssign(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                />
+                <span className="text-sm text-gray-700">Izinkan assign di hari libur</span>
+              </label>
+            </div>
           </div>
-        )}
 
-        {/* Modal Import Excel */}
-        {showImportModal && (
-          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
-              <div className="p-3 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
-                <h2 className="text-lg font-bold text-gray-800">📥 Import Data Shift</h2>
-                <button onClick={() => setShowImportModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = async (e) => {
+                try {
+                  const data = new Uint8Array(e.target?.result as ArrayBuffer);
+                  const workbook = XLSX.read(data, { type: 'array' });
+                  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                  const rows = XLSX.utils.sheet_to_json(sheet);
+                  let importedCount = 0;
+                  let errorCount = 0;
+                  
+                  for (const row of rows as any) {
+                    const userName = row.Nama || row.name || row.NAME;
+                    const date = row.Tanggal || row.date || row.DATE;
+                    const shiftName = row.Shift || row.shift || row.SHIFT;
+                    
+                    if (!userName || !date || !shiftName) {
+                      errorCount++;
+                      continue;
+                    }
+                    
+                    const user = users.find(u => u.name.toLowerCase() === userName.toLowerCase());
+                    const shift = shifts.find(s => s.name.toLowerCase() === shiftName.toLowerCase());
+                    
+                    if (user && shift) {
+                      await handleAssign(user.uid, shift.id, date);
+                      importedCount++;
+                    } else {
+                      errorCount++;
+                    }
+                  }
+                  
+                  showToast(`✅ Import selesai: ${importedCount} berhasil, ${errorCount} gagal`);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                  loadData();
+                } catch (error) {
+                  showToast("❌ Gagal import file", "error");
+                }
+              };
+              reader.readAsArrayBuffer(file);
+            }}
+            accept=".xlsx, .xls, .csv"
+            className="hidden"
+          />
+
+          {/* Calendar Navigation */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div className="flex justify-between items-center flex-wrap gap-4">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={prevMonth}
+                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  ◀
+                </button>
+                <h2 className="text-xl font-semibold text-gray-800">
+                  {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+                </h2>
+                <button
+                  onClick={nextMonth}
+                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  ▶
+                </button>
               </div>
-              
-              <div className="p-4 space-y-3 overflow-y-auto flex-1">
-                <div className="bg-blue-50 p-3 rounded-lg">
-                  <div className="text-sm font-medium text-blue-700 mb-2">Preview Data ({importPreview.length} baris)</div>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-xs">
-                      <thead className="bg-blue-100">
-                        <tr>
-                          <th className="px-2 py-1 text-left">Nama Karyawan</th>
-                          <th className="px-2 py-1 text-left">Tanggal</th>
-                          <th className="px-2 py-1 text-left">Shift</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {importPreview.map((item, idx) => (
-                          <tr key={idx} className="border-t">
-                            <td className="px-2 py-1">{item.nama || "-"}</td>
-                            <td className="px-2 py-1">{item.tanggal || "-"}</td>
-                            <td className="px-2 py-1">{item.shift || "-"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+              <button
+                onClick={() => setCurrentMonth(new Date())}
+                className="px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
+              >
+                📍 Hari Ini
+              </button>
+            </div>
+          </div>
+
+          {/* Legend */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div className="flex flex-wrap gap-4 text-xs">
+              {shifts.map(shift => (
+                <div key={shift.id} className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: shift.color }} />
+                  <span>{shift.name}</span>
+                </div>
+              ))}
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <span>Libur Nasional</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-gray-300" />
+                <span>Weekend</span>
+              </div>
+              {allowHolidayAssign && (
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-orange-500" />
+                  <span>Bisa assign di hari libur</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Calendar View */}
+          {currentView === "calendar" && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              {loading ? (
+                <div className="p-16 text-center">
+                  <div className="inline-block">
+                    <div className="w-12 h-12 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
                   </div>
-                  {importPreview.length === 0 && (
-                    <div className="text-center py-4 text-gray-500">Tidak ada data preview</div>
+                  <p className="text-gray-500 mt-4">Memuat data jadwal...</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[800px]">
+                    <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                      <tr>
+                        <th className="sticky left-0 bg-gradient-to-r from-gray-50 to-gray-100 z-20 px-4 py-3 text-left border-r border-gray-200 min-w-[180px]">
+                          <div className="font-semibold text-gray-700 flex items-center gap-2">
+                            <span>👥</span>
+                            Karyawan
+                          </div>
+                          <div className="text-xs text-gray-400 mt-0.5">{filteredUsers.length} orang</div>
+                        </th>
+                        {getDaysInMonth(currentMonth).map((date, idx) => (
+                          date && (
+                            <th key={idx} className="px-2 py-3 text-center min-w-[85px] border-r border-gray-100">
+                              <div className="text-[11px] text-gray-400 font-medium">{dayNames[date.getDay()]}</div>
+                              <div className={`text-base font-bold ${
+                                isHoliday(date).isHoliday ? "text-red-500" : 
+                                isWeekend(date) ? "text-gray-400" : "text-gray-700"
+                              }`}>
+                                {date.getDate()}
+                              </div>
+                              <div className="text-[10px] text-gray-400">{monthNames[date.getMonth()]}</div>
+                              {isHoliday(date).isHoliday && (
+                                <div className="mt-1 px-1.5 py-0.5 bg-red-50 rounded text-[8px] text-red-600 font-medium truncate max-w-[70px]" title={isHoliday(date).name}>
+                                  {isHoliday(date).name?.substring(0, 8)}
+                                </div>
+                              )}
+                            </th>
+                          )
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredUsers.map((user, idx) => (
+                        <tr key={user.uid} className={`border-t border-gray-100 hover:bg-gradient-to-r hover:from-green-50 hover:to-transparent transition-all duration-150 ${
+                          idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
+                        }`}>
+                          <td className="sticky left-0 bg-inherit z-10 px-4 py-3 border-r border-gray-100 min-w-[180px]">
+                            <div className="font-medium text-gray-800 text-sm">{user.name}</div>
+                            <div className="flex items-center gap-1 mt-1">
+                              <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">
+                                {user.department}
+                              </span>
+                              <span className="text-[10px] text-gray-400">•</span>
+                              <span className="text-[10px] text-gray-500">{user.jabatan}</span>
+                            </div>
+                          </td>
+                          {getDaysInMonth(currentMonth).map((date, idx) => {
+                            if (!date) return <td key={idx} className="bg-gray-50" />;
+                            
+                            const schedule = getScheduleForUserDate(user.uid, date);
+                            const shift = schedule ? shifts.find(s => s.id === schedule.shiftId) : null;
+                            const holiday = isHoliday(date);
+                            const weekend = isWeekend(date);
+                            const isToday = date.toDateString() === new Date().toISOString().split("T")[0];
+                            const isLibur = holiday.isHoliday || weekend;
+                            
+                            return (
+                              <td 
+                                key={idx} 
+                                className={`px-2 py-2 text-center border-r border-gray-50 ${
+                                  holiday.isHoliday ? "bg-red-50/30" : 
+                                  weekend ? "bg-gray-50" : ""
+                                } ${isToday ? "ring-1 ring-green-300 ring-inset" : ""}`}
+                              >
+                                {(!isLibur || allowHolidayAssign) ? (
+                                  <select
+                                    value={schedule?.shiftId || ""}
+                                    onChange={(e) => handleAssign(user.uid, e.target.value, date.toISOString().split("T")[0])}
+                                    className="w-full text-[11px] border rounded-lg px-2 py-2 bg-white cursor-pointer transition-all duration-150 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                                    style={{
+                                      backgroundColor: shift?.color ? `${shift.color}15` : "#fff",
+                                      borderColor: shift?.color || "#e2e8f0",
+                                      color: shift?.color ? `#${parseInt(shift.color.slice(1), 16).toString(16)}` : "#374151",
+                                    }}
+                                  >
+                                    <option value="">- Pilih Shift -</option>
+                                    {shifts.map(s => (
+                                      <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                    {schedule && <option value="unassign">✕ Hapus</option>}
+                                  </select>
+                                ) : (
+                                  <div className="text-[10px] text-gray-400 py-2">
+                                    {holiday.isHoliday ? "Libur Nasional" : "Weekend"}
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  
+                  {filteredUsers.length === 0 && !loading && (
+                    <div className="p-12 text-center">
+                      <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-3 text-3xl">
+                        👥
+                      </div>
+                      <p className="text-gray-500 font-medium">Tidak ada karyawan ditemukan</p>
+                      <p className="text-xs text-gray-400 mt-1">Coba ubah kata kunci pencarian atau filter departemen</p>
+                    </div>
                   )}
                 </div>
-                
-                <div className="bg-yellow-50 p-3 rounded-lg">
-                  <div className="text-sm font-medium text-yellow-700 mb-2">📌 Catatan</div>
-                  <ul className="text-xs text-yellow-600 space-y-1 list-disc list-inside">
-                    <li>Pastikan kolom: <strong>Nama</strong>, <strong>Tanggal</strong> (YYYY-MM-DD), <strong>Shift</strong></li>
-                    <li>Nama karyawan harus sesuai dengan database</li>
-                    <li>Nama shift harus sesuai dengan master shift</li>
-                    <li>Tanggal harus dalam format YYYY-MM-DD (contoh: 2025-01-01)</li>
-                  </ul>
-                </div>
-              </div>
-              
-              <div className="p-3 border-t border-gray-200 bg-gray-50 flex gap-2">
-                <button
-                  onClick={confirmImport}
-                  disabled={importing || importPreview.length === 0}
-                  className="flex-1 bg-green-600 text-white py-1.5 rounded-lg text-sm disabled:bg-gray-400"
-                >
-                  {importing ? "Memproses..." : `Import ${importPreview.length} Data`}
-                </button>
-                <button
-                  onClick={() => setShowImportModal(false)}
-                  className="flex-1 bg-gray-300 text-gray-700 py-1.5 rounded-lg text-sm"
-                >
-                  Batal
-                </button>
-              </div>
+              )}
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Modal Assign Rentang Tanggal */}
-        {showRangeModal && (
-          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col">
-              <div className="p-3 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
-                <h2 className="text-lg font-bold text-gray-800">📅 Assign Shift</h2>
-                <button onClick={() => setShowRangeModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+          {/* Table View */}
+          {currentView === "table" && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+                <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                  <span>📋</span>
+                  Daftar Karyawan - {selectedDate}
+                </h2>
+                <span className="text-sm text-gray-500">
+                  {filteredUsers.length} karyawan
+                </span>
               </div>
               
-              <div className="p-4 space-y-3 overflow-y-auto flex-1">
-                {/* Date Range */}
-                <div className="bg-blue-50 p-3 rounded-lg">
-                  <div className="text-xs font-medium text-blue-700 mb-2">Rentang Tanggal</div>
-                  <div className="flex gap-2">
-                    <input
-                      type="date"
-                      value={dateRange.start}
-                      onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                      className="flex-1 border rounded px-2 py-1.5 text-sm"
-                    />
-                    <span className="text-gray-400">→</span>
-                    <input
-                      type="date"
-                      value={dateRange.end}
-                      onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                      className="flex-1 border rounded px-2 py-1.5 text-sm"
-                    />
+              {loading ? (
+                <div className="p-16 text-center">
+                  <div className="inline-block">
+                    <div className="w-12 h-12 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
                   </div>
+                  <p className="text-gray-500 mt-4">Memuat data...</p>
                 </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left">No</th>
+                        <th className="px-4 py-3 text-left">Nama</th>
+                        <th className="px-4 py-3 text-left">Departemen</th>
+                        <th className="px-4 py-3 text-left">Jabatan</th>
+                        <th className="px-4 py-3 text-left">Shift Saat Ini</th>
+                        <th className="px-4 py-3 text-left">Ganti Shift</th>
+                       </tr>
+                    </thead>
+                    <tbody>
+                      {filteredUsers.map((user, idx) => {
+                        const schedule = schedules[`${user.uid}_${selectedDate}`];
+                        const currentShift = schedule ? shifts.find(s => s.id === schedule.shiftId) : null;
+                        const selectedDateObj = new Date(selectedDate);
+                        const holiday = isHoliday(selectedDateObj);
+                        const weekend = isWeekend(selectedDateObj);
+                        const isLibur = holiday.isHoliday || weekend;
+                        
+                        return (
+                          <tr key={user.uid} className={`border-t border-gray-100 hover:bg-green-50 transition-colors ${
+                            idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
+                          }`}>
+                            <td className="px-4 py-3 text-gray-500">{idx + 1}</td>
+                            <td className="px-4 py-3 font-medium text-gray-800">{user.name}</td>
+                            <td className="px-4 py-3 text-gray-600">{user.department}</td>
+                            <td className="px-4 py-3 text-gray-600">{user.jabatan}</td>
+                            <td className="px-4 py-3">
+                              {currentShift ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: currentShift.color }} />
+                                  <span className="font-medium text-gray-800">{currentShift.name}</span>
+                                  <span className="text-xs text-gray-400">
+                                    ({currentShift.startTime} - {currentShift.endTime})
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-gray-400">- Belum diatur -</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <select
+                                value={schedule?.shiftId || ""}
+                                onChange={(e) => handleAssign(user.uid, e.target.value, selectedDate)}
+                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                                disabled={isLibur && !allowHolidayAssign}
+                              >
+                                <option value="">-- Pilih Shift --</option>
+                                {shifts.map(shift => (
+                                  <option key={shift.id} value={shift.id}>
+                                    {shift.name} ({shift.startTime} - {shift.endTime})
+                                  </option>
+                                ))}
+                                {schedule && (
+                                  <option value="unassign">-- Hapus --</option>
+                                )}
+                              </select>
+                              {isLibur && !allowHolidayAssign && (
+                                <div className="text-xs text-red-500 mt-1">Hari libur, tidak bisa assign shift</div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              
+              {filteredUsers.length === 0 && !loading && (
+                <div className="p-12 text-center">
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-3 text-3xl">
+                    👥
+                  </div>
+                  <p className="text-gray-500 font-medium">Tidak ada karyawan ditemukan</p>
+                  <p className="text-xs text-gray-400 mt-1">Coba ubah kata kunci pencarian atau filter departemen</p>
+                </div>
+              )}
+            </div>
+          )}
 
-                {/* Shift */}
-                <div className="bg-purple-50 p-3 rounded-lg">
-                  <div className="text-xs font-medium text-purple-700 mb-2">Pilih Shift</div>
-                  <select
-                    value={rangeShiftId}
-                    onChange={(e) => setRangeShiftId(e.target.value)}
-                    className="w-full border rounded px-2 py-1.5 text-sm"
+          {/* Modal Assign Rentang Tanggal */}
+          {showRangeModal && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col animate-scale-in">
+                <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-purple-50 to-white">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                      <span>✨</span>
+                      Assign Shift Massal
+                    </h2>
+                    <p className="text-xs text-gray-500 mt-1">Assign shift untuk banyak karyawan sekaligus</p>
+                  </div>
+                  <button 
+                    onClick={() => setShowRangeModal(false)} 
+                    className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-100 rounded-lg"
                   >
-                    <option value="">-- Pilih Shift --</option>
-                    {shifts.map(shift => (
-                      <option key={shift.id} value={shift.id}>
-                        {shift.name} ({shift.startTime}-{shift.endTime})
-                      </option>
-                    ))}
-                  </select>
+                    ✕
+                  </button>
                 </div>
+                
+                <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                  {/* Date Range */}
+                  <div className="bg-gradient-to-r from-blue-50 to-blue-100/50 p-4 rounded-xl">
+                    <label className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2 flex items-center gap-1">
+                      <span>📅</span>
+                      Rentang Tanggal
+                    </label>
+                    <div className="flex gap-2 mt-2">
+                      <input
+                        type="date"
+                        value={dateRange.start}
+                        onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                        className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                      />
+                      <span className="text-gray-400 self-center">→</span>
+                      <input
+                        type="date"
+                        value={dateRange.end}
+                        onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                        className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                      />
+                    </div>
+                    {dateRange.start && dateRange.end && (
+                      <div className="text-xs text-blue-600 mt-2">
+                        📆 Total {Math.ceil((new Date(dateRange.end).getTime() - new Date(dateRange.start).getTime()) / (1000 * 60 * 60 * 24)) + 1} hari
+                      </div>
+                    )}
+                  </div>
 
-                {/* Employees */}
-                <div className="bg-green-50 p-3 rounded-lg">
-                  <div className="text-xs font-medium text-green-700 mb-2">Pilih Karyawan</div>
-                  <input
-                    type="text"
-                    placeholder="🔍 Cari karyawan..."
-                    value={userSearchTerm}
-                    onChange={(e) => setUserSearchTerm(e.target.value)}
-                    className="w-full border rounded px-2 py-1.5 text-sm mb-2"
-                  />
-                  <div className="flex items-center gap-2 mb-2 pb-1 border-b">
-                    <input
-                      type="checkbox"
-                      id="selectAll"
-                      checked={selectAll}
-                      onChange={() => {
-                        if (selectAll) {
-                          setSelectedUserIds(new Set());
-                        } else {
-                          setSelectedUserIds(new Set(filteredUsersForModal.map(u => u.uid)));
-                        }
-                        setSelectAll(!selectAll);
-                      }}
-                      className="w-3.5 h-3.5"
-                    />
-                    <label htmlFor="selectAll" className="text-xs">Pilih Semua ({filteredUsersForModal.length})</label>
+                  {/* Shift */}
+                  <div className="bg-gradient-to-r from-purple-50 to-purple-100/50 p-4 rounded-xl">
+                    <label className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-2 flex items-center gap-1">
+                      <span>⏰</span>
+                      Pilih Shift
+                    </label>
+                    <select
+                      value={rangeShiftId}
+                      onChange={(e) => setRangeShiftId(e.target.value)}
+                      className="w-full border border-purple-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white mt-2"
+                    >
+                      <option value="">-- Pilih Shift --</option>
+                      {shifts.map(shift => (
+                        <option key={shift.id} value={shift.id}>
+                          {shift.name} ({shift.startTime} - {shift.endTime})
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <div className="max-h-48 overflow-y-auto space-y-1">
-                    {filteredUsersForModal.map(user => (
-                      <label key={user.uid} className="flex items-center gap-2 p-1.5 hover:bg-white rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedUserIds.has(user.uid)}
-                          onChange={() => {
-                            const newSelected = new Set(selectedUserIds);
-                            if (newSelected.has(user.uid)) newSelected.delete(user.uid);
-                            else newSelected.add(user.uid);
-                            setSelectedUserIds(newSelected);
-                            setSelectAll(newSelected.size === filteredUsersForModal.length);
-                          }}
-                          className="w-3.5 h-3.5"
-                        />
-                        <div className="flex-1">
-                          <div className="text-xs font-medium">{user.name}</div>
-                          <div className="text-[10px] text-gray-500">{user.department}</div>
-                        </div>
+
+                  {/* Employees */}
+                  <div className="bg-gradient-to-r from-green-50 to-green-100/50 p-4 rounded-xl">
+                    <label className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2 flex items-center gap-1">
+                      <span>👥</span>
+                      Pilih Karyawan
+                    </label>
+                    <div className="relative mt-2">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">🔍</span>
+                      <input
+                        type="text"
+                        placeholder="Cari karyawan..."
+                        value={userSearchTerm}
+                        onChange={(e) => setUserSearchTerm(e.target.value)}
+                        className="w-full border border-green-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                      />
+                    </div>
+                    
+                    <div className="flex items-center gap-2 mt-3 mb-2 pb-2 border-b border-green-200">
+                      <input
+                        type="checkbox"
+                        id="selectAll"
+                        checked={selectAll}
+                        onChange={() => {
+                          if (selectAll) {
+                            setSelectedUserIds(new Set());
+                          } else {
+                            setSelectedUserIds(new Set(filteredUsersForModal.map(u => u.uid)));
+                          }
+                          setSelectAll(!selectAll);
+                        }}
+                        className="w-4 h-4 rounded border-green-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <label htmlFor="selectAll" className="text-sm font-medium text-gray-700">
+                        Pilih Semua ({filteredUsersForModal.length})
                       </label>
-                    ))}
+                    </div>
+                    
+                    <div className="max-h-48 overflow-y-auto space-y-1">
+                      {filteredUsersForModal.map(user => (
+                        <label key={user.uid} className="flex items-center gap-2 p-2 hover:bg-white rounded-lg cursor-pointer transition-all">
+                          <input
+                            type="checkbox"
+                            checked={selectedUserIds.has(user.uid)}
+                            onChange={() => {
+                              const newSelected = new Set(selectedUserIds);
+                              if (newSelected.has(user.uid)) newSelected.delete(user.uid);
+                              else newSelected.add(user.uid);
+                              setSelectedUserIds(newSelected);
+                              setSelectAll(newSelected.size === filteredUsersForModal.length);
+                            }}
+                            className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                          />
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-gray-800">{user.name}</div>
+                            <div className="text-xs text-gray-500">{user.department} • {user.jabatan}</div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                    
+                    <div className="mt-3 pt-2 border-t border-green-200">
+                      <div className="text-xs font-medium text-green-700">
+                        ✓ {selectedUserIds.size} karyawan terpilih
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-[10px] text-green-600 mt-2">✓ {selectedUserIds.size} terpilih</div>
                 </div>
-              </div>
-              
-              <div className="p-3 border-t border-gray-200 bg-gray-50 flex gap-2">
-                <button
-                  onClick={assignDateRangeToSelectedUsers}
-                  disabled={saving || !dateRange.start || !dateRange.end || !rangeShiftId || selectedUserIds.size === 0}
-                  className="flex-1 bg-green-600 text-white py-1.5 rounded-lg text-sm disabled:bg-gray-400"
-                >
-                  {saving ? "Memproses..." : `Assign ke ${selectedUserIds.size} karyawan`}
-                </button>
-                <button
-                  onClick={() => setShowRangeModal(false)}
-                  className="flex-1 bg-gray-300 text-gray-700 py-1.5 rounded-lg text-sm"
-                >
-                  Batal
-                </button>
+                
+                <div className="p-5 border-t border-gray-100 bg-gray-50 flex gap-3">
+                  <button
+                    onClick={assignDateRangeToSelectedUsers}
+                    disabled={saving || !dateRange.start || !dateRange.end || !rangeShiftId || selectedUserIds.size === 0}
+                    className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white py-2.5 rounded-xl text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md"
+                  >
+                    {saving ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Memproses...
+                      </span>
+                    ) : (
+                      `Assign ke ${selectedUserIds.size} Karyawan`
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setShowRangeModal(false)}
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
+                  >
+                    Batal
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Footer */}
-        <div className="text-center text-[10px] text-gray-400">
-          Klik pada sel shift untuk mengubah | Scroll horizontal untuk melihat semua tanggal | Import Excel untuk bulk data
+          {/* Footer Info */}
+          <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-4 text-center text-xs text-gray-500 border border-gray-200">
+            <div className="flex flex-wrap justify-center gap-4">
+              <span>✅ Klik pada sel kalender untuk mengubah shift karyawan</span>
+              <span>📅 Gunakan fitur "Assign Rentang" untuk periode dan karyawan tertentu</span>
+              <span>🎨 Warna shift menandakan jenis shift yang dipilih</span>
+              <span>📥 Import/Export Excel untuk memudahkan pengelolaan data</span>
+            </div>
+          </div>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes slide-in {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+        
+        @keyframes scale-in {
+          from {
+            transform: scale(0.95);
+            opacity: 0;
+          }
+          to {
+            transform: scale(1);
+            opacity: 1;
+          }
+        }
+        
+        .animate-slide-in {
+          animation: slide-in 0.3s ease-out;
+        }
+        
+        .animate-fade-in {
+          animation: fade-in 0.2s ease-out;
+        }
+        
+        .animate-scale-in {
+          animation: scale-in 0.2s ease-out;
+        }
+      `}</style>
     </ProtectedRoute>
   );
 }
