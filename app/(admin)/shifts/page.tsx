@@ -12,7 +12,6 @@ import {
   doc,
   query,
   orderBy,
-  where,
 } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
 

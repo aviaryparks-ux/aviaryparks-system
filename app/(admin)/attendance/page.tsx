@@ -31,19 +31,27 @@ type Attendance = {
     time: any;
     location?: string;
     note?: string;
-    photo?: string; // 🔥 Tambah field photo
+    photo?: string;
   };
   checkOut?: {
     time: any;
     location?: string;
     note?: string;
-    photo?: string; // 🔥 Tambah field photo
+    photo?: string;
   };
   workHours?: string;
   status?: string;
   isCorrected?: boolean;
   correctedCheckIn?: string;
   correctedCheckOut?: string;
+  shift?: {
+    id: string;
+    name: string;
+    code: string;
+    startTime: string;
+    endTime: string;
+    color: string;
+  };
 };
 
 type CorrectionRequest = {
@@ -178,7 +186,7 @@ export default function AttendancePage() {
   const [correctionsLoading, setCorrectionsLoading] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null); // 🔥 Preview foto
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [selectedPhotoInfo, setSelectedPhotoInfo] = useState<{ name: string; type: string; date: string } | null>(null);
 
   // Filter states
@@ -234,7 +242,6 @@ export default function AttendancePage() {
         snap.forEach((doc) => {
           const data = doc.data();
           if (data.status === "approved") {
-            // Buat key untuk mapping
             let dateStr = "";
             if (data.date?.toDate) {
               const d = data.date.toDate();
@@ -281,7 +288,6 @@ export default function AttendancePage() {
           const d = doc.data();
           const user = users[d.uid] || {};
           
-          // Buat key untuk cek koreksi
           let dateStr = "";
           if (d.date?.toDate) {
             const dateObj = d.date.toDate();
@@ -296,7 +302,6 @@ export default function AttendancePage() {
           let checkInData = d.checkIn;
           let checkOutData = d.checkOut;
           
-          // Jika ada koreksi yang sudah approved, gunakan jam koreksi
           if (correction && correction.status === "approved") {
             isCorrected = true;
             correctedCheckIn = correction.checkIn;
@@ -304,25 +309,23 @@ export default function AttendancePage() {
             
             const dateObj = d.date?.toDate ? d.date.toDate() : new Date();
             
-            // Buat checkIn dengan waktu yang dikoreksi
             if (correction.checkIn) {
               const correctedTime = formatTimeFromString(correction.checkIn, dateObj);
               checkInData = {
                 ...d.checkIn,
                 time: correctedTime,
                 isCorrected: true,
-                photo: d.checkIn?.photo, // 🔥 Tetap gunakan foto asli
+                photo: d.checkIn?.photo,
               };
             }
             
-            // Buat checkOut dengan waktu yang dikoreksi
             if (correction.checkOut) {
               const correctedTime = formatTimeFromString(correction.checkOut, dateObj);
               checkOutData = {
                 ...d.checkOut,
                 time: correctedTime,
                 isCorrected: true,
-                photo: d.checkOut?.photo, // 🔥 Tetap gunakan foto asli
+                photo: d.checkOut?.photo,
               };
             }
           }
@@ -404,7 +407,6 @@ export default function AttendancePage() {
         };
       }
       
-      // Hanya hitung jika ada checkIn (hadir)
       if (a.checkIn) {
         recap[a.uid].totalHari++;
         const jamKerja = getWorkHours(a);
@@ -836,7 +838,7 @@ export default function AttendancePage() {
           </div>
         </div>
 
-        {/* 🔥 DETAIL TABLE DENGAN KOLOM FOTO */}
+        {/* 🔥 DETAIL TABLE DENGAN KOLOM FOTO - SUDAH FIX */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
             <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
@@ -870,8 +872,8 @@ export default function AttendancePage() {
                     ? a.correctedCheckOut 
                     : formatTime(a.checkOut?.time);
                   
-                  const hasCheckInPhoto = a.checkIn?.photo;
-                  const hasCheckOutPhoto = a.checkOut?.photo;
+                  const hasCheckInPhoto = !!a.checkIn?.photo;
+                  const hasCheckOutPhoto = !!a.checkOut?.photo;
                   
                   return (
                     <tr key={a.id} className={`border-b ${idx % 2 === 0 ? "bg-white" : "bg-gray-50"} hover:bg-gray-100`}>
@@ -891,24 +893,26 @@ export default function AttendancePage() {
                       </td>
                       <td className="px-4 py-3 font-mono">
                         {workHours > 0 ? formatWorkHours(workHours) : "-"}
-                      </td>
-                      {/* 🔥 KOLOM FOTO */}
+                       </td>
+                      {/* 🔥 KOLOM FOTO - SUDAH FIX DENGAN OPTIONAL CHAINING */}
                       <td className="px-4 py-3">
                         <div className="flex gap-2">
                           {hasCheckInPhoto && (
                             <button
                               onClick={() => {
-                                setSelectedPhoto(a.checkIn.photo);
-                                setSelectedPhotoInfo({
-                                  name: a.name,
-                                  type: "Check-in",
-                                  date: formatDate(a.date),
-                                });
+                                if (a.checkIn?.photo) {
+                                  setSelectedPhoto(a.checkIn.photo);
+                                  setSelectedPhotoInfo({
+                                    name: a.name,
+                                    type: "Check-in",
+                                    date: formatDate(a.date),
+                                  });
+                                }
                               }}
                               className="group relative"
                             >
                               <img
-                                src={a.checkIn.photo}
+                                src={a.checkIn?.photo || ""}
                                 alt="Check-in"
                                 className="w-10 h-10 rounded-lg object-cover ring-2 ring-green-300 hover:ring-4 transition-all"
                               />
@@ -920,17 +924,19 @@ export default function AttendancePage() {
                           {hasCheckOutPhoto && (
                             <button
                               onClick={() => {
-                                setSelectedPhoto(a.checkOut.photo);
-                                setSelectedPhotoInfo({
-                                  name: a.name,
-                                  type: "Check-out",
-                                  date: formatDate(a.date),
-                                });
+                                if (a.checkOut?.photo) {
+                                  setSelectedPhoto(a.checkOut.photo);
+                                  setSelectedPhotoInfo({
+                                    name: a.name,
+                                    type: "Check-out",
+                                    date: formatDate(a.date),
+                                  });
+                                }
                               }}
                               className="group relative"
                             >
                               <img
-                                src={a.checkOut.photo}
+                                src={a.checkOut?.photo || ""}
                                 alt="Check-out"
                                 className="w-10 h-10 rounded-lg object-cover ring-2 ring-blue-300 hover:ring-4 transition-all"
                               />
@@ -1006,17 +1012,17 @@ export default function AttendancePage() {
                       <td className="px-4 py-3">{r.jabatan}</td>
                       <td className="px-4 py-3">
                         <span className="font-bold text-blue-600">{r.totalHari}</span> hari
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         <span className="font-bold text-green-600">{r.totalJam.toFixed(2)}</span> jam
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         {r.totalHari > 0 ? `${(r.totalJam / r.totalHari).toFixed(2)} jam` : "-"}
-                      </td>
+                       </td>
                       <td className="px-4 py-3">Rp {r.rate?.toLocaleString() || 0}</td>
                       <td className="px-4 py-3">
                         <span className="font-bold text-green-600">Rp {r.totalGaji?.toLocaleString() || 0}</span>
-                      </td>
+                       </td>
                     </tr>
                   ))}
                 </tbody>
