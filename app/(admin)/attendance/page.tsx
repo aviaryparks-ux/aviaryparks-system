@@ -31,11 +31,13 @@ type Attendance = {
     time: any;
     location?: string;
     note?: string;
+    photo?: string; // 🔥 Tambah field photo
   };
   checkOut?: {
     time: any;
     location?: string;
     note?: string;
+    photo?: string; // 🔥 Tambah field photo
   };
   workHours?: string;
   status?: string;
@@ -176,6 +178,8 @@ export default function AttendancePage() {
   const [correctionsLoading, setCorrectionsLoading] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null); // 🔥 Preview foto
+  const [selectedPhotoInfo, setSelectedPhotoInfo] = useState<{ name: string; type: string; date: string } | null>(null);
 
   // Filter states
   const [tempDept, setTempDept] = useState("ALL");
@@ -307,6 +311,7 @@ export default function AttendancePage() {
                 ...d.checkIn,
                 time: correctedTime,
                 isCorrected: true,
+                photo: d.checkIn?.photo, // 🔥 Tetap gunakan foto asli
               };
             }
             
@@ -317,6 +322,7 @@ export default function AttendancePage() {
                 ...d.checkOut,
                 time: correctedTime,
                 isCorrected: true,
+                photo: d.checkOut?.photo, // 🔥 Tetap gunakan foto asli
               };
             }
           }
@@ -830,7 +836,7 @@ export default function AttendancePage() {
           </div>
         </div>
 
-        {/* Detail Table */}
+        {/* 🔥 DETAIL TABLE DENGAN KOLOM FOTO */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
             <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
@@ -850,8 +856,9 @@ export default function AttendancePage() {
                   <th className="px-4 py-3 text-left">Masuk</th>
                   <th className="px-4 py-3 text-left">Pulang</th>
                   <th className="px-4 py-3 text-left">Jam Kerja</th>
+                  <th className="px-4 py-3 text-left">Foto</th>
                   <th className="px-4 py-3 text-left">Status</th>
-                 </tr>
+                </tr>
               </thead>
               <tbody>
                 {filtered.slice(0, 100).map((a, idx) => {
@@ -862,6 +869,9 @@ export default function AttendancePage() {
                   const pulangDisplay = a.isCorrected && a.correctedCheckOut 
                     ? a.correctedCheckOut 
                     : formatTime(a.checkOut?.time);
+                  
+                  const hasCheckInPhoto = a.checkIn?.photo;
+                  const hasCheckOutPhoto = a.checkOut?.photo;
                   
                   return (
                     <tr key={a.id} className={`border-b ${idx % 2 === 0 ? "bg-white" : "bg-gray-50"} hover:bg-gray-100`}>
@@ -882,6 +892,58 @@ export default function AttendancePage() {
                       <td className="px-4 py-3 font-mono">
                         {workHours > 0 ? formatWorkHours(workHours) : "-"}
                       </td>
+                      {/* 🔥 KOLOM FOTO */}
+                      <td className="px-4 py-3">
+                        <div className="flex gap-2">
+                          {hasCheckInPhoto && (
+                            <button
+                              onClick={() => {
+                                setSelectedPhoto(a.checkIn.photo);
+                                setSelectedPhotoInfo({
+                                  name: a.name,
+                                  type: "Check-in",
+                                  date: formatDate(a.date),
+                                });
+                              }}
+                              className="group relative"
+                            >
+                              <img
+                                src={a.checkIn.photo}
+                                alt="Check-in"
+                                className="w-10 h-10 rounded-lg object-cover ring-2 ring-green-300 hover:ring-4 transition-all"
+                              />
+                              <div className="absolute -top-2 -right-2 bg-green-500 text-white text-[10px] px-1 rounded-full">
+                                IN
+                              </div>
+                            </button>
+                          )}
+                          {hasCheckOutPhoto && (
+                            <button
+                              onClick={() => {
+                                setSelectedPhoto(a.checkOut.photo);
+                                setSelectedPhotoInfo({
+                                  name: a.name,
+                                  type: "Check-out",
+                                  date: formatDate(a.date),
+                                });
+                              }}
+                              className="group relative"
+                            >
+                              <img
+                                src={a.checkOut.photo}
+                                alt="Check-out"
+                                className="w-10 h-10 rounded-lg object-cover ring-2 ring-blue-300 hover:ring-4 transition-all"
+                              />
+                              <div className="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] px-1 rounded-full">
+                                OUT
+                              </div>
+                            </button>
+                          )}
+                          {!hasCheckInPhoto && !hasCheckOutPhoto && (
+                            <span className="text-gray-400 text-xs">-</span>
+                          )}
+                        </div>
+                       </td>
                       <td className="px-4 py-3">
                         {a.isCorrected ? (
                           <span className="px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-700">
@@ -892,7 +954,7 @@ export default function AttendancePage() {
                             Normal
                           </span>
                         )}
-                      </td>
+                       </td>
                     </tr>
                   );
                 })}
@@ -963,6 +1025,54 @@ export default function AttendancePage() {
           </div>
         )}
       </div>
+
+      {/* 🔥 MODAL PREVIEW FOTO */}
+      {selectedPhoto && selectedPhotoInfo && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4"
+          onClick={() => setSelectedPhoto(null)}
+        >
+          <div className="relative max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setSelectedPhoto(null)}
+              className="absolute -top-12 right-0 text-white bg-black/50 rounded-full p-2 hover:bg-black/70 transition-colors z-10"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            
+            <div className="bg-white rounded-2xl overflow-hidden shadow-2xl">
+              <div className="bg-gradient-to-r from-green-600 to-green-700 p-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-white font-medium">{selectedPhotoInfo.name}</p>
+                    <p className="text-white/80 text-sm">{selectedPhotoInfo.type}</p>
+                  </div>
+                  <span className="text-white/80 text-sm">{selectedPhotoInfo.date}</span>
+                </div>
+              </div>
+              
+              <div className="relative">
+                <img 
+                  src={selectedPhoto} 
+                  alt="Preview Foto Absensi" 
+                  className="w-full h-auto max-h-[70vh] object-contain bg-gray-100"
+                />
+              </div>
+              
+              <div className="p-4 text-center border-t border-gray-200">
+                <button
+                  onClick={() => setSelectedPhoto(null)}
+                  className="px-6 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </ProtectedRoute>
   );
 }
