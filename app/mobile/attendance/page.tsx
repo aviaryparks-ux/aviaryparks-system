@@ -63,14 +63,105 @@ export default function Page() {
   const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
   const [uploadProgress, setUploadProgress] = useState(0);
 
+  // 🔥 STATE UNTUK SHIFT DARI JADWAL
+  const [scheduledShift, setScheduledShift] = useState<any>(null);
+  const [isLoadingShift, setIsLoadingShift] = useState(true);
+  const [shiftError, setShiftError] = useState<string | null>(null);
+
   // Load data
   useEffect(() => {
     loadOffice();
     if (user) {
       loadTodayAttendance();
       loadHistory();
+      loadScheduledShift(); // 🔥 Load shift dari jadwal
     }
   }, [user]);
+
+  // 🔥 FUNGSI UNTUK MENGAMBIL SHIFT DARI shift_schedules
+  // 🔥 FUNGSI UNTUK MENGAMBIL SHIFT DARI shift_schedules
+// app/mobile/attendance/page.tsx
+
+const loadScheduledShift = async () => {
+  if (!user) return;
+  
+  setIsLoadingShift(true);
+  setShiftError(null);
+  
+  try {
+    const today = new Date();
+    const dateStr = today.toISOString().split("T")[0];
+    const scheduleId = `${user.uid}_${dateStr}`;
+    
+    console.log("🔍 Mencari jadwal shift:", scheduleId);
+    
+    const scheduleDoc = await getDoc(doc(db, "shift_schedules", scheduleId));
+    
+    if (scheduleDoc.exists()) {
+      const scheduleData = scheduleDoc.data();
+      console.log("📄 Data schedule:", scheduleData);
+      
+      let shiftData = null;
+      let shiftDocId = null;
+      
+      // 🔥 CARI BERDASARKAN NAMA SHIFT (bukan ID)
+      if (scheduleData.shiftName) {
+        console.log("🔍 Mencari shift berdasarkan nama:", scheduleData.shiftName);
+        
+        const shiftsQuery = query(
+          collection(db, "shifts"), 
+          where("name", "==", scheduleData.shiftName),
+          where("isActive", "==", true)
+        );
+        
+        const shiftsSnap = await getDocs(shiftsQuery);
+        
+        if (!shiftsSnap.empty) {
+          const shiftDoc = shiftsSnap.docs[0];
+          shiftData = shiftDoc.data();
+          shiftDocId = shiftDoc.id;
+          console.log("✅ Shift ditemukan berdasarkan nama:", shiftData.name, "dengan ID:", shiftDocId);
+        } else {
+          console.log("❌ Shift tidak ditemukan dengan nama:", scheduleData.shiftName);
+        }
+      }
+      
+      // Jika masih tidak ditemukan, coba berdasarkan shiftId (fallback)
+      if (!shiftData && scheduleData.shiftId) {
+        console.log("🔍 Mencoba mencari berdasarkan shiftId:", scheduleData.shiftId);
+        const shiftDoc = await getDoc(doc(db, "shifts", scheduleData.shiftId));
+        if (shiftDoc.exists()) {
+          shiftData = shiftDoc.data();
+          shiftDocId = shiftDoc.id;
+          console.log("✅ Shift ditemukan berdasarkan ID:", shiftData.name);
+        }
+      }
+      
+      if (shiftData) {
+        setScheduledShift({
+          id: shiftDocId,
+          name: shiftData.name,
+          code: shiftData.code,
+          startTime: shiftData.startTime,
+          endTime: shiftData.endTime,
+          color: shiftData.color,
+          lateTolerance: shiftData.lateTolerance || 15,
+        });
+        console.log("✅ Shift berhasil dimuat:", shiftData.name);
+      } else {
+        setShiftError(`Shift "${scheduleData.shiftName}" tidak ditemukan di database`);
+      }
+    } else {
+      console.log("❌ Tidak ada jadwal shift untuk ID:", scheduleId);
+      setShiftError(`Tidak ada jadwal shift untuk tanggal ${dateStr}`);
+    }
+  } catch (error) {
+    console.error("❌ Error loading shift:", error);
+    setShiftError("Gagal memuat jadwal shift");
+  } finally {
+    setIsLoadingShift(false);
+  }
+};
 
   const loadOffice = async () => {
     const q = query(collection(db, "settings"), where("isActive", "==", true));
@@ -90,7 +181,6 @@ export default function Page() {
     }
   };
 
-  // 🔥 LOAD HISTORY ABSENSI
   const loadHistory = async () => {
     if (!user) return;
     setIsLoadingHistory(true);
@@ -155,7 +245,6 @@ export default function Page() {
   const isCheckedIn = todayAttendance?.checkIn;
   const isCheckedOut = todayAttendance?.checkOut;
 
-  // Upload foto ke Firebase Storage
   const uploadPhotoToStorage = async (base64Data: string): Promise<string> => {
     if (!user) throw new Error("User not found");
     
@@ -173,7 +262,6 @@ export default function Page() {
     return downloadUrl;
   };
 
-  // Camera functions
   const switchCamera = async () => {
     const newFacing = cameraFacing === "environment" ? "user" : "environment";
     setCameraFacing(newFacing);
@@ -198,6 +286,11 @@ export default function Page() {
   };
 
   const startCamera = async () => {
+    if (!scheduledShift && !isCheckedIn) {
+      alert(shiftError || "Tidak ada jadwal shift untuk hari ini. Silakan hubungi admin.");
+      return;
+    }
+
     if (stream) stream.getTracks().forEach(t => t.stop());
 
     try {
@@ -293,6 +386,7 @@ export default function Page() {
     getLocation();
   };
 
+  // 🔥 SAVE ATTENDANCE - SEKARANG MENYIMPAN SHIFT!
   const saveAttendance = async () => {
     if (!user) {
       alert("User tidak ditemukan, silakan login ulang");
@@ -314,6 +408,12 @@ export default function Page() {
       return;
     }
 
+    // 🔥 Validasi shift untuk check-in
+    if (!isCheckedIn && !scheduledShift) {
+      alert(shiftError || "Tidak ada jadwal shift untuk hari ini. Silakan hubungi admin.");
+      return;
+    }
+
     setIsSaving(true);
     setUploadProgress(0);
 
@@ -326,10 +426,20 @@ export default function Page() {
       const snap = await getDoc(ref);
 
       if (!snap.exists()) {
+        // 🔥 CHECK-IN: SIMPAN SHIFT KE DATABASE
         await setDoc(ref, {
           uid: user.uid,
           name: user.name,
           date: Timestamp.fromDate(today),
+          shift: {  // 🔥 INI YANG PALING PENTING!
+            id: scheduledShift.id,
+            name: scheduledShift.name,
+            code: scheduledShift.code,
+            startTime: scheduledShift.startTime,
+            endTime: scheduledShift.endTime,
+            color: scheduledShift.color,
+            lateTolerance: scheduledShift.lateTolerance || 15,
+          },
           checkIn: {
             time: Timestamp.now(),
             photo: photoUrl,
@@ -348,6 +458,7 @@ export default function Page() {
         });
         alert("✅ Check-in berhasil!");
       } else if (!snap.data()?.checkOut) {
+        // 🔥 CHECK-OUT: UPDATE TANPA MENGUBAH SHIFT
         await updateDoc(ref, {
           checkOut: {
             time: Timestamp.now(),
@@ -363,7 +474,7 @@ export default function Page() {
       }
 
       await loadTodayAttendance();
-      await loadHistory(); // 🔥 Refresh history setelah absen
+      await loadHistory();
       setShowMap(false);
       setPhotoUri(null);
       setLocation(null);
@@ -384,7 +495,6 @@ export default function Page() {
     <div className="min-h-screen bg-gradient-to-br from-green-900 to-green-800 p-4">
       {/* Main Card */}
       <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 max-w-md mx-auto border border-white/20 mb-4">
-        {/* Header */}
         <div className="text-center mb-6">
           <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
             <span className="text-3xl">📸</span>
@@ -408,7 +518,7 @@ export default function Page() {
               </div>
             </div>
             {isCheckedIn?.photo && (
-              <img src={isCheckedIn.photo} className="w-10 h-10 rounded-full object-cover" />
+              <img src={isCheckedIn.photo} className="w-10 h-10 rounded-full object-cover ring-2 ring-green-300" />
             )}
           </div>
 
@@ -425,18 +535,68 @@ export default function Page() {
               </div>
             </div>
             {isCheckedOut?.photo && (
-              <img src={isCheckedOut.photo} className="w-10 h-10 rounded-full object-cover" />
+              <img src={isCheckedOut.photo} className="w-10 h-10 rounded-full object-cover ring-2 ring-blue-300" />
             )}
           </div>
         </div>
+
+        {/* 🔥 TAMPILKAN SHIFT YANG DIJADWALKAN */}
+        {!isCheckedIn && (
+          <div className="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-200">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sm">📋</span>
+              <span className="text-sm font-medium text-blue-700">Shift Hari Ini (dari jadwal)</span>
+            </div>
+            {isLoadingShift ? (
+              <div className="flex justify-center py-2">
+                <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : scheduledShift ? (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-gray-800">{scheduledShift.name}</p>
+                  <p className="text-xs text-gray-600">
+                    {scheduledShift.startTime} - {scheduledShift.endTime}
+                  </p>
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    Toleransi: {scheduledShift.lateTolerance} menit
+                  </p>
+                </div>
+                <div 
+                  className="w-8 h-8 rounded-full" 
+                  style={{ backgroundColor: scheduledShift.color }}
+                />
+              </div>
+            ) : (
+              <div className="text-center">
+                <p className="text-sm text-red-600">{shiftError || "Tidak ada jadwal shift"}</p>
+                <p className="text-xs text-gray-500 mt-1">Silakan hubungi admin untuk penjadwalan</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tombol Absen */}
         {!isCheckedOut ? (
           <button
             onClick={startCamera}
-            className="w-full py-4 bg-gradient-to-r from-green-600 to-green-700 text-white font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all active:scale-95"
+            disabled={(!scheduledShift && !isCheckedIn) || isLoadingShift}
+            className={`w-full py-4 font-bold rounded-2xl shadow-lg transition-all ${
+              (scheduledShift || isCheckedIn)
+                ? "bg-gradient-to-r from-green-600 to-green-700 text-white hover:shadow-xl active:scale-95"
+                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+            }`}
           >
-            {isCheckedIn ? "📤 Ambil Foto Check-out" : "📸 Ambil Foto Check-in"}
+            {isLoadingShift ? (
+              <div className="flex items-center justify-center gap-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Memuat jadwal...</span>
+              </div>
+            ) : isCheckedIn ? (
+              "📤 Ambil Foto Check-out"
+            ) : (
+              "📸 Ambil Foto Check-in"
+            )}
           </button>
         ) : (
           <div className="text-center p-4 bg-green-100 rounded-2xl">
@@ -449,17 +609,14 @@ export default function Page() {
         </p>
       </div>
 
-      {/* 🔥 HISTORY SECTION */}
+      {/* HISTORY SECTION */}
       <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 max-w-md mx-auto border border-white/20">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
             <span className="text-xl">📋</span>
             Riwayat Absensi
           </h2>
-          <button
-            onClick={loadHistory}
-            className="text-green-600 text-sm hover:text-green-700 transition-colors"
-          >
+          <button onClick={loadHistory} className="text-green-600 text-sm hover:text-green-700">
             Refresh
           </button>
         </div>
@@ -476,7 +633,6 @@ export default function Page() {
           <div className="text-center py-8">
             <div className="text-5xl mb-3">📭</div>
             <p className="text-gray-500">Belum ada riwayat absensi</p>
-            <p className="text-gray-400 text-sm mt-1">Mulai absen hari ini</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -486,59 +642,29 @@ export default function Page() {
               const checkOut = item.checkOut;
               const workHours = calculateWorkHours(checkIn, checkOut);
               const isComplete = checkIn && checkOut;
+              const shift = item.shift;
               
               return (
-                <div
-                  key={item.id || index}
-                  className={`p-3 rounded-xl transition-all hover:scale-[1.02] cursor-pointer ${
-                    isComplete ? "bg-green-50 border border-green-200" : "bg-gray-50 border border-gray-200"
-                  }`}
-                >
+                <div key={item.id || index} className={`p-3 rounded-xl ${isComplete ? "bg-green-50 border border-green-200" : "bg-gray-50 border border-gray-200"}`}>
                   <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                        isComplete ? "bg-green-100" : "bg-orange-100"
-                      }`}>
-                        <span className="text-sm">{isComplete ? "✅" : "⏳"}</span>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-800 text-sm">
-                          {date?.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {formatShortDate(item.date)} • {workHours !== "-" ? workHours : ""}
-                        </p>
-                      </div>
+                    <div>
+                      <p className="font-medium text-gray-800 text-sm">
+                        {date?.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
+                      </p>
+                      {shift && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: shift.color }} />
+                          <span className="text-xs text-gray-500">Shift: {shift.name}</span>
+                        </div>
+                      )}
                     </div>
                     <div className="text-right">
                       <p className="text-xs font-mono">
                         {checkIn ? formatTime(checkIn.time) : "--:--"} - {checkOut ? formatTime(checkOut.time) : "--:--"}
                       </p>
-                      {!checkOut && checkIn && (
-                        <span className="text-xs text-orange-500">Belum checkout</span>
-                      )}
+                      {workHours !== "-" && <p className="text-xs text-gray-500">{workHours}</p>}
                     </div>
                   </div>
-                  
-                  {/* Foto Thumbnail */}
-                  {(checkIn?.photo || checkOut?.photo) && (
-                    <div className="flex gap-2 mt-2">
-                      {checkIn?.photo && (
-                        <img
-                          src={checkIn.photo}
-                          alt="Check-in"
-                          className="w-8 h-8 rounded-lg object-cover"
-                        />
-                      )}
-                      {checkOut?.photo && (
-                        <img
-                          src={checkOut.photo}
-                          alt="Check-out"
-                          className="w-8 h-8 rounded-lg object-cover"
-                        />
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -550,38 +676,20 @@ export default function Page() {
       {showCamera && (
         <div className="fixed inset-0 z-50 bg-black">
           <div className="relative h-full">
-            <video
-              ref={videoRef}
-              className="w-full h-full object-cover"
-              autoPlay
-              playsInline
-              muted
-            />
+            <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
             <canvas ref={canvasRef} className="hidden" />
 
-            <button
-              onClick={switchCamera}
-              className="absolute top-6 right-6 bg-black/50 backdrop-blur-sm text-white p-3 rounded-full shadow-lg active:scale-95 transition-all"
-            >
+            <button onClick={switchCamera} className="absolute top-6 right-6 bg-black/50 backdrop-blur-sm text-white p-3 rounded-full">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
               </svg>
             </button>
 
             <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/70 to-transparent">
-              <button
-                onClick={takePhoto}
-                className="w-full py-4 bg-white text-green-700 font-bold rounded-2xl shadow-lg active:scale-95 transition-all"
-              >
+              <button onClick={takePhoto} className="w-full py-4 bg-white text-green-700 font-bold rounded-2xl">
                 📸 Ambil Foto
               </button>
-              <button
-                onClick={() => {
-                  if (stream) stream.getTracks().forEach(t => t.stop());
-                  setShowCamera(false);
-                }}
-                className="w-full mt-3 py-3 bg-gray-500/80 text-white font-bold rounded-2xl"
-              >
+              <button onClick={() => { if (stream) stream.getTracks().forEach(t => t.stop()); setShowCamera(false); }} className="w-full mt-3 py-3 bg-gray-500/80 text-white font-bold rounded-2xl">
                 Batal
               </button>
             </div>
@@ -592,164 +700,56 @@ export default function Page() {
       {/* Map Modal */}
       {showMap && photoUri && location && matchedLocation && (
         <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="bg-gradient-to-r from-green-600 to-green-700 p-4 text-white flex justify-between items-center">
-              <h2 className="text-lg font-bold text-center flex-1">
-                {isCheckedIn ? "Check-out" : "Check-in"}
-              </h2>
-              <button
-                onClick={refreshLocation}
-                disabled={isLoadingLocation}
-                className="bg-white/20 rounded-full p-2 hover:bg-white/30 transition-all"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className={`h-5 w-5 ${isLoadingLocation ? "animate-spin" : ""}`}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
+              <h2 className="text-lg font-bold text-center flex-1">{isCheckedIn ? "Check-out" : "Check-in"}</h2>
+              <button onClick={refreshLocation} className="bg-white/20 rounded-full p-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
               </button>
             </div>
 
-            <div className="p-4 border-b border-gray-100">
-              <p className="text-sm text-gray-500 mb-2">Foto Absensi</p>
-              <div className="relative rounded-xl overflow-hidden">
-                <img src={photoUri} alt="Preview" className="w-full rounded-xl" />
-                <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full">
-                  {new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+            <div className="p-4">
+              <img src={photoUri} alt="Preview" className="w-full rounded-xl" />
+              {scheduledShift && !isCheckedIn && (
+                <div className="mt-3 text-center">
+                  <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">
+                    Shift: {scheduledShift.name} ({scheduledShift.startTime} - {scheduledShift.endTime})
+                  </span>
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="p-4">
-              <div className="flex justify-between items-center mb-2">
-                <p className="text-sm text-gray-500 flex items-center gap-2">
-                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                  Lokasi Kantor: {matchedLocation.name}
-                </p>
-              </div>
-              <div className="h-64 rounded-xl overflow-hidden border border-gray-200">
-                <MapContainer
-                  bounds={[
-                    [location.lat, location.lng],
-                    [matchedLocation.lat, matchedLocation.lng],
-                  ]}
-                  style={{ height: "100%", width: "100%" }}
-                  zoomControl={false}
-                >
+              <div className="h-64 rounded-xl overflow-hidden">
+                <MapContainer bounds={[[location.lat, location.lng], [matchedLocation.lat, matchedLocation.lng]]} style={{ height: "100%", width: "100%" }} zoomControl={false}>
                   <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                  <Circle
-                    center={[matchedLocation.lat, matchedLocation.lng]}
-                    radius={matchedLocation.radius}
-                    pathOptions={{ color: "#22c55e", fillColor: "#22c55e", fillOpacity: 0.2, weight: 2 }}
-                  />
-                  <Marker
-                    position={[matchedLocation.lat, matchedLocation.lng]}
-                    icon={L.divIcon({
-                      html: '<div style="background-color: #22c55e; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white;"></div>',
-                      className: "custom-marker",
-                      iconSize: [16, 16],
-                    })}
-                  />
-                  <Marker
-                    position={[location.lat, location.lng]}
-                    icon={L.divIcon({
-                      html: '<div style="background-color: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white;"></div>',
-                      className: "custom-marker",
-                      iconSize: [16, 16],
-                    })}
-                  />
-                  <Polyline
-                    positions={[[location.lat, location.lng], [matchedLocation.lat, matchedLocation.lng]]}
-                    pathOptions={{ color: "#3b82f6", weight: 2, dashArray: "5, 5" }}
-                  />
+                  <Circle center={[matchedLocation.lat, matchedLocation.lng]} radius={matchedLocation.radius} pathOptions={{ color: "#22c55e", fillColor: "#22c55e", fillOpacity: 0.2 }} />
+                  <Marker position={[matchedLocation.lat, matchedLocation.lng]} icon={L.divIcon({ html: '<div style="background-color: #22c55e; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white;"></div>', iconSize: [16, 16] })} />
+                  <Marker position={[location.lat, location.lng]} icon={L.divIcon({ html: '<div style="background-color: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white;"></div>', iconSize: [16, 16] })} />
+                  <Polyline positions={[[location.lat, location.lng], [matchedLocation.lat, matchedLocation.lng]]} pathOptions={{ color: "#3b82f6", dashArray: "5, 5" }} />
                 </MapContainer>
-              </div>
-
-              <div className="flex justify-center gap-4 mt-2 text-xs">
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span>Radius Kantor</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <span>Jarak</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                  <span>Lokasi Anda</span>
-                </div>
               </div>
             </div>
 
             <div className="p-4 pt-0 space-y-3">
-              <div className={`p-3 rounded-xl text-center ${isWithinRadius ? "bg-green-100 text-green-700 border border-green-200" : "bg-red-100 text-red-700 border border-red-200"}`}>
-                <div className="font-bold text-lg">
-                  {isWithinRadius ? "✓ Dalam Radius Kantor" : "✗ Di Luar Radius Kantor"}
-                </div>
-                <div className="text-sm mt-1">
-                  Jarak: {distance.toFixed(0)}m {matchedLocation && `(Maks: ${matchedLocation.radius}m)`}
-                </div>
+              <div className={`p-3 rounded-xl text-center ${isWithinRadius ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                <div className="font-bold">{isWithinRadius ? "✓ Dalam Radius Kantor" : "✗ Di Luar Radius Kantor"}</div>
+                <div className="text-sm">Jarak: {distance.toFixed(0)}m (Maks: {matchedLocation.radius}m)</div>
               </div>
 
-              <button
-                onClick={saveAttendance}
-                disabled={!isWithinRadius || isSaving}
-                className={`w-full py-4 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-2 ${
-                  isWithinRadius && !isSaving
-                    ? "bg-gradient-to-r from-green-600 to-green-700 text-white shadow-lg hover:shadow-xl active:scale-95"
-                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                }`}
-              >
-                {isSaving ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Mengupload foto...</span>
-                  </>
-                ) : (
-                  isCheckedIn ? "✅ Simpan Check-out" : "✅ Simpan Check-in"
-                )}
+              <button onClick={saveAttendance} disabled={!isWithinRadius || isSaving} className={`w-full py-4 rounded-2xl font-bold ${isWithinRadius && !isSaving ? "bg-green-600 text-white" : "bg-gray-300 text-gray-500 cursor-not-allowed"}`}>
+                {isSaving ? "Mengupload..." : (isCheckedIn ? "✅ Simpan Check-out" : "✅ Simpan Check-in")}
               </button>
 
-              <button
-                onClick={() => {
-                  setShowMap(false);
-                  setPhotoUri(null);
-                  setLocation(null);
-                  setMatchedLocation(null);
-                }}
-                className="w-full py-3 bg-gray-200 text-gray-700 font-bold rounded-2xl transition-all hover:bg-gray-300"
-              >
+              <button onClick={() => { setShowMap(false); setPhotoUri(null); setLocation(null); }} className="w-full py-3 bg-gray-200 text-gray-700 font-bold rounded-2xl">
                 Kembali
               </button>
             </div>
           </div>
         </div>
       )}
-
-      <style jsx>{`
-        @keyframes fade-in {
-          from {
-            opacity: 0;
-            transform: scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
-        }
-        .animate-fade-in {
-          animation: fade-in 0.2s ease-out;
-        }
-      `}</style>
     </div>
   );
 }

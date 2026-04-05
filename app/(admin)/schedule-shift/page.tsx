@@ -10,6 +10,7 @@ import {
   setDoc,
   deleteDoc,
   getDoc,
+  writeBatch,
 } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/contexts/AuthContext";
@@ -49,6 +50,79 @@ type Holiday = {
   isNational?: boolean;
 };
 
+// Component untuk shift select (tanpa tombol submit sendiri)
+const ShiftSelectCell = ({ 
+  userId, 
+  date, 
+  currentShiftId, 
+  currentShiftName, 
+  shifts, 
+  onShiftChange,
+  isLibur,
+  allowHolidayAssign 
+}: { 
+  userId: string; 
+  date: string; 
+  currentShiftId: string | null;
+  currentShiftName: string | null;
+  shifts: Shift[]; 
+  onShiftChange: (userId: string, date: string, shiftId: string, shiftName: string) => void;
+  isLibur: boolean;
+  allowHolidayAssign: boolean;
+}) => {
+  const [selectedShiftId, setSelectedShiftId] = useState(currentShiftId || "");
+  const [searchText, setSearchText] = useState(currentShiftName || "");
+
+  const handleChange = (value: string) => {
+    setSearchText(value);
+    const shift = shifts.find(s => s.name === value);
+    if (shift) {
+      setSelectedShiftId(shift.id);
+      onShiftChange(userId, date, shift.id, shift.name);
+    } else if (value === "") {
+      setSelectedShiftId("");
+      onShiftChange(userId, date, "", "");
+    }
+  };
+
+  const filteredShifts = shifts.filter(shift => 
+    shift.name.toLowerCase().includes(searchText.toLowerCase())
+  );
+
+  if (isLibur && !allowHolidayAssign) {
+    return (
+      <div className="text-[10px] text-gray-400 py-2 text-center">
+        {isLibur ? "Libur" : "Weekend"}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <input
+        type="text"
+        value={searchText}
+        onChange={(e) => handleChange(e.target.value)}
+        placeholder="Ketik nama shift..."
+        className="w-full text-[11px] border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-green-500"
+        list={`shift-list-${userId}-${date}`}
+      />
+      <datalist id={`shift-list-${userId}-${date}`}>
+        {shifts.map(shift => (
+          <option key={shift.id} value={shift.name}>
+            {shift.name} ({shift.startTime} - {shift.endTime})
+          </option>
+        ))}
+      </datalist>
+      {selectedShiftId && (
+        <div className="text-[9px] text-green-600 truncate">
+          {shifts.find(s => s.id === selectedShiftId)?.name}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function ScheduleShiftPage() {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
@@ -70,12 +144,16 @@ export default function ScheduleShiftPage() {
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   
+  // 🔥 State untuk menyimpan perubahan yang belum disimpan
+  const [pendingChanges, setPendingChanges] = useState<Map<string, { shiftId: string; shiftName: string }>>(new Map());
+  
   // Modal states
   const [showRangeModal, setShowRangeModal] = useState(false);
   const [rangeShiftId, setRangeShiftId] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [userSearchTerm, setUserSearchTerm] = useState("");
   const [selectAll, setSelectAll] = useState(false);
+  const [rangeLoading, setRangeLoading] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -88,7 +166,6 @@ export default function ScheduleShiftPage() {
   const canManage = isSuperAdmin || isAdmin || isHR || isSPV;
   const canBulkAssign = isSuperAdmin || isHR;
   const canSeeAllDepartments = isSuperAdmin || isHR;
-  const canImport = isSuperAdmin || isHR;
 
   // Fetch holidays from API
   const fetchHolidays = async (year: number) => {
@@ -139,7 +216,6 @@ export default function ScheduleShiftPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Load users
       let usersSnap = await getDocs(collection(db, "users"));
       let usersList: User[] = [];
       
@@ -181,7 +257,6 @@ export default function ScheduleShiftPage() {
 
       setUsers(usersList);
 
-      // Load shifts
       const shiftsSnap = await getDocs(collection(db, "shifts"));
       const shiftsList: Shift[] = [];
       shiftsSnap.forEach(doc => {
@@ -200,7 +275,6 @@ export default function ScheduleShiftPage() {
       });
       setShifts(shiftsList);
 
-      // Load schedules untuk bulan ini
       const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
       const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
       
@@ -221,6 +295,9 @@ export default function ScheduleShiftPage() {
         }
       });
       setSchedules(schedulesMap);
+      
+      // Reset pending changes setelah load data
+      setPendingChanges(new Map());
     } catch (error) {
       console.error("Error loading data:", error);
       showToast("❌ Gagal memuat data", "error");
@@ -229,48 +306,118 @@ export default function ScheduleShiftPage() {
     }
   };
 
-  const handleAssign = async (userId: string, shiftId: string, date: string) => {
-    if (!canManage) return;
+  // 🔥 Fungsi untuk mencatat perubahan shift
+  const handleShiftChange = (userId: string, date: string, shiftId: string, shiftName: string) => {
+    const cellKey = `${userId}_${date}`;
+    const currentSchedule = schedules[cellKey];
     
-    const scheduleId = `${userId}_${date}`;
-    const shift = shifts.find(s => s.id === shiftId);
-    
+    // Jika shiftId sama dengan yang sudah ada dan tidak berubah, hapus dari pending changes
+    if (currentSchedule?.shiftId === shiftId) {
+      setPendingChanges(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(cellKey);
+        return newMap;
+      });
+    } 
+    // Jika shiftId kosong (hapus)
+    else if (shiftId === "") {
+      setPendingChanges(prev => {
+        const newMap = new Map(prev);
+        newMap.set(cellKey, { shiftId: "unassign", shiftName: "" });
+        return newMap;
+      });
+    }
+    // Jika ada perubahan shift
+    else if (shiftId) {
+      setPendingChanges(prev => {
+        const newMap = new Map(prev);
+        newMap.set(cellKey, { shiftId, shiftName });
+        return newMap;
+      });
+    }
+  };
+
+  // 🔥 Fungsi untuk menyimpan semua perubahan sekaligus
+  const handleSaveAllChanges = async () => {
+    if (pendingChanges.size === 0) {
+      showToast("Tidak ada perubahan yang perlu disimpan", "error");
+      return;
+    }
+
+    setSaving(true);
+    let successCount = 0;
+    let errorCount = 0;
+
     try {
-      if (shiftId === "unassign") {
-        await deleteDoc(doc(db, "shift_schedules", scheduleId));
-        setSchedules(prev => {
-          const newSchedules = { ...prev };
-          delete newSchedules[scheduleId];
-          return newSchedules;
-        });
-        showToast("✅ Shift berhasil dihapus");
-      } else {
-        await setDoc(doc(db, "shift_schedules", scheduleId), {
-          userId,
-          shiftId,
-          date,
-          shiftName: shift?.name,
-          shiftColor: shift?.color,
-          updatedBy: currentUser?.uid,
-          updatedByName: currentUser?.name,
-          updatedByRole: currentUser?.role,
-          updatedAt: new Date(),
-        });
-        setSchedules(prev => ({
-          ...prev,
-          [scheduleId]: {
+      const batch = writeBatch(db);
+      
+      for (const [cellKey, { shiftId, shiftName }] of pendingChanges.entries()) {
+        const [userId, date] = cellKey.split("_");
+        const scheduleId = `${userId}_${date}`;
+        const shift = shifts.find(s => s.id === shiftId);
+        
+        if (shiftId === "unassign") {
+          batch.delete(doc(db, "shift_schedules", scheduleId));
+        } else {
+          batch.set(doc(db, "shift_schedules", scheduleId), {
             userId,
             shiftId,
             date,
-            shiftName: shift?.name,
+            shiftName: shift?.name || shiftName,
             shiftColor: shift?.color,
-          }
-        }));
-        showToast(`✅ Shift ${shift?.name} berhasil diassign`);
+            updatedBy: currentUser?.uid,
+            updatedByName: currentUser?.name,
+            updatedByRole: currentUser?.role,
+            updatedAt: new Date(),
+          });
+        }
+        successCount++;
       }
+      
+      await batch.commit();
+      
+      // Update local state schedules
+      for (const [cellKey, { shiftId, shiftName }] of pendingChanges.entries()) {
+        const [userId, date] = cellKey.split("_");
+        const scheduleId = `${userId}_${date}`;
+        const shift = shifts.find(s => s.id === shiftId);
+        
+        if (shiftId === "unassign") {
+          setSchedules(prev => {
+            const newSchedules = { ...prev };
+            delete newSchedules[scheduleId];
+            return newSchedules;
+          });
+        } else {
+          setSchedules(prev => ({
+            ...prev,
+            [scheduleId]: {
+              userId,
+              shiftId,
+              date,
+              shiftName: shift?.name || shiftName,
+              shiftColor: shift?.color,
+            }
+          }));
+        }
+      }
+      
+      showToast(`✅ Berhasil menyimpan ${successCount} perubahan${errorCount > 0 ? `, ${errorCount} gagal` : ""}`);
+      setPendingChanges(new Map());
+      
     } catch (error) {
-      console.error("Error assigning shift:", error);
-      showToast("❌ Gagal menyimpan jadwal", "error");
+      console.error("Save all changes error:", error);
+      showToast("❌ Gagal menyimpan perubahan", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // 🔥 Batalkan semua perubahan
+  const handleCancelChanges = () => {
+    if (pendingChanges.size > 0 && confirm("Batalkan semua perubahan yang belum disimpan?")) {
+      setPendingChanges(new Map());
+      loadData(); // Reload data untuk mengembalikan ke state semula
     }
   };
 
@@ -280,7 +427,6 @@ export default function ScheduleShiftPage() {
     setTimeout(() => setShowSuccessToast(false), 3000);
   };
 
-  // Assign shift untuk range tanggal ke karyawan terpilih
   const assignDateRangeToSelectedUsers = async () => {
     if (!dateRange.start || !dateRange.end || !rangeShiftId) {
       showToast("Pilih tanggal mulai, tanggal akhir, dan shift terlebih dahulu", "error");
@@ -300,7 +446,7 @@ export default function ScheduleShiftPage() {
       dates.push(new Date(d).toISOString().split("T")[0]);
     }
 
-    setSaving(true);
+    setRangeLoading(true);
     let successCount = 0;
     const selectedUsersList = users.filter(u => selectedUserIds.has(u.uid));
     
@@ -346,7 +492,7 @@ export default function ScheduleShiftPage() {
       console.error(error);
       showToast("❌ Gagal melakukan assign range", "error");
     } finally {
-      setSaving(false);
+      setRangeLoading(false);
     }
   };
 
@@ -387,6 +533,11 @@ export default function ScheduleShiftPage() {
     return schedules[`${userId}_${dateStr}`];
   };
 
+  // Cek apakah suatu cell memiliki perubahan pending
+  const hasPendingChange = (userId: string, date: string) => {
+    return pendingChanges.has(`${userId}_${date}`);
+  };
+
   const prevMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
   };
@@ -410,7 +561,6 @@ export default function ScheduleShiftPage() {
     user.jabatan.toLowerCase().includes(userSearchTerm.toLowerCase())
   );
 
-  // Stats
   const stats = useMemo(() => {
     const daysInMonth = getDaysInMonth(currentMonth).filter(d => d !== null);
     const totalAssignments = Object.keys(schedules).length;
@@ -504,6 +654,44 @@ export default function ScheduleShiftPage() {
               </div>
             </div>
           </div>
+
+          {/* Info Pending Changes */}
+          {pendingChanges.size > 0 && (
+            <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📝</span>
+                <span className="text-sm text-yellow-800">
+                  {pendingChanges.size} perubahan belum disimpan
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCancelChanges}
+                  disabled={saving}
+                  className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  Batalkan
+                </button>
+                <button
+                  onClick={handleSaveAllChanges}
+                  disabled={saving}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  {saving ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Menyimpan...
+                    </>
+                  ) : (
+                    <>
+                      <span>💾</span>
+                      Simpan {pendingChanges.size} Perubahan
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Filter Section */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
@@ -688,16 +876,16 @@ export default function ScheduleShiftPage() {
                     const shift = shifts.find(s => s.name.toLowerCase() === shiftName.toLowerCase());
                     
                     if (user && shift) {
-                      await handleAssign(user.uid, shift.id, date);
+                      // Tambahkan ke pending changes
+                      handleShiftChange(user.uid, date, shift.id, shift.name);
                       importedCount++;
                     } else {
                       errorCount++;
                     }
                   }
                   
-                  showToast(`✅ Import selesai: ${importedCount} berhasil, ${errorCount} gagal`);
+                  showToast(`✅ Import selesai: ${importedCount} perubahan ditambahkan, ${errorCount} gagal`);
                   if (fileInputRef.current) fileInputRef.current.value = "";
-                  loadData();
                 } catch (error) {
                   showToast("❌ Gagal import file", "error");
                 }
@@ -785,25 +973,31 @@ export default function ScheduleShiftPage() {
                           </div>
                           <div className="text-xs text-gray-400 mt-0.5">{filteredUsers.length} orang</div>
                         </th>
-                        {getDaysInMonth(currentMonth).map((date, idx) => (
-                          date && (
-                            <th key={idx} className="px-2 py-3 text-center min-w-[85px] border-r border-gray-100">
+                        {getDaysInMonth(currentMonth).map((date, idx) => {
+                          if (!date) return <th key={idx} className="bg-gray-50 px-2 py-3"></th>;
+                          const holiday = isHoliday(date);
+                          const weekend = isWeekend(date);
+                          const isToday = date.toDateString() === new Date().toISOString().split("T")[0];
+                          return (
+                            <th key={idx} className={`px-2 py-3 text-center min-w-[180px] border-r border-gray-100 ${
+                              isToday ? 'bg-green-50' : ''
+                            }`}>
                               <div className="text-[11px] text-gray-400 font-medium">{dayNames[date.getDay()]}</div>
                               <div className={`text-base font-bold ${
-                                isHoliday(date).isHoliday ? "text-red-500" : 
-                                isWeekend(date) ? "text-gray-400" : "text-gray-700"
+                                holiday.isHoliday ? "text-red-500" : 
+                                weekend ? "text-gray-400" : "text-gray-700"
                               }`}>
                                 {date.getDate()}
                               </div>
                               <div className="text-[10px] text-gray-400">{monthNames[date.getMonth()]}</div>
-                              {isHoliday(date).isHoliday && (
-                                <div className="mt-1 px-1.5 py-0.5 bg-red-50 rounded text-[8px] text-red-600 font-medium truncate max-w-[70px]" title={isHoliday(date).name}>
-                                  {isHoliday(date).name?.substring(0, 8)}
+                              {holiday.isHoliday && (
+                                <div className="mt-1 px-1.5 py-0.5 bg-red-50 rounded text-[8px] text-red-600 font-medium truncate max-w-[120px]" title={holiday.name}>
+                                  {holiday.name?.substring(0, 12)}
                                 </div>
                               )}
                             </th>
-                          )
-                        ))}
+                          );
+                        })}
                       </tr>
                     </thead>
                     <tbody>
@@ -830,37 +1024,32 @@ export default function ScheduleShiftPage() {
                             const weekend = isWeekend(date);
                             const isToday = date.toDateString() === new Date().toISOString().split("T")[0];
                             const isLibur = holiday.isHoliday || weekend;
+                            const dateStr = date.toISOString().split("T")[0];
+                            const hasChange = hasPendingChange(user.uid, dateStr);
                             
                             return (
                               <td 
                                 key={idx} 
-                                className={`px-2 py-2 text-center border-r border-gray-50 ${
+                                className={`px-2 py-2 border-r border-gray-50 align-top transition-all ${
                                   holiday.isHoliday ? "bg-red-50/30" : 
                                   weekend ? "bg-gray-50" : ""
-                                } ${isToday ? "ring-1 ring-green-300 ring-inset" : ""}`}
+                                } ${isToday ? "ring-1 ring-green-300 ring-inset" : ""} ${
+                                  hasChange ? "bg-yellow-50/50 shadow-inner" : ""
+                                }`}
                               >
-                                {(!isLibur || allowHolidayAssign) ? (
-                                  <select
-                                    value={schedule?.shiftId || ""}
-                                    onChange={(e) => handleAssign(user.uid, e.target.value, date.toISOString().split("T")[0])}
-                                    className="w-full text-[11px] border rounded-lg px-2 py-2 bg-white cursor-pointer transition-all duration-150 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                                    style={{
-                                      backgroundColor: shift?.color ? `${shift.color}15` : "#fff",
-                                      borderColor: shift?.color || "#e2e8f0",
-                                      color: shift?.color ? `#${parseInt(shift.color.slice(1), 16).toString(16)}` : "#374151",
-                                    }}
-                                  >
-                                    <option value="">- Pilih Shift -</option>
-                                    {shifts.map(s => (
-                                      <option key={s.id} value={s.id}>{s.name}</option>
-                                    ))}
-                                    {schedule && <option value="unassign">✕ Hapus</option>}
-                                  </select>
-                                ) : (
-                                  <div className="text-[10px] text-gray-400 py-2">
-                                    {holiday.isHoliday ? "Libur Nasional" : "Weekend"}
-                                  </div>
+                                {hasChange && (
+                                  <div className="text-[8px] text-yellow-600 mb-1">📝</div>
                                 )}
+                                <ShiftSelectCell
+                                  userId={user.uid}
+                                  date={dateStr}
+                                  currentShiftId={schedule?.shiftId || null}
+                                  currentShiftName={shift?.name || null}
+                                  shifts={shifts}
+                                  onShiftChange={handleShiftChange}
+                                  isLibur={isLibur}
+                                  allowHolidayAssign={allowHolidayAssign}
+                                />
                               </td>
                             );
                           })}
@@ -886,14 +1075,21 @@ export default function ScheduleShiftPage() {
           {/* Table View */}
           {currentView === "table" && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+              <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center flex-wrap gap-2">
                 <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
                   <span>📋</span>
-                  Daftar Karyawan - {selectedDate}
+                  Daftar Karyawan
                 </h2>
-                <span className="text-sm text-gray-500">
-                  {filteredUsers.length} karyawan
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Tanggal:</span>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-500"
+                  />
+                  <span className="text-sm text-gray-500">({filteredUsers.length} karyawan)</span>
+                </div>
               </div>
               
               {loading ? (
@@ -913,8 +1109,8 @@ export default function ScheduleShiftPage() {
                         <th className="px-4 py-3 text-left">Departemen</th>
                         <th className="px-4 py-3 text-left">Jabatan</th>
                         <th className="px-4 py-3 text-left">Shift Saat Ini</th>
-                        <th className="px-4 py-3 text-left">Ganti Shift</th>
-                       </tr>
+                        <th className="px-4 py-3 text-left min-w-[250px]">Ganti Shift</th>
+                      </tr>
                     </thead>
                     <tbody>
                       {filteredUsers.map((user, idx) => {
@@ -924,11 +1120,12 @@ export default function ScheduleShiftPage() {
                         const holiday = isHoliday(selectedDateObj);
                         const weekend = isWeekend(selectedDateObj);
                         const isLibur = holiday.isHoliday || weekend;
+                        const hasChange = hasPendingChange(user.uid, selectedDate);
                         
                         return (
                           <tr key={user.uid} className={`border-t border-gray-100 hover:bg-green-50 transition-colors ${
                             idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
-                          }`}>
+                          } ${hasChange ? 'bg-yellow-50/50' : ''}`}>
                             <td className="px-4 py-3 text-gray-500">{idx + 1}</td>
                             <td className="px-4 py-3 font-medium text-gray-800">{user.name}</td>
                             <td className="px-4 py-3 text-gray-600">{user.department}</td>
@@ -947,24 +1144,18 @@ export default function ScheduleShiftPage() {
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              <select
-                                value={schedule?.shiftId || ""}
-                                onChange={(e) => handleAssign(user.uid, e.target.value, selectedDate)}
-                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                                disabled={isLibur && !allowHolidayAssign}
-                              >
-                                <option value="">-- Pilih Shift --</option>
-                                {shifts.map(shift => (
-                                  <option key={shift.id} value={shift.id}>
-                                    {shift.name} ({shift.startTime} - {shift.endTime})
-                                  </option>
-                                ))}
-                                {schedule && (
-                                  <option value="unassign">-- Hapus --</option>
-                                )}
-                              </select>
-                              {isLibur && !allowHolidayAssign && (
-                                <div className="text-xs text-red-500 mt-1">Hari libur, tidak bisa assign shift</div>
+                              <ShiftSelectCell
+                                userId={user.uid}
+                                date={selectedDate}
+                                currentShiftId={schedule?.shiftId || null}
+                                currentShiftName={currentShift?.name || null}
+                                shifts={shifts}
+                                onShiftChange={handleShiftChange}
+                                isLibur={isLibur}
+                                allowHolidayAssign={allowHolidayAssign}
+                              />
+                              {hasChange && (
+                                <div className="text-[8px] text-yellow-600 mt-1 text-center">📝 Belum disimpan</div>
                               )}
                             </td>
                           </tr>
@@ -1008,7 +1199,6 @@ export default function ScheduleShiftPage() {
                 </div>
                 
                 <div className="p-5 space-y-4 overflow-y-auto flex-1">
-                  {/* Date Range */}
                   <div className="bg-gradient-to-r from-blue-50 to-blue-100/50 p-4 rounded-xl">
                     <label className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2 flex items-center gap-1">
                       <span>📅</span>
@@ -1036,7 +1226,6 @@ export default function ScheduleShiftPage() {
                     )}
                   </div>
 
-                  {/* Shift */}
                   <div className="bg-gradient-to-r from-purple-50 to-purple-100/50 p-4 rounded-xl">
                     <label className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-2 flex items-center gap-1">
                       <span>⏰</span>
@@ -1056,7 +1245,6 @@ export default function ScheduleShiftPage() {
                     </select>
                   </div>
 
-                  {/* Employees */}
                   <div className="bg-gradient-to-r from-green-50 to-green-100/50 p-4 rounded-xl">
                     <label className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2 flex items-center gap-1">
                       <span>👥</span>
@@ -1127,10 +1315,10 @@ export default function ScheduleShiftPage() {
                 <div className="p-5 border-t border-gray-100 bg-gray-50 flex gap-3">
                   <button
                     onClick={assignDateRangeToSelectedUsers}
-                    disabled={saving || !dateRange.start || !dateRange.end || !rangeShiftId || selectedUserIds.size === 0}
+                    disabled={rangeLoading || !dateRange.start || !dateRange.end || !rangeShiftId || selectedUserIds.size === 0}
                     className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white py-2.5 rounded-xl text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md"
                   >
-                    {saving ? (
+                    {rangeLoading ? (
                       <span className="flex items-center justify-center gap-2">
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                         Memproses...
@@ -1153,10 +1341,11 @@ export default function ScheduleShiftPage() {
           {/* Footer Info */}
           <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-4 text-center text-xs text-gray-500 border border-gray-200">
             <div className="flex flex-wrap justify-center gap-4">
-              <span>✅ Klik pada sel kalender untuk mengubah shift karyawan</span>
+              <span>✅ Ketik nama shift, perubahan akan ditampung sementara</span>
+              <span>📝 Cell yang berubah akan memiliki background kuning dan ikon 📝</span>
+              <span>💾 Klik tombol "Simpan X Perubahan" untuk menyimpan semua perubahan sekaligus</span>
+              <span>🔍 Fitur search otomatis - ketik "AM" maka akan muncul shift yang mengandung "AM"</span>
               <span>📅 Gunakan fitur "Assign Rentang" untuk periode dan karyawan tertentu</span>
-              <span>🎨 Warna shift menandakan jenis shift yang dipilih</span>
-              <span>📥 Import/Export Excel untuk memudahkan pengelolaan data</span>
             </div>
           </div>
         </div>
