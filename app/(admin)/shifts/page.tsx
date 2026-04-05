@@ -1,27 +1,19 @@
-// app/(admin)/schedule-shift/page.tsx
+// app/(admin)/shifts/page.tsx
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import {
   collection,
-  getDocs,
-  doc,
-  setDoc,
+  onSnapshot,
+  addDoc,
+  updateDoc,
   deleteDoc,
-  getDoc,
+  doc,
+  query,
+  orderBy,
 } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { useAuth } from "@/contexts/AuthContext";
-import * as XLSX from "xlsx";
-
-type User = {
-  uid: string;
-  name: string;
-  department: string;
-  jabatan: string;
-  role: string;
-};
 
 type Shift = {
   id: string;
@@ -30,897 +22,755 @@ type Shift = {
   startTime: string;
   endTime: string;
   color: string;
-  shiftType: string;
+  isActive: boolean;
+  createdAt: any;
+  description?: string;
+  lateTolerance?: number;
+  overtimeRate?: number;
+  shiftType?: "morning" | "afternoon" | "night" | "special";
 };
 
-type Schedule = {
-  userId: string;
-  shiftId: string;
-  date: string;
-  shiftName?: string;
-  shiftColor?: string;
-};
+// Template shift yang sudah disediakan
+const shiftTemplates = [
+  { name: "AM1", code: "AM1", startTime: "05:00", endTime: "13:00", type: "morning" },
+  { name: "AM2", code: "AM2", startTime: "06:00", endTime: "14:00", type: "morning" },
+  { name: "AM3", code: "AM3", startTime: "07:00", endTime: "15:00", type: "morning" },
+  { name: "AM4", code: "AM4", startTime: "08:00", endTime: "16:00", type: "morning" },
+  { name: "AM5", code: "AM5", startTime: "09:00", endTime: "17:00", type: "morning" },
+  { name: "AM6", code: "AM6", startTime: "10:00", endTime: "18:00", type: "morning" },
+  { name: "AM7", code: "AM7", startTime: "11:00", endTime: "19:00", type: "morning" },
+  { name: "PM1", code: "PM1", startTime: "12:00", endTime: "20:00", type: "afternoon" },
+  { name: "PM2", code: "PM2", startTime: "13:00", endTime: "21:00", type: "afternoon" },
+  { name: "PM3", code: "PM3", startTime: "14:00", endTime: "22:00", type: "afternoon" },
+  { name: "PM4", code: "PM4", startTime: "15:00", endTime: "23:00", type: "afternoon" },
+  { name: "PM5", code: "PM5", startTime: "16:00", endTime: "01:00", type: "night" },
+  { name: "O", code: "O", startTime: "09:00", endTime: "18:00", type: "special" },
+  { name: "PO", code: "PO", startTime: "09:00", endTime: "17:00", type: "special" },
+  { name: "Day Off", code: "OFF", startTime: "00:00", endTime: "00:00", type: "special" },
+  { name: "PHC", code: "PHC", startTime: "00:00", endTime: "00:00", type: "special" },
+  { name: "Pending OFF", code: "PENDING_OFF", startTime: "00:00", endTime: "00:00", type: "special" },
+];
 
-type Holiday = {
-  date: string;
-  name: string;
-};
+const colorOptions = [
+  { value: "#22c55e", label: "Hijau", class: "bg-green-500" },
+  { value: "#3b82f6", label: "Biru", class: "bg-blue-500" },
+  { value: "#f59e0b", label: "Kuning", class: "bg-yellow-500" },
+  { value: "#ef4444", label: "Merah", class: "bg-red-500" },
+  { value: "#8b5cf6", label: "Ungu", class: "bg-purple-500" },
+  { value: "#ec4899", label: "Pink", class: "bg-pink-500" },
+  { value: "#06b6d4", label: "Cyan", class: "bg-cyan-500" },
+  { value: "#f97316", label: "Orange", class: "bg-orange-500" },
+  { value: "#6b7280", label: "Abu-abu", class: "bg-gray-500" },
+  { value: "#10b981", label: "Emerald", class: "bg-emerald-500" },
+];
 
-export default function ScheduleShiftPage() {
-  const { user: currentUser } = useAuth();
-  const [users, setUsers] = useState<User[]>([]);
+export default function ShiftsPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [schedules, setSchedules] = useState<Record<string, Schedule>>({});
-  const [holidays, setHolidays] = useState<Holiday[]>([]);
-  const [dateRange, setDateRange] = useState({ start: "", end: "" });
-  const [selectedDepartment, setSelectedDepartment] = useState("ALL");
-  const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [userDepartment, setUserDepartment] = useState<string>("");
-  const [allowHolidayAssign, setAllowHolidayAssign] = useState(true);
-  const [showRangeModal, setShowRangeModal] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [rangeShiftId, setRangeShiftId] = useState("");
-  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
-  const [userSearchTerm, setUserSearchTerm] = useState("");
-  const [selectAll, setSelectAll] = useState(false);
-  const [datesList, setDatesList] = useState<Date[]>([]);
-  const [importPreview, setImportPreview] = useState<any[]>([]);
-  const [importDataTemp, setImportDataTemp] = useState<any[]>([]); // 🔥 FIX: menggunakan state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [editingShift, setEditingShift] = useState<Shift | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterType, setFilterType] = useState("all");
   
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [formData, setFormData] = useState({
+    name: "",
+    code: "",
+    startTime: "08:00",
+    endTime: "17:00",
+    color: "#22c55e",
+    isActive: true,
+    description: "",
+    lateTolerance: 15,
+    overtimeRate: 0,
+    shiftType: "morning" as "morning" | "afternoon" | "night" | "special",
+  });
 
-  // Role checking
-  const isSuperAdmin = currentUser?.role === "super_admin";
-  const isAdmin = currentUser?.role === "admin";
-  const isHR = currentUser?.role === "hr";
-  const isSPV = currentUser?.role === "spv";
-  
-  const canManage = isSuperAdmin || isAdmin || isHR || isSPV;
-  const canBulkAssign = isSuperAdmin || isHR;
-  const canSeeAllDepartments = isSuperAdmin || isHR;
-
-  // Fetch holidays from API
-  const fetchHolidays = async (year: number) => {
-    try {
-      const response = await fetch(`/api/holidays?year=${year}`);
-      const data = await response.json();
-      if (data.success) {
-        setHolidays(data.holidays);
-      }
-    } catch (error) {
-      console.error("Error fetching holidays:", error);
-    }
-  };
-
-  // Generate dates from range
-  const generateDatesFromRange = () => {
-    if (!dateRange.start || !dateRange.end) return [];
-    const start = new Date(dateRange.start);
-    const end = new Date(dateRange.end);
-    const dates = [];
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      dates.push(new Date(d));
-    }
-    return dates;
-  };
-
-  // Update dates list when range changes
+  // Load shifts dari Firestore
   useEffect(() => {
-    const dates = generateDatesFromRange();
-    setDatesList(dates);
-    if (dates.length > 0) {
-      const year = dates[0].getFullYear();
-      fetchHolidays(year);
-    }
-  }, [dateRange]);
-
-  // Load department user
-  useEffect(() => {
-    const loadUserDepartment = async () => {
-      if (currentUser?.uid && (isAdmin || isSPV)) {
-        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-        const userData = userDoc.data();
-        if (userData) {
-          setUserDepartment(userData.department || "");
-          if (!canSeeAllDepartments) {
-            setSelectedDepartment(userData.department || "ALL");
-          }
-        }
-      }
-    };
-    loadUserDepartment();
-  }, [currentUser, isAdmin, isSPV, canSeeAllDepartments]);
-
-  // Load data
-  useEffect(() => {
-    if (canManage && datesList.length > 0) {
-      loadData();
-    }
-  }, [selectedDepartment, userDepartment, datesList]);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      // Load users
-      let usersSnap = await getDocs(collection(db, "users"));
-      let usersList: User[] = [];
-      
-      usersSnap.forEach(doc => {
-        const data = doc.data();
-        let shouldInclude = false;
-        
-        if (isSuperAdmin || isHR) {
-          shouldInclude = true;
-        } else if (isAdmin) {
-          if (data.department === userDepartment) {
-            shouldInclude = true;
-          }
-        } else if (isSPV) {
-          if (data.department === userDepartment && 
-              (data.role === "employee" || data.role === "staff")) {
-            shouldInclude = true;
-          }
-        }
-        
-        if (shouldInclude) {
-          usersList.push({
-            uid: doc.id,
-            name: data.name,
-            department: data.department || "-",
-            jabatan: data.jabatan || "-",
-            role: data.role,
-          });
-        }
+    const q = query(collection(db, "shifts"), orderBy("startTime", "asc"));
+    const unsub = onSnapshot(q, (snap) => {
+      const shiftList: Shift[] = [];
+      snap.forEach((doc) => {
+        shiftList.push({ id: doc.id, ...doc.data() } as Shift);
       });
-
-      if (selectedDepartment !== "ALL" && canSeeAllDepartments) {
-        usersList = usersList.filter(u => u.department === selectedDepartment);
-      }
-
-      setUsers(usersList);
-
-      // Load shifts
-      const shiftsSnap = await getDocs(collection(db, "shifts"));
-      const shiftsList: Shift[] = [];
-      shiftsSnap.forEach(doc => {
-        const data = doc.data();
-        if (data.isActive !== false) {
-          shiftsList.push({
-            id: doc.id,
-            name: data.name,
-            code: data.code,
-            startTime: data.startTime,
-            endTime: data.endTime,
-            color: data.color,
-            shiftType: data.shiftType || "morning",
-          });
-        }
-      });
-      setShifts(shiftsList);
-
-      // Load schedules untuk range tanggal
-      const schedulesSnap = await getDocs(collection(db, "shift_schedules"));
-      const schedulesMap: Record<string, Schedule> = {};
-      schedulesSnap.forEach(doc => {
-        const data = doc.data();
-        const isInRange = datesList.some(d => d.toISOString().split("T")[0] === data.date);
-        if (isInRange) {
-          const shift = shiftsList.find(s => s.id === data.shiftId);
-          schedulesMap[`${data.userId}_${data.date}`] = {
-            userId: data.userId,
-            shiftId: data.shiftId,
-            date: data.date,
-            shiftName: shift?.name,
-            shiftColor: shift?.color,
-          };
-        }
-      });
-      setSchedules(schedulesMap);
-    } catch (error) {
-      console.error("Error loading data:", error);
-    } finally {
+      setShifts(shiftList);
       setLoading(false);
-    }
-  };
-
-  const handleAssign = async (userId: string, shiftId: string, date: string) => {
-    if (!canManage) return;
-    
-    const scheduleId = `${userId}_${date}`;
-    const shift = shifts.find(s => s.id === shiftId);
-    
-    try {
-      if (shiftId === "unassign") {
-        await deleteDoc(doc(db, "shift_schedules", scheduleId));
-        setSchedules(prev => {
-          const newSchedules = { ...prev };
-          delete newSchedules[scheduleId];
-          return newSchedules;
-        });
-      } else {
-        await setDoc(doc(db, "shift_schedules", scheduleId), {
-          userId,
-          shiftId,
-          date,
-          shiftName: shift?.name,
-          shiftColor: shift?.color,
-          updatedBy: currentUser?.uid,
-          updatedByName: currentUser?.name,
-          updatedByRole: currentUser?.role,
-          updatedAt: new Date(),
-        });
-        setSchedules(prev => ({
-          ...prev,
-          [scheduleId]: {
-            userId,
-            shiftId,
-            date,
-            shiftName: shift?.name,
-            shiftColor: shift?.color,
-          }
-        }));
-      }
-    } catch (error) {
-      console.error("Error assigning shift:", error);
-      alert("Gagal menyimpan jadwal");
-    }
-  };
-
-  // 🔥 FIX: Import dari Excel/Spreadsheet (tanpa window)
-  const handleImportExcel = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setImporting(true);
-    const reader = new FileReader();
-    
-    reader.onload = async (e) => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet);
-        
-        // Preview data
-        const previewData = rows.slice(0, 10).map((row: any) => ({
-          nama: row.Nama || row.name || row.NAME || row.Karyawan,
-          tanggal: row.Tanggal || row.date || row.DATE,
-          shift: row.Shift || row.shift || row.SHIFT,
-        }));
-        setImportPreview(previewData);
-        
-        // 🔥 Simpan ke state, bukan ke window
-        const importData = rows.map((row: any) => ({
-          nama: row.Nama || row.name || row.NAME || row.Karyawan,
-          tanggal: row.Tanggal || row.date || row.DATE,
-          shift: row.Shift || row.shift || row.SHIFT,
-        }));
-        setImportDataTemp(importData);
-        
-        setShowImportModal(true);
-        
-      } catch (error) {
-        console.error("Import error:", error);
-        alert("❌ Gagal membaca file. Pastikan format file benar.");
-      } finally {
-        setImporting(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      }
-    };
-    
-    reader.readAsArrayBuffer(file);
-  };
-
-  // 🔥 FIX: Confirm import menggunakan state, bukan window
-  const confirmImport = async () => {
-    if (!importDataTemp || importDataTemp.length === 0) {
-      alert("Tidak ada data untuk diimport");
-      return;
-    }
-
-    setImporting(true);
-    let successCount = 0;
-    let errorCount = 0;
-
-    try {
-      for (const item of importDataTemp) {
-        const user = users.find(u => 
-          u.name.toLowerCase() === item.nama?.toLowerCase() ||
-          u.name.toLowerCase().includes(item.nama?.toLowerCase())
-        );
-        
-        const shift = shifts.find(s => 
-          s.name.toLowerCase() === item.shift?.toLowerCase() ||
-          s.code.toLowerCase() === item.shift?.toLowerCase()
-        );
-        
-        const date = item.tanggal;
-        const isValidDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date);
-        
-        if (!user || !shift || !isValidDate) {
-          errorCount++;
-          continue;
-        }
-        
-        await handleAssign(user.uid, shift.id, date);
-        successCount++;
-      }
-      
-      alert(`✅ Berhasil import ${successCount} data\n❌ Gagal: ${errorCount} data`);
-      await loadData();
-      setShowImportModal(false);
-      setImportPreview([]);
-      setImportDataTemp([]);
-      
-    } catch (error) {
-      console.error("Import error:", error);
-      alert("❌ Gagal mengimport data");
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  // Download template Excel
-  const downloadTemplate = () => {
-    const template = [
-      { Nama: "Budi Santoso", Tanggal: "2025-01-01", Shift: "AM1" },
-      { Nama: "Siti Aminah", Tanggal: "2025-01-01", Shift: "PM1" },
-    ];
-    const ws = XLSX.utils.json_to_sheet(template);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Template Schedule");
-    XLSX.writeFile(wb, "template_schedule_shift.xlsx");
-  };
-
-  // Export to Excel
-  const exportToExcel = () => {
-    const exportData = filteredUsers.flatMap(user => {
-      return datesList.map(date => {
-        const schedule = getScheduleForUserDate(user.uid, date);
-        const shift = schedule ? shifts.find(s => s.id === schedule.shiftId) : null;
-        const holiday = isHoliday(date);
-        
-        return {
-          Nama: user.name,
-          Department: user.department,
-          Jabatan: user.jabatan,
-          Tanggal: date.toISOString().split("T")[0],
-          Hari: dayNames[date.getDay()],
-          Status: holiday.isHoliday ? "Libur Nasional" : (isWeekend(date) ? "Weekend" : "Hari Kerja"),
-          Shift: shift?.name || "-",
-          Jam_Masuk: shift?.startTime || "-",
-          Jam_Keluar: shift?.endTime || "-",
-        };
-      });
     });
+    return () => unsub();
+  }, []);
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Schedule Shift");
-    XLSX.writeFile(wb, `schedule_shift_${dateRange.start}_to_${dateRange.end}.xlsx`);
-  };
+  // Filter shifts berdasarkan search dan tipe
+  const filteredShifts = shifts.filter((shift) => {
+    const matchesSearch = shift.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          shift.code.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = filterType === "all" || shift.shiftType === filterType;
+    return matchesSearch && matchesType;
+  });
 
-  // Assign shift untuk range tanggal ke karyawan terpilih
-  const assignDateRangeToSelectedUsers = async () => {
-    if (!dateRange.start || !dateRange.end || !rangeShiftId) {
-      alert("Pilih tanggal mulai, tanggal akhir, dan shift terlebih dahulu");
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validasi kode unik
+    const existingShift = shifts.find(s => s.code === formData.code && s.id !== editingShift?.id);
+    if (existingShift) {
+      alert(`Kode shift "${formData.code}" sudah digunakan!`);
       return;
     }
-
-    if (selectedUserIds.size === 0) {
-      alert("Pilih minimal 1 karyawan");
-      return;
-    }
-
-    const dates = generateDatesFromRange();
-    setSaving(true);
-    let successCount = 0;
-    const selectedUsersList = users.filter(u => selectedUserIds.has(u.uid));
     
     try {
-      for (const user of selectedUsersList) {
-        for (const date of dates) {
-          const dateStr = date.toISOString().split("T")[0];
-          const scheduleId = `${user.uid}_${dateStr}`;
-          const shift = shifts.find(s => s.id === rangeShiftId);
-          
-          await setDoc(doc(db, "shift_schedules", scheduleId), {
-            userId: user.uid,
-            shiftId: rangeShiftId,
-            date: dateStr,
-            shiftName: shift?.name,
-            shiftColor: shift?.color,
-            updatedBy: currentUser?.uid,
-            updatedByName: currentUser?.name,
-            updatedByRole: currentUser?.role,
-            updatedAt: new Date(),
-          });
-          
-          setSchedules(prev => ({
-            ...prev,
-            [scheduleId]: {
-              userId: user.uid,
-              shiftId: rangeShiftId,
-              date: dateStr,
-              shiftName: shift?.name,
-              shiftColor: shift?.color,
-            }
-          }));
-          successCount++;
-        }
+      if (editingShift) {
+        await updateDoc(doc(db, "shifts", editingShift.id), formData);
+        alert("✅ Shift berhasil diupdate");
+      } else {
+        await addDoc(collection(db, "shifts"), {
+          ...formData,
+          createdAt: new Date(),
+        });
+        alert("✅ Shift berhasil ditambahkan");
       }
-      
-      alert(`✅ Berhasil assign shift ke ${selectedUsersList.length} karyawan untuk ${dates.length} hari (${successCount} total assign)`);
-      setShowRangeModal(false);
-      setDateRange({ start: "", end: "" });
-      setRangeShiftId("");
-      setSelectedUserIds(new Set());
-      setSelectAll(false);
+      setIsModalOpen(false);
+      resetForm();
     } catch (error) {
-      console.error(error);
-      alert("❌ Gagal melakukan assign range");
-    } finally {
-      setSaving(false);
+      console.error("Error saving shift:", error);
+      alert("❌ Gagal menyimpan shift");
     }
   };
 
-  const isHoliday = (date: Date): { isHoliday: boolean; name?: string } => {
-    const dateStr = date.toISOString().split("T")[0];
-    const holiday = holidays.find(h => h.date === dateStr);
-    if (holiday) {
-      return { isHoliday: true, name: holiday.name };
+  const handleDelete = async (shift: Shift) => {
+    if (confirm(`Yakin ingin menghapus shift "${shift.name}"?`)) {
+      try {
+        await deleteDoc(doc(db, "shifts", shift.id));
+        alert("✅ Shift berhasil dihapus");
+      } catch (error) {
+        console.error("Error deleting shift:", error);
+        alert("❌ Gagal menghapus shift");
+      }
     }
-    return { isHoliday: false };
   };
 
-  const isWeekend = (date: Date): boolean => {
-    const day = date.getDay();
-    return day === 0 || day === 6;
+  const handleToggleActive = async (shift: Shift) => {
+    try {
+      await updateDoc(doc(db, "shifts", shift.id), {
+        isActive: !shift.isActive,
+      });
+      alert(shift.isActive ? "Shift dinonaktifkan" : "Shift diaktifkan");
+    } catch (error) {
+      console.error("Error toggling shift:", error);
+      alert("❌ Gagal mengubah status shift");
+    }
   };
 
-  const getScheduleForUserDate = (userId: string, date: Date) => {
-    const dateStr = date.toISOString().split("T")[0];
-    return schedules[`${userId}_${dateStr}`];
+  const resetForm = () => {
+    setEditingShift(null);
+    setFormData({
+      name: "",
+      code: "",
+      startTime: "08:00",
+      endTime: "17:00",
+      color: "#22c55e",
+      isActive: true,
+      description: "",
+      lateTolerance: 15,
+      overtimeRate: 0,
+      shiftType: "morning",
+    });
   };
 
-  const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const editShift = (shift: Shift) => {
+    setEditingShift(shift);
+    setFormData({
+      name: shift.name,
+      code: shift.code,
+      startTime: shift.startTime,
+      endTime: shift.endTime,
+      color: shift.color,
+      isActive: shift.isActive,
+      description: shift.description || "",
+      lateTolerance: shift.lateTolerance || 15,
+      overtimeRate: shift.overtimeRate || 0,
+      shiftType: shift.shiftType || "morning",
+    });
+    setIsModalOpen(true);
+  };
 
-  const filteredUsers = users.filter(user => 
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.jabatan.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const addFromTemplate = (template: typeof shiftTemplates[0]) => {
+    // Cek apakah sudah ada
+    const exists = shifts.some(s => s.code === template.code);
+    if (exists) {
+      alert(`Shift ${template.name} sudah ada!`);
+      return;
+    }
+    
+    // Tentukan warna berdasarkan tipe
+    let color = "#22c55e";
+    if (template.type === "morning") color = "#f59e0b";
+    if (template.type === "afternoon") color = "#ef4444";
+    if (template.type === "night") color = "#8b5cf6";
+    if (template.type === "special") color = "#06b6d4";
+    
+    setFormData({
+      name: template.name,
+      code: template.code,
+      startTime: template.startTime,
+      endTime: template.endTime,
+      color: color,
+      isActive: true,
+      description: `Shift ${template.name} - ${template.startTime} sampai ${template.endTime}`,
+      lateTolerance: template.name.includes("Off") ? 0 : 15,
+      overtimeRate: 0,
+      shiftType: template.type as any,
+    });
+    setEditingShift(null);
+    setIsTemplateModalOpen(false);
+    setIsModalOpen(true);
+  };
 
-  const filteredUsersForModal = users.filter(user => 
-    user.name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-    user.department.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-    user.jabatan.toLowerCase().includes(userSearchTerm.toLowerCase())
-  );
-
-  if (!canManage) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="text-6xl mb-4">🔒</div>
-          <p className="text-gray-500">Anda tidak memiliki akses ke halaman ini</p>
-        </div>
-      </div>
-    );
-  }
+  const getShiftTypeLabel = (type?: string) => {
+    switch (type) {
+      case "morning": return { label: "🌅 Pagi", color: "bg-yellow-100 text-yellow-700" };
+      case "afternoon": return { label: "🌤️ Siang", color: "bg-orange-100 text-orange-700" };
+      case "night": return { label: "🌙 Malam", color: "bg-purple-100 text-purple-700" };
+      case "special": return { label: "⭐ Khusus", color: "bg-cyan-100 text-cyan-700" };
+      default: return { label: "📋 Umum", color: "bg-gray-100 text-gray-700" };
+    }
+  };
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv"]}>
-      <div className="space-y-4 p-4">
+    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr"]}>
+      <div className="space-y-6">
         {/* Header */}
-        <div className="flex justify-between items-center flex-wrap gap-3">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-xl font-bold text-gray-800">📅 Penjadwalan Shift</h1>
-            <p className="text-xs text-gray-500">Atur shift karyawan dengan mudah</p>
+            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
+              📋 Manajemen Shift Kerja
+            </h1>
+            <p className="text-gray-500 mt-1">
+              Kelola jadwal shift untuk absensi karyawan
+            </p>
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importing}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"
+              onClick={() => setIsTemplateModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
             >
-              <span>📥</span> {importing ? "Memproses..." : "Import Excel"}
+              <span>📋</span>
+              Dari Template
             </button>
             <button
-              onClick={downloadTemplate}
-              className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"
+              onClick={() => {
+                resetForm();
+                setIsModalOpen(true);
+              }}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
             >
-              <span>📄</span> Template
+              <span>➕</span>
+              Buat Baru
             </button>
-            <button
-              onClick={exportToExcel}
-              className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"
-            >
-              <span>📤</span> Export
-            </button>
-            <button
-              onClick={() => setShowRangeModal(true)}
-              className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"
-            >
-              <span>📅</span> Assign Range
-            </button>
-            <label className="flex items-center gap-1 text-sm">
-              <input
-                type="checkbox"
-                checked={allowHolidayAssign}
-                onChange={(e) => setAllowHolidayAssign(e.target.checked)}
-                className="w-3.5 h-3.5"
-              />
-              <span className="text-xs text-gray-600">Assign libur</span>
-            </label>
           </div>
         </div>
 
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleImportExcel}
-          accept=".xlsx, .xls, .csv, .xlsm"
-          className="hidden"
-        />
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+            <p className="text-sm text-blue-600">Total Shift</p>
+            <p className="text-2xl font-bold text-blue-800">{shifts.length}</p>
+          </div>
+          <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+            <p className="text-sm text-green-600">Shift Aktif</p>
+            <p className="text-2xl font-bold text-green-800">
+              {shifts.filter((s) => s.isActive).length}
+            </p>
+          </div>
+          <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200">
+            <p className="text-sm text-yellow-600">Shift Pagi</p>
+            <p className="text-2xl font-bold text-yellow-800">
+              {shifts.filter((s) => s.shiftType === "morning").length}
+            </p>
+          </div>
+          <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
+            <p className="text-sm text-purple-600">Shift Malam</p>
+            <p className="text-2xl font-bold text-purple-800">
+              {shifts.filter((s) => s.shiftType === "night").length}
+            </p>
+          </div>
+        </div>
 
-        {/* Filter Bar */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3">
-          <div className="flex flex-wrap gap-3">
-            <div className="flex-1 min-w-[150px]">
-              <select
-                value={selectedDepartment}
-                onChange={(e) => setSelectedDepartment(e.target.value)}
-                disabled={!canSeeAllDepartments}
-                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
-              >
-                <option value="ALL">🏢 All Dept</option>
-                {canSeeAllDepartments && [...new Set(users.map(u => u.department))].map(dept => (
-                  <option key={dept} value={dept}>{dept}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex-1 min-w-[200px]">
+        {/* Search & Filter */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1">
               <input
                 type="text"
-                placeholder="🔍 Cari karyawan..."
+                placeholder="🔍 Cari shift (nama atau kode)..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
               />
             </div>
-            <div className="flex gap-2">
-              <input
-                type="date"
-                value={dateRange.start}
-                onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
-                placeholder="Start"
-              />
-              <span className="text-gray-400 self-center">-</span>
-              <input
-                type="date"
-                value={dateRange.end}
-                onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
-                placeholder="End"
-              />
-            </div>
-            <button
-              onClick={loadData}
-              className="bg-gray-500 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-gray-600"
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
             >
-              🔄
-            </button>
+              <option value="all">Semua Tipe</option>
+              <option value="morning">🌅 Pagi</option>
+              <option value="afternoon">🌤️ Siang</option>
+              <option value="night">🌙 Malam</option>
+              <option value="special">⭐ Khusus</option>
+            </select>
           </div>
         </div>
 
-        {/* Info Range */}
-        {datesList.length > 0 && (
-          <div className="bg-blue-50 rounded-lg px-3 py-1.5 text-xs text-blue-700 flex justify-between items-center">
-            <span>📆 {datesList.length} hari: {dateRange.start} s/d {dateRange.end}</span>
-            <span>👥 {filteredUsers.length} karyawan</span>
+        {/* Shift Cards */}
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
           </div>
-        )}
-
-        {/* Main Table */}
-        {datesList.length === 0 ? (
+        ) : filteredShifts.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-            <div className="text-5xl mb-3">📅</div>
-            <p className="text-gray-500">Pilih rentang tanggal terlebih dahulu</p>
-            <p className="text-xs text-gray-400 mt-1">Gunakan date range picker di atas</p>
-          </div>
-        ) : loading ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-            <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto" />
+            <div className="text-6xl mb-4">📅</div>
+            <p className="text-gray-500 text-lg">Belum ada shift yang ditambahkan</p>
+            <p className="text-gray-400 text-sm mt-1">
+              Klik tombol "Buat Baru" atau "Dari Template" untuk menambahkan shift
+            </p>
           </div>
         ) : (
-          <div 
-            ref={scrollContainerRef}
-            className="overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-200"
-            style={{ scrollBehavior: 'smooth' }}
-          >
-            <table className="min-w-full text-sm border-collapse">
-              <thead className="bg-gray-50 sticky top-0 z-10">
-                <tr>
-                  <th className="sticky left-0 bg-gray-50 z-20 px-3 py-2 text-left border-r border-gray-200 min-w-[180px]">
-                    <div className="font-semibold text-gray-700">👥 Karyawan</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{filteredUsers.length} orang</div>
-                  </th>
-                  {datesList.map((date, idx) => {
-                    const holiday = isHoliday(date);
-                    const weekend = isWeekend(date);
-                    const isToday = date.toDateString() === new Date().toISOString().split("T")[0];
-                    return (
-                      <th key={idx} className={`px-1 py-2 text-center min-w-[70px] border-r ${isToday ? 'bg-green-50' : ''}`}>
-                        <div className="text-[10px] text-gray-400">{dayNames[date.getDay()]}</div>
-                        <div className={`text-sm font-bold ${
-                          holiday.isHoliday ? "text-red-600" : 
-                          weekend ? "text-gray-400" : "text-gray-700"
-                        }`}>
-                          {date.getDate()}
-                        </div>
-                        <div className="text-[9px] text-gray-400">{monthNames[date.getMonth()]}</div>
-                        {holiday.isHoliday && (
-                          <div className="text-[8px] text-red-500 truncate max-w-[60px]" title={holiday.name}>
-                            {holiday.name?.substring(0, 8)}
-                          </div>
-                        )}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredUsers.map((user) => (
-                  <tr key={user.uid} className="border-t hover:bg-gray-50">
-                    <td className="sticky left-0 bg-white z-10 px-3 py-2 border-r border-gray-200 min-w-[180px]">
-                      <div className="font-medium text-gray-800 text-sm">{user.name}</div>
-                      <div className="text-[10px] text-gray-400">{user.department} • {user.jabatan}</div>
-                    </td>
-                    {datesList.map((date, idx) => {
-                      const schedule = getScheduleForUserDate(user.uid, date);
-                      const shift = schedule ? shifts.find(s => s.id === schedule.shiftId) : null;
-                      const holiday = isHoliday(date);
-                      const weekend = isWeekend(date);
-                      const isLibur = holiday.isHoliday || weekend;
-                      const isToday = date.toDateString() === new Date().toISOString().split("T")[0];
-                      
-                      return (
-                        <td 
-                          key={idx} 
-                          className={`px-1 py-1 text-center border-r ${
-                            holiday.isHoliday ? "bg-red-50" : 
-                            weekend ? "bg-gray-50" : ""
-                          } ${isToday ? "ring-1 ring-green-300" : ""}`}
-                        >
-                          {!isLibur || allowHolidayAssign ? (
-                            <select
-                              value={schedule?.shiftId || ""}
-                              onChange={(e) => handleAssign(user.uid, e.target.value, date.toISOString().split("T")[0])}
-                              className="w-full text-[10px] border rounded px-1 py-1.5 bg-white cursor-pointer"
-                              style={{
-                                backgroundColor: shift?.color ? `${shift.color}20` : "#fff",
-                                borderColor: shift?.color || "#e5e7eb",
-                                fontWeight: shift ? "500" : "normal",
-                              }}
-                            >
-                              <option value="">-</option>
-                              {shifts.map(s => (
-                                <option key={s.id} value={s.id}>{s.name}</option>
-                              ))}
-                              {schedule && <option value="unassign">✕</option>}
-                            </select>
-                          ) : (
-                            <div className="text-[9px] text-gray-400 py-1.5">
-                              {holiday.isHoliday ? "Libur" : "Weekend"}
-                            </div>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            
-            {filteredUsers.length === 0 && !loading && (
-              <div className="p-8 text-center text-gray-500">
-                <div className="text-4xl mb-2">📭</div>
-                <p className="text-sm">Tidak ada karyawan ditemukan</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Modal Import Excel */}
-        {showImportModal && (
-          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
-              <div className="p-3 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
-                <h2 className="text-lg font-bold text-gray-800">📥 Import Data Shift</h2>
-                <button onClick={() => setShowImportModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredShifts.map((shift) => {
+              const shiftTypeInfo = getShiftTypeLabel(shift.shiftType);
+              const isSpecial = shift.name === "Day Off" || shift.name === "PHC" || shift.name === "Pending OFF";
               
-              <div className="p-4 space-y-3 overflow-y-auto flex-1">
-                <div className="bg-blue-50 p-3 rounded-lg">
-                  <div className="text-sm font-medium text-blue-700 mb-2">Preview Data ({importPreview.length} baris)</div>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-xs">
-                      <thead className="bg-blue-100">
-                        <tr>
-                          <th className="px-2 py-1 text-left">Nama Karyawan</th>
-                          <th className="px-2 py-1 text-left">Tanggal</th>
-                          <th className="px-2 py-1 text-left">Shift</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {importPreview.map((item, idx) => (
-                          <tr key={idx} className="border-t">
-                            <td className="px-2 py-1">{item.nama || "-"}</td>
-                            <td className="px-2 py-1">{item.tanggal || "-"}</td>
-                            <td className="px-2 py-1">{item.shift || "-"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+              return (
+                <div
+                  key={shift.id}
+                  className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-all group"
+                >
+                  <div className="h-1.5" style={{ backgroundColor: shift.color }} />
+                  <div className="p-5">
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-bold text-lg text-gray-800">
+                            {shift.name}
+                          </h3>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${shiftTypeInfo.color}`}>
+                            {shiftTypeInfo.label}
+                          </span>
+                          <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">
+                            {shift.code}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleToggleActive(shift)}
+                        className={`ml-2 w-10 h-5 rounded-full transition-colors relative ${
+                          shift.isActive ? "bg-green-500" : "bg-gray-300"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                            shift.isActive ? "translate-x-5" : "translate-x-0.5"
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="space-y-2 mb-4">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-gray-500 w-20">Jam Kerja:</span>
+                        {shift.startTime !== "00:00" && shift.endTime !== "00:00" ? (
+                          <span className="font-medium">
+                            {shift.startTime} - {shift.endTime}
+                            {shift.endTime === "01:00" && (
+                              <span className="text-xs text-orange-500 ml-1">(+1 hari)</span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 italic">Libur / Tidak masuk</span>
+                        )}
+                      </div>
+                      
+                      {shift.startTime !== "00:00" && shift.endTime !== "00:00" && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-gray-500 w-20">Durasi:</span>
+                          <span className="font-medium">
+                            {(() => {
+                              const start = shift.startTime.split(":").map(Number);
+                              const end = shift.endTime.split(":").map(Number);
+                              let hours = end[0] - start[0];
+                              let minutes = end[1] - start[1];
+                              if (minutes < 0) {
+                                hours--;
+                                minutes += 60;
+                              }
+                              if (hours < 0) hours += 24;
+                              return `${hours} jam ${minutes} menit`;
+                            })()}
+                          </span>
+                        </div>
+                      )}
+
+                      {!isSpecial && shift.lateTolerance > 0 && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-gray-500 w-20">Toleransi:</span>
+                          <span className="font-medium">{shift.lateTolerance} menit</span>
+                        </div>
+                      )}
+                      
+                      {shift.description && (
+                        <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
+                          {shift.description}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        onClick={() => editShift(shift)}
+                        className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
+                      >
+                        ✏️ Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(shift)}
+                        className="flex-1 bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
+                      >
+                        🗑️ Hapus
+                      </button>
+                    </div>
                   </div>
                 </div>
-                
-                <div className="bg-yellow-50 p-3 rounded-lg">
-                  <div className="text-sm font-medium text-yellow-700 mb-2">📌 Catatan</div>
-                  <ul className="text-xs text-yellow-600 space-y-1 list-disc list-inside">
-                    <li>Pastikan kolom: <strong>Nama</strong>, <strong>Tanggal</strong> (YYYY-MM-DD), <strong>Shift</strong></li>
-                    <li>Nama karyawan harus sesuai dengan database</li>
-                    <li>Nama shift harus sesuai dengan master shift</li>
-                  </ul>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Modal Template Pilihan */}
+      {isTemplateModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-gray-800">
+                📋 Pilih Template Shift
+              </h2>
+              <button
+                onClick={() => setIsTemplateModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Pagi */}
+                <div className="bg-yellow-50 rounded-xl p-3">
+                  <h3 className="font-bold text-yellow-800 mb-2">🌅 Shift Pagi</h3>
+                  <div className="space-y-2">
+                    {shiftTemplates.filter(t => t.type === "morning").map((template) => (
+                      <button
+                        key={template.code}
+                        onClick={() => addFromTemplate(template)}
+                        className="w-full text-left p-2 bg-white rounded-lg hover:bg-yellow-100 transition-colors flex justify-between items-center"
+                      >
+                        <div>
+                          <span className="font-medium">{template.name}</span>
+                          <span className="text-xs text-gray-500 ml-2">
+                            {template.startTime} - {template.endTime}
+                          </span>
+                        </div>
+                        <span className="text-green-600">+</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              
-              <div className="p-3 border-t border-gray-200 bg-gray-50 flex gap-2">
-                <button
-                  onClick={confirmImport}
-                  disabled={importing || importPreview.length === 0}
-                  className="flex-1 bg-green-600 text-white py-1.5 rounded-lg text-sm disabled:bg-gray-400"
-                >
-                  {importing ? "Memproses..." : `Import ${importPreview.length} Data`}
-                </button>
-                <button
-                  onClick={() => setShowImportModal(false)}
-                  className="flex-1 bg-gray-300 text-gray-700 py-1.5 rounded-lg text-sm"
-                >
-                  Batal
-                </button>
+
+                {/* Siang */}
+                <div className="bg-orange-50 rounded-xl p-3">
+                  <h3 className="font-bold text-orange-800 mb-2">🌤️ Shift Siang</h3>
+                  <div className="space-y-2">
+                    {shiftTemplates.filter(t => t.type === "afternoon").map((template) => (
+                      <button
+                        key={template.code}
+                        onClick={() => addFromTemplate(template)}
+                        className="w-full text-left p-2 bg-white rounded-lg hover:bg-orange-100 transition-colors flex justify-between items-center"
+                      >
+                        <div>
+                          <span className="font-medium">{template.name}</span>
+                          <span className="text-xs text-gray-500 ml-2">
+                            {template.startTime} - {template.endTime}
+                          </span>
+                        </div>
+                        <span className="text-green-600">+</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Malam */}
+                <div className="bg-purple-50 rounded-xl p-3">
+                  <h3 className="font-bold text-purple-800 mb-2">🌙 Shift Malam</h3>
+                  <div className="space-y-2">
+                    {shiftTemplates.filter(t => t.type === "night").map((template) => (
+                      <button
+                        key={template.code}
+                        onClick={() => addFromTemplate(template)}
+                        className="w-full text-left p-2 bg-white rounded-lg hover:bg-purple-100 transition-colors flex justify-between items-center"
+                      >
+                        <div>
+                          <span className="font-medium">{template.name}</span>
+                          <span className="text-xs text-gray-500 ml-2">
+                            {template.startTime} - {template.endTime}
+                          </span>
+                        </div>
+                        <span className="text-green-600">+</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Khusus */}
+                <div className="bg-cyan-50 rounded-xl p-3">
+                  <h3 className="font-bold text-cyan-800 mb-2">⭐ Shift Khusus</h3>
+                  <div className="space-y-2">
+                    {shiftTemplates.filter(t => t.type === "special").map((template) => (
+                      <button
+                        key={template.code}
+                        onClick={() => addFromTemplate(template)}
+                        className="w-full text-left p-2 bg-white rounded-lg hover:bg-cyan-100 transition-colors flex justify-between items-center"
+                      >
+                        <div>
+                          <span className="font-medium">{template.name}</span>
+                          <span className="text-xs text-gray-500 ml-2">
+                            {template.startTime} - {template.endTime}
+                          </span>
+                        </div>
+                        <span className="text-green-600">+</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
+            
+            <div className="sticky bottom-0 bg-gray-50 p-4 border-t border-gray-200">
+              <button
+                onClick={() => setIsTemplateModalOpen(false)}
+                className="w-full py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Modal Assign Range */}
-        {showRangeModal && (
-          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col">
-              <div className="p-3 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
-                <h2 className="text-lg font-bold text-gray-800">📅 Assign Shift</h2>
-                <button onClick={() => setShowRangeModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
-              </div>
-              
-              <div className="p-4 space-y-3 overflow-y-auto flex-1">
-                <div className="bg-blue-50 p-3 rounded-lg">
-                  <div className="text-xs font-medium text-blue-700 mb-2">Rentang Tanggal</div>
-                  <div className="flex gap-2">
-                    <input
-                      type="date"
-                      value={dateRange.start}
-                      onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                      className="flex-1 border rounded px-2 py-1.5 text-sm"
-                    />
-                    <span className="text-gray-400">→</span>
-                    <input
-                      type="date"
-                      value={dateRange.end}
-                      onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                      className="flex-1 border rounded px-2 py-1.5 text-sm"
-                    />
-                  </div>
-                </div>
+      {/* Modal Form Tambah/Edit Shift */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-gray-800">
+                {editingShift ? "✏️ Edit Shift" : "➕ Tambah Shift Baru"}
+              </h2>
+              <button
+                onClick={() => {
+                  setIsModalOpen(false);
+                  resetForm();
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
 
-                <div className="bg-purple-50 p-3 rounded-lg">
-                  <div className="text-xs font-medium text-purple-700 mb-2">Pilih Shift</div>
-                  <select
-                    value={rangeShiftId}
-                    onChange={(e) => setRangeShiftId(e.target.value)}
-                    className="w-full border rounded px-2 py-1.5 text-sm"
-                  >
-                    <option value="">-- Pilih Shift --</option>
-                    {shifts.map(shift => (
-                      <option key={shift.id} value={shift.id}>
-                        {shift.name} ({shift.startTime}-{shift.endTime})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="bg-green-50 p-3 rounded-lg">
-                  <div className="text-xs font-medium text-green-700 mb-2">Pilih Karyawan</div>
+            <form onSubmit={handleSubmit} className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nama Shift *
+                  </label>
                   <input
                     type="text"
-                    placeholder="🔍 Cari karyawan..."
-                    value={userSearchTerm}
-                    onChange={(e) => setUserSearchTerm(e.target.value)}
-                    className="w-full border rounded px-2 py-1.5 text-sm mb-2"
+                    required
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                    placeholder="Contoh: Shift Pagi"
                   />
-                  <div className="flex items-center gap-2 mb-2 pb-1 border-b">
-                    <input
-                      type="checkbox"
-                      id="selectAll"
-                      checked={selectAll}
-                      onChange={() => {
-                        if (selectAll) {
-                          setSelectedUserIds(new Set());
-                        } else {
-                          setSelectedUserIds(new Set(filteredUsersForModal.map(u => u.uid)));
-                        }
-                        setSelectAll(!selectAll);
-                      }}
-                      className="w-3.5 h-3.5"
-                    />
-                    <label htmlFor="selectAll" className="text-xs">Pilih Semua ({filteredUsersForModal.length})</label>
-                  </div>
-                  <div className="max-h-48 overflow-y-auto space-y-1">
-                    {filteredUsersForModal.map(user => (
-                      <label key={user.uid} className="flex items-center gap-2 p-1.5 hover:bg-white rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedUserIds.has(user.uid)}
-                          onChange={() => {
-                            const newSelected = new Set(selectedUserIds);
-                            if (newSelected.has(user.uid)) newSelected.delete(user.uid);
-                            else newSelected.add(user.uid);
-                            setSelectedUserIds(newSelected);
-                            setSelectAll(newSelected.size === filteredUsersForModal.length);
-                          }}
-                          className="w-3.5 h-3.5"
-                        />
-                        <div className="flex-1">
-                          <div className="text-xs font-medium">{user.name}</div>
-                          <div className="text-[10px] text-gray-500">{user.department}</div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                  <div className="text-[10px] text-green-600 mt-2">✓ {selectedUserIds.size} terpilih</div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Kode Shift *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.code}
+                    onChange={(e) =>
+                      setFormData({ ...formData, code: e.target.value.toUpperCase() })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none font-mono"
+                    placeholder="Contoh: MORNING"
+                  />
                 </div>
               </div>
-              
-              <div className="p-3 border-t border-gray-200 bg-gray-50 flex gap-2">
-                <button
-                  onClick={assignDateRangeToSelectedUsers}
-                  disabled={saving || !dateRange.start || !dateRange.end || !rangeShiftId || selectedUserIds.size === 0}
-                  className="flex-1 bg-green-600 text-white py-1.5 rounded-lg text-sm disabled:bg-gray-400"
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tipe Shift
+                </label>
+                <select
+                  value={formData.shiftType}
+                  onChange={(e) =>
+                    setFormData({ ...formData, shiftType: e.target.value as any })
+                  }
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
                 >
-                  {saving ? "Memproses..." : `Assign ke ${selectedUserIds.size} karyawan`}
+                  <option value="morning">🌅 Pagi</option>
+                  <option value="afternoon">🌤️ Siang</option>
+                  <option value="night">🌙 Malam</option>
+                  <option value="special">⭐ Khusus</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Jam Mulai *
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={formData.startTime}
+                    onChange={(e) =>
+                      setFormData({ ...formData, startTime: e.target.value })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Jam Selesai *
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={formData.endTime}
+                    onChange={(e) =>
+                      setFormData({ ...formData, endTime: e.target.value })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Warna Shift
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {colorOptions.map((color) => (
+                    <button
+                      key={color.value}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, color: color.value })}
+                      className={`w-10 h-10 rounded-full ${color.class} ${
+                        formData.color === color.value
+                          ? "ring-4 ring-offset-2 ring-gray-400"
+                          : ""
+                      }`}
+                      title={color.label}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Toleransi (menit)
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.lateTolerance}
+                    onChange={(e) =>
+                      setFormData({ ...formData, lateTolerance: parseInt(e.target.value) || 0 })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Rate Lembur
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.overtimeRate}
+                    onChange={(e) =>
+                      setFormData({ ...formData, overtimeRate: parseInt(e.target.value) || 0 })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Deskripsi
+                </label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                  placeholder="Deskripsi shift..."
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="isActive"
+                  checked={formData.isActive}
+                  onChange={(e) =>
+                    setFormData({ ...formData, isActive: e.target.checked })
+                  }
+                  className="w-4 h-4 text-green-600 focus:ring-green-500"
+                />
+                <label htmlFor="isActive" className="text-sm text-gray-700">
+                  Aktifkan shift ini
+                </label>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="submit"
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded-lg transition-colors"
+                >
+                  {editingShift ? "Update Shift" : "Simpan Shift"}
                 </button>
                 <button
-                  onClick={() => setShowRangeModal(false)}
-                  className="flex-1 bg-gray-300 text-gray-700 py-1.5 rounded-lg text-sm"
+                  type="button"
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    resetForm();
+                  }}
+                  className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-2 rounded-lg transition-colors"
                 >
                   Batal
                 </button>
               </div>
-            </div>
+            </form>
           </div>
-        )}
-
-        {/* Footer */}
-        <div className="text-center text-[10px] text-gray-400">
-          Klik pada sel shift untuk mengubah | Scroll horizontal untuk melihat semua tanggal | Import Excel untuk bulk data
         </div>
-      </div>
+      )}
     </ProtectedRoute>
   );
 }
