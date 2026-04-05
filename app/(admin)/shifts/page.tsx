@@ -411,12 +411,12 @@ export default function ShiftsPage() {
                         </div>
                       )}
 
-                      {!isSpecial && shift.lateTolerance > 0 && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-gray-500 w-20">Toleransi:</span>
-                          <span className="font-medium">{shift.lateTolerance} menit</span>
-                        </div>
-                      )}
+                      {!isSpecial && (shift.lateTolerance ?? 0) > 0 && (
+  <div className="flex items-center gap-2 text-sm">
+    <span className="text-gray-500 w-20">Toleransi:</span>
+    <span className="font-medium">{shift.lateTolerance ?? 0} menit</span>
+  </div>
+)}
                       
                       {shift.description && (
                         <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
