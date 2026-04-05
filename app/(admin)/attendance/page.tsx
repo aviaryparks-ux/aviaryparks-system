@@ -51,6 +51,7 @@ type Attendance = {
     startTime: string;
     endTime: string;
     color: string;
+    lateTolerance?: number;
   };
 };
 
@@ -77,6 +78,12 @@ type RecapItem = {
   totalJam: number;
   totalGaji: number;
   attendanceDetails: Attendance[];
+};
+
+type StatusInfo = {
+  status: string;
+  label: string;
+  color: string;
 };
 
 // ================= HELPER FUNCTIONS =================
@@ -175,6 +182,68 @@ const formatWorkHours = (hours: number): string => {
   return `${wholeHours} jam ${minutes} menit`;
 };
 
+// ================= FUNGSI STATUS ABSENSI (SELARAS DENGAN SHIFT) =================
+const getAttendanceStatus = (attendance: Attendance): StatusInfo => {
+  const shift = attendance.shift;
+  const checkIn = attendance.checkIn;
+  const checkOut = attendance.checkOut;
+  
+  // Cek apakah hari libur (shift khusus libur)
+  const isHoliday = shift?.name === "Day Off" || shift?.name === "PHC";
+  if (isHoliday) {
+    return { status: "libur", label: "📅 Libur", color: "bg-purple-100 text-purple-700" };
+  }
+  
+  // Tidak Hadir (Alpha) - Ada shift tapi tidak ada check-in
+  if (shift && !checkIn) {
+    return { status: "alpha", label: "❌ Tidak Hadir", color: "bg-red-100 text-red-700" };
+  }
+  
+  // Tidak Absen Pulang (NSP) - Ada check-in tapi tidak ada check-out
+  if (checkIn && !checkOut) {
+    return { status: "nsp", label: "⚠️ NSP (Belum Pulang)", color: "bg-orange-100 text-orange-700" };
+  }
+  
+  // Cek keterlambatan jika ada check-in
+  if (checkIn) {
+    const checkInDate = toDate(checkIn.time);
+    if (checkInDate) {
+      // Ambil jam mulai shift (default 08:00 jika tidak ada shift)
+      let shiftStartHour = 8;
+      let shiftStartMinute = 0;
+      let toleransi = 15;
+      
+      if (shift && shift.startTime) {
+        const startParts = shift.startTime.split(":");
+        shiftStartHour = parseInt(startParts[0]);
+        shiftStartMinute = parseInt(startParts[1]);
+        toleransi = shift.lateTolerance ?? 15;
+      }
+      
+      const checkInTotalMenit = checkInDate.getHours() * 60 + checkInDate.getMinutes();
+      const shiftStartTotalMenit = shiftStartHour * 60 + shiftStartMinute;
+      const selisih = checkInTotalMenit - shiftStartTotalMenit;
+      
+      // Terlambat jika melebihi toleransi
+      if (selisih > toleransi) {
+        return { 
+          status: "terlambat", 
+          label: `⏰ Terlambat ${Math.floor(selisih)} menit`, 
+          color: "bg-yellow-100 text-yellow-700" 
+        };
+      }
+    }
+  }
+  
+  // Hadir lengkap (check-in dan check-out)
+  if (checkIn && checkOut) {
+    return { status: "hadir", label: "✅ Hadir", color: "bg-green-100 text-green-700" };
+  }
+  
+  // Default (belum diketahui)
+  return { status: "unknown", label: "📋 Belum Absen", color: "bg-gray-100 text-gray-500" };
+};
+
 // ================= KOMPONEN UTAMA =================
 export default function AttendancePage() {
   // ================= STATE =================
@@ -195,12 +264,14 @@ export default function AttendancePage() {
   const [tempEmployee, setTempEmployee] = useState("ALL");
   const [tempStartDate, setTempStartDate] = useState("");
   const [tempEndDate, setTempEndDate] = useState("");
+  const [tempStatus, setTempStatus] = useState("ALL");
 
   const [dept, setDept] = useState("ALL");
   const [jabatan, setJabatan] = useState("ALL");
   const [employee, setEmployee] = useState("ALL");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [status, setStatus] = useState("ALL");
 
   // ================= LOAD USERS =================
   useEffect(() => {
@@ -371,6 +442,9 @@ export default function AttendancePage() {
       if (employee !== "ALL") {
         ok = ok && a.uid === employee;
       }
+      if (status !== "ALL") {
+        ok = ok && getAttendanceStatus(a).status === status;
+      }
       if (startDate) {
         const date = toDate(a.date);
         if (date) {
@@ -386,7 +460,7 @@ export default function AttendancePage() {
       
       return ok;
     });
-  }, [data, dept, jabatan, employee, startDate, endDate]);
+  }, [data, dept, jabatan, employee, status, startDate, endDate]);
 
   // ================= REKAP DATA (MEMOIZED) =================
   const recapList = useMemo(() => {
@@ -407,7 +481,9 @@ export default function AttendancePage() {
         };
       }
       
-      if (a.checkIn) {
+      // Hanya hitung yang hadir atau terlambat (bukan libur/alpha)
+      const statusInfo = getAttendanceStatus(a);
+      if (statusInfo.status === "hadir" || statusInfo.status === "terlambat") {
         recap[a.uid].totalHari++;
         const jamKerja = getWorkHours(a);
         recap[a.uid].totalJam += jamKerja;
@@ -420,20 +496,17 @@ export default function AttendancePage() {
     return Object.values(recap).sort((a, b) => b.totalGaji - a.totalGaji);
   }, [filtered]);
 
-  // ================= STATISTIK =================
+  // ================= STATISTIK (SELARAS DENGAN SHIFT) =================
   const stats = useMemo(() => {
     const total = filtered.length;
-    const hadir = filtered.filter((a) => a.checkIn).length;
+    const hadir = filtered.filter((a) => getAttendanceStatus(a).status === "hadir").length;
+    const terlambat = filtered.filter((a) => getAttendanceStatus(a).status === "terlambat").length;
+    const alpha = filtered.filter((a) => getAttendanceStatus(a).status === "alpha").length;
+    const nsp = filtered.filter((a) => getAttendanceStatus(a).status === "nsp").length;
+    const libur = filtered.filter((a) => getAttendanceStatus(a).status === "libur").length;
     const corrected = filtered.filter((a) => a.isCorrected).length;
-    const terlambat = filtered.filter((a) => {
-      if (!a.checkIn) return false;
-      const date = toDate(a.checkIn.time);
-      if (!date) return false;
-      const hour = date.getHours();
-      return hour && hour > 8;
-    }).length;
     
-    return { total, hadir, terlambat, corrected };
+    return { total, hadir, terlambat, alpha, nsp, libur, corrected };
   }, [filtered]);
 
   // ================= FILTER OPTIONS =================
@@ -454,6 +527,8 @@ export default function AttendancePage() {
   const employeeList = useMemo(() => {
     return ["ALL", ...new Set(data.map((a) => a.uid))];
   }, [data]);
+
+  const statusList = ["ALL", "hadir", "terlambat", "alpha", "nsp", "libur"];
 
   // ================= FILTER HANDLERS =================
   const setPayrollPeriod = useCallback(() => {
@@ -481,19 +556,22 @@ export default function AttendancePage() {
     setDept(tempDept);
     setJabatan(tempJabatan);
     setEmployee(tempEmployee);
+    setStatus(tempStatus);
     setStartDate(tempStartDate);
     setEndDate(tempEndDate);
-  }, [tempDept, tempJabatan, tempEmployee, tempStartDate, tempEndDate]);
+  }, [tempDept, tempJabatan, tempEmployee, tempStatus, tempStartDate, tempEndDate]);
 
   const resetFilter = useCallback(() => {
     setTempDept("ALL");
     setTempJabatan("ALL");
     setTempEmployee("ALL");
+    setTempStatus("ALL");
     setTempStartDate("");
     setTempEndDate("");
     setDept("ALL");
     setJabatan("ALL");
     setEmployee("ALL");
+    setStatus("ALL");
     setStartDate("");
     setEndDate("");
   }, []);
@@ -502,16 +580,21 @@ export default function AttendancePage() {
   const exportDetailExcel = async () => {
     setExporting("detail-excel");
     try {
-      const rows = filtered.map((a) => ({
-        Nama: a.name || "-",
-        Department: a.department || "-",
-        Jabatan: a.jabatan || "-",
-        Tanggal: formatDate(a.date) || "-",
-        Jam_Masuk: a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
-        Jam_Pulang: a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
-        Jam_Kerja: formatWorkHours(getWorkHours(a)) || "-",
-        Status_Koreksi: a.isCorrected ? "Sudah Dikoreksi" : "Normal",
-      }));
+      const rows = filtered.map((a) => {
+        const statusInfo = getAttendanceStatus(a);
+        return {
+          Nama: a.name || "-",
+          Department: a.department || "-",
+          Jabatan: a.jabatan || "-",
+          Shift: a.shift?.name || "-",
+          Tanggal: formatDate(a.date) || "-",
+          Jam_Masuk: a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
+          Jam_Pulang: a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
+          Jam_Kerja: formatWorkHours(getWorkHours(a)) || "-",
+          Status: statusInfo.label,
+          Status_Koreksi: a.isCorrected ? "Sudah Dikoreksi" : "Normal",
+        };
+      });
       
       const ws = XLSX.utils.json_to_sheet(rows);
       const wb = XLSX.utils.book_new();
@@ -531,17 +614,21 @@ export default function AttendancePage() {
       const doc = new jsPDF({ orientation: "landscape" });
       
       autoTable(doc, {
-        head: [["Nama", "Dept", "Jabatan", "Tanggal", "Masuk", "Pulang", "Jam Kerja", "Status"]],
-        body: filtered.map((a) => [
-          a.name || "-",
-          a.department || "-",
-          a.jabatan || "-",
-          formatDate(a.date) || "-",
-          a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
-          a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
-          formatWorkHours(getWorkHours(a)) || "-",
-          a.isCorrected ? "✓ Dikoreksi" : "-",
-        ]) as any,
+        head: [["Nama", "Dept", "Jabatan", "Shift", "Tanggal", "Masuk", "Pulang", "Jam Kerja", "Status"]],
+        body: filtered.map((a) => {
+          const statusInfo = getAttendanceStatus(a);
+          return [
+            a.name || "-",
+            a.department || "-",
+            a.jabatan || "-",
+            a.shift?.name || "-",
+            formatDate(a.date) || "-",
+            a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
+            a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
+            formatWorkHours(getWorkHours(a)) || "-",
+            statusInfo.label,
+          ];
+        }) as any,
         headStyles: { fillColor: [5, 150, 105] },
         startY: 20,
       });
@@ -659,7 +746,7 @@ export default function AttendancePage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
             <div className="flex justify-between items-center">
               <div>
@@ -672,7 +759,7 @@ export default function AttendancePage() {
           <div className="bg-green-50 rounded-xl p-4 border border-green-200">
             <div className="flex justify-between items-center">
               <div>
-                <p className="text-sm text-green-600">Hadir</p>
+                <p className="text-sm text-green-600">✅ Hadir</p>
                 <p className="text-2xl font-bold text-green-800">{stats.hadir}</p>
               </div>
               <span className="text-3xl">✅</span>
@@ -681,17 +768,44 @@ export default function AttendancePage() {
           <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200">
             <div className="flex justify-between items-center">
               <div>
-                <p className="text-sm text-yellow-600">Terlambat</p>
+                <p className="text-sm text-yellow-600">⏰ Terlambat</p>
                 <p className="text-2xl font-bold text-yellow-800">{stats.terlambat}</p>
               </div>
               <span className="text-3xl">⏰</span>
             </div>
           </div>
+          <div className="bg-red-50 rounded-xl p-4 border border-red-200">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-sm text-red-600">❌ Tidak Hadir</p>
+                <p className="text-2xl font-bold text-red-800">{stats.alpha}</p>
+              </div>
+              <span className="text-3xl">❌</span>
+            </div>
+          </div>
+          <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-sm text-orange-600">⚠️ NSP</p>
+                <p className="text-2xl font-bold text-orange-800">{stats.nsp}</p>
+              </div>
+              <span className="text-3xl">⚠️</span>
+            </div>
+          </div>
           <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
             <div className="flex justify-between items-center">
               <div>
-                <p className="text-sm text-purple-600">Dikoreksi</p>
-                <p className="text-2xl font-bold text-purple-800">{stats.corrected}</p>
+                <p className="text-sm text-purple-600">📅 Libur</p>
+                <p className="text-2xl font-bold text-purple-800">{stats.libur}</p>
+              </div>
+              <span className="text-3xl">📅</span>
+            </div>
+          </div>
+          <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-200">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-sm text-indigo-600">✏️ Dikoreksi</p>
+                <p className="text-2xl font-bold text-indigo-800">{stats.corrected}</p>
               </div>
               <span className="text-3xl">✏️</span>
             </div>
@@ -706,7 +820,7 @@ export default function AttendancePage() {
             </svg>
             Filter Data
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
             <select
               value={tempDept}
               onChange={(e) => setTempDept(e.target.value)}
@@ -738,6 +852,18 @@ export default function AttendancePage() {
                   </option>
                 )
               )}
+            </select>
+            <select
+              value={tempStatus}
+              onChange={(e) => setTempStatus(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+            >
+              <option value="ALL">📋 Semua Status</option>
+              <option value="hadir">✅ Hadir</option>
+              <option value="terlambat">⏰ Terlambat</option>
+              <option value="alpha">❌ Tidak Hadir</option>
+              <option value="nsp">⚠️ NSP (Belum Pulang)</option>
+              <option value="libur">📅 Libur</option>
             </select>
             <div className="flex gap-2">
               <input
@@ -838,7 +964,7 @@ export default function AttendancePage() {
           </div>
         </div>
 
-        {/* 🔥 DETAIL TABLE DENGAN KOLOM FOTO - SUDAH FIX */}
+        {/* DETAIL TABLE */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
             <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
@@ -854,6 +980,7 @@ export default function AttendancePage() {
                   <th className="px-4 py-3 text-left">Nama</th>
                   <th className="px-4 py-3 text-left">Dept</th>
                   <th className="px-4 py-3 text-left">Jabatan</th>
+                  <th className="px-4 py-3 text-left">Shift</th>
                   <th className="px-4 py-3 text-left">Tanggal</th>
                   <th className="px-4 py-3 text-left">Masuk</th>
                   <th className="px-4 py-3 text-left">Pulang</th>
@@ -871,7 +998,7 @@ export default function AttendancePage() {
                   const pulangDisplay = a.isCorrected && a.correctedCheckOut 
                     ? a.correctedCheckOut 
                     : formatTime(a.checkOut?.time);
-                  
+                  const statusInfo = getAttendanceStatus(a);
                   const hasCheckInPhoto = !!a.checkIn?.photo;
                   const hasCheckOutPhoto = !!a.checkOut?.photo;
                   
@@ -880,21 +1007,28 @@ export default function AttendancePage() {
                       <td className="px-4 py-3 font-medium">{a.name}</td>
                       <td className="px-4 py-3">{a.department}</td>
                       <td className="px-4 py-3">{a.jabatan}</td>
+                      <td className="px-4 py-3">
+                        {a.shift ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: a.shift.color }} />
+                            <span className="text-xs">{a.shift.name}</span>
+                          </div>
+                        ) : "-"}
+                      </td>
                       <td className="px-4 py-3">{formatDate(a.date)}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded-full text-xs ${a.checkIn ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                           {masukDisplay || "--:--"}
                         </span>
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded-full text-xs ${a.checkOut ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
                           {pulangDisplay || "--:--"}
                         </span>
-                      </td>
+                       </td>
                       <td className="px-4 py-3 font-mono">
                         {workHours > 0 ? formatWorkHours(workHours) : "-"}
                        </td>
-                      {/* 🔥 KOLOM FOTO - SUDAH FIX DENGAN OPTIONAL CHAINING */}
                       <td className="px-4 py-3">
                         <div className="flex gap-2">
                           {hasCheckInPhoto && (
@@ -916,9 +1050,7 @@ export default function AttendancePage() {
                                 alt="Check-in"
                                 className="w-10 h-10 rounded-lg object-cover ring-2 ring-green-300 hover:ring-4 transition-all"
                               />
-                              <div className="absolute -top-2 -right-2 bg-green-500 text-white text-[10px] px-1 rounded-full">
-                                IN
-                              </div>
+                              <div className="absolute -top-2 -right-2 bg-green-500 text-white text-[10px] px-1 rounded-full">IN</div>
                             </button>
                           )}
                           {hasCheckOutPhoto && (
@@ -940,28 +1072,18 @@ export default function AttendancePage() {
                                 alt="Check-out"
                                 className="w-10 h-10 rounded-lg object-cover ring-2 ring-blue-300 hover:ring-4 transition-all"
                               />
-                              <div className="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] px-1 rounded-full">
-                                OUT
-                              </div>
+                              <div className="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] px-1 rounded-full">OUT</div>
                             </button>
                           )}
-                          {!hasCheckInPhoto && !hasCheckOutPhoto && (
-                            <span className="text-gray-400 text-xs">-</span>
-                          )}
+                          {!hasCheckInPhoto && !hasCheckOutPhoto && <span className="text-gray-400 text-xs">-</span>}
                         </div>
                        </td>
                       <td className="px-4 py-3">
-                        {a.isCorrected ? (
-                          <span className="px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-700">
-                            ✏️ Dikoreksi
-                          </span>
-                        ) : (
-                          <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-500">
-                            Normal
-                          </span>
-                        )}
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusInfo.color}`}>
+                          {statusInfo.label}
+                        </span>
                        </td>
-                    </tr>
+                     </tr>
                   );
                 })}
               </tbody>
@@ -1012,17 +1134,17 @@ export default function AttendancePage() {
                       <td className="px-4 py-3">{r.jabatan}</td>
                       <td className="px-4 py-3">
                         <span className="font-bold text-blue-600">{r.totalHari}</span> hari
-                       </td>
+                      </td>
                       <td className="px-4 py-3">
                         <span className="font-bold text-green-600">{r.totalJam.toFixed(2)}</span> jam
-                       </td>
+                      </td>
                       <td className="px-4 py-3">
                         {r.totalHari > 0 ? `${(r.totalJam / r.totalHari).toFixed(2)} jam` : "-"}
-                       </td>
+                      </td>
                       <td className="px-4 py-3">Rp {r.rate?.toLocaleString() || 0}</td>
                       <td className="px-4 py-3">
                         <span className="font-bold text-green-600">Rp {r.totalGaji?.toLocaleString() || 0}</span>
-                       </td>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1032,7 +1154,7 @@ export default function AttendancePage() {
         )}
       </div>
 
-      {/* 🔥 MODAL PREVIEW FOTO */}
+      {/* MODAL PREVIEW FOTO */}
       {selectedPhoto && selectedPhotoInfo && (
         <div 
           className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4"

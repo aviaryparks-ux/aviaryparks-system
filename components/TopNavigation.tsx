@@ -95,6 +95,13 @@ export default function TopNavigation() {
       ),
       allowedRoles: ["super_admin"],
     },
+    // Tambahkan di Sidebar.tsx
+{
+  name: "Pengaturan Absensi",
+  path: "/attendance-settings",
+  icon: <span>⚙️</span>,
+  allowedRoles: ["super_admin", "admin", "hr"],
+},
     {
       name: "Approval",
       path: "/approval-flow",
