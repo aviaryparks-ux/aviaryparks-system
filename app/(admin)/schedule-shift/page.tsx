@@ -11,6 +11,7 @@ import {
   deleteDoc,
   getDoc,
   writeBatch,
+  addDoc,
 } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/contexts/AuthContext";
@@ -32,6 +33,7 @@ type Shift = {
   endTime: string;
   color: string;
   shiftType: string;
+  lateTolerance?: number;
 };
 
 type Schedule = {
@@ -50,7 +52,78 @@ type Holiday = {
   isNational?: boolean;
 };
 
-// Component untuk shift select (tanpa tombol submit sendiri)
+// ==================== HELPER FUNCTIONS ====================
+const formatDateToYYYYMMDD = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseDateFromYYYYMMDD = (dateStr: string): Date => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
+const getDaysInMonth = (date: Date) => {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const firstDayWeekday = firstDay.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const days: (Date | null)[] = [];
+  
+  for (let i = 0; i < firstDayWeekday; i++) {
+    days.push(null);
+  }
+  
+  for (let i = 1; i <= daysInMonth; i++) {
+    days.push(new Date(year, month, i));
+  }
+  
+  return days;
+};
+
+// ==================== AUDIT LOG FUNCTION ====================
+const addAuditLog = async (
+  userId: string,
+  userName: string,
+  date: string,
+  oldShiftId: string | null,
+  oldShiftName: string | null,
+  newShiftId: string | null,
+  newShiftName: string | null,
+  action: "create" | "update" | "delete",
+  changedBy: string,
+  changedByName: string,
+  changedByRole: string
+) => {
+  try {
+    await addDoc(collection(db, "shift_audit_logs"), {
+      userId,
+      userName,
+      date,
+      oldShiftId: oldShiftId || "",
+      oldShiftName: oldShiftName || "",
+      newShiftId: newShiftId || "",
+      newShiftName: newShiftName || "",
+      action,
+      changedBy,
+      changedByName,
+      changedByRole,
+      changedAt: new Date(),
+      notes: action === "update" 
+        ? `Perubahan shift dari ${oldShiftName || "kosong"} ke ${newShiftName || "kosong"}`
+        : action === "create"
+        ? `Menambahkan shift ${newShiftName} untuk tanggal ${date}`
+        : `Menghapus shift ${oldShiftName} untuk tanggal ${date}`,
+    });
+  } catch (error) {
+    console.error("Error adding audit log:", error);
+  }
+};
+
+// ==================== COMPONENT ====================
 const ShiftSelectCell = ({ 
   userId, 
   date, 
@@ -62,7 +135,7 @@ const ShiftSelectCell = ({
   allowHolidayAssign 
 }: { 
   userId: string; 
-  date: string; 
+  date: string;
   currentShiftId: string | null;
   currentShiftName: string | null;
   shifts: Shift[]; 
@@ -70,29 +143,22 @@ const ShiftSelectCell = ({
   isLibur: boolean;
   allowHolidayAssign: boolean;
 }) => {
-  const [selectedShiftId, setSelectedShiftId] = useState(currentShiftId || "");
   const [searchText, setSearchText] = useState(currentShiftName || "");
 
   const handleChange = (value: string) => {
     setSearchText(value);
     const shift = shifts.find(s => s.name === value);
     if (shift) {
-      setSelectedShiftId(shift.id);
       onShiftChange(userId, date, shift.id, shift.name);
     } else if (value === "") {
-      setSelectedShiftId("");
       onShiftChange(userId, date, "", "");
     }
   };
 
-  const filteredShifts = shifts.filter(shift => 
-    shift.name.toLowerCase().includes(searchText.toLowerCase())
-  );
-
   if (isLibur && !allowHolidayAssign) {
     return (
       <div className="text-[10px] text-gray-400 py-2 text-center">
-        {isLibur ? "Libur" : "Weekend"}
+        Libur
       </div>
     );
   }
@@ -114,22 +180,18 @@ const ShiftSelectCell = ({
           </option>
         ))}
       </datalist>
-      {selectedShiftId && (
-        <div className="text-[9px] text-green-600 truncate">
-          {shifts.find(s => s.id === selectedShiftId)?.name}
-        </div>
-      )}
     </div>
   );
 };
 
+// ==================== MAIN PAGE ====================
 export default function ScheduleShiftPage() {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [schedules, setSchedules] = useState<Record<string, Schedule>>({});
   const [holidays, setHolidays] = useState<Holiday[]>([]);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState(formatDateToYYYYMMDD(new Date()));
   const [dateRange, setDateRange] = useState({ start: "", end: "" });
   const [selectedDepartment, setSelectedDepartment] = useState("ALL");
   const [searchTerm, setSearchTerm] = useState("");
@@ -143,11 +205,8 @@ export default function ScheduleShiftPage() {
   const [allowHolidayAssign, setAllowHolidayAssign] = useState(true);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
-  
-  // 🔥 State untuk menyimpan perubahan yang belum disimpan
   const [pendingChanges, setPendingChanges] = useState<Map<string, { shiftId: string; shiftName: string }>>(new Map());
   
-  // Modal states
   const [showRangeModal, setShowRangeModal] = useState(false);
   const [rangeShiftId, setRangeShiftId] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
@@ -270,6 +329,7 @@ export default function ScheduleShiftPage() {
             endTime: data.endTime,
             color: data.color,
             shiftType: data.shiftType || "morning",
+            lateTolerance: data.lateTolerance || 15,
           });
         }
       });
@@ -296,7 +356,6 @@ export default function ScheduleShiftPage() {
       });
       setSchedules(schedulesMap);
       
-      // Reset pending changes setelah load data
       setPendingChanges(new Map());
     } catch (error) {
       console.error("Error loading data:", error);
@@ -306,29 +365,28 @@ export default function ScheduleShiftPage() {
     }
   };
 
-  // 🔥 Fungsi untuk mencatat perubahan shift
-  const handleShiftChange = (userId: string, date: string, shiftId: string, shiftName: string) => {
-    const cellKey = `${userId}_${date}`;
+  const handleShiftChange = (userId: string, dateStr: string, shiftId: string, shiftName: string) => {
+    if (!dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      console.error("Invalid date format:", dateStr);
+      return;
+    }
+    
+    const cellKey = `${userId}_${dateStr}`;
     const currentSchedule = schedules[cellKey];
     
-    // Jika shiftId sama dengan yang sudah ada dan tidak berubah, hapus dari pending changes
     if (currentSchedule?.shiftId === shiftId) {
       setPendingChanges(prev => {
         const newMap = new Map(prev);
         newMap.delete(cellKey);
         return newMap;
       });
-    } 
-    // Jika shiftId kosong (hapus)
-    else if (shiftId === "") {
+    } else if (shiftId === "") {
       setPendingChanges(prev => {
         const newMap = new Map(prev);
         newMap.set(cellKey, { shiftId: "unassign", shiftName: "" });
         return newMap;
       });
-    }
-    // Jika ada perubahan shift
-    else if (shiftId) {
+    } else if (shiftId) {
       setPendingChanges(prev => {
         const newMap = new Map(prev);
         newMap.set(cellKey, { shiftId, shiftName });
@@ -337,7 +395,7 @@ export default function ScheduleShiftPage() {
     }
   };
 
-  // 🔥 Fungsi untuk menyimpan semua perubahan sekaligus
+  // 🔥 FUNGSI UTAMA: SIMPAN SEMUA PERUBAHAN + UPDATE ATTENDANCE
   const handleSaveAllChanges = async () => {
     if (pendingChanges.size === 0) {
       showToast("Tidak ada perubahan yang perlu disimpan", "error");
@@ -347,22 +405,48 @@ export default function ScheduleShiftPage() {
     setSaving(true);
     let successCount = 0;
     let errorCount = 0;
+    const auditLogs: any[] = [];
 
     try {
       const batch = writeBatch(db);
       
       for (const [cellKey, { shiftId, shiftName }] of pendingChanges.entries()) {
-        const [userId, date] = cellKey.split("_");
-        const scheduleId = `${userId}_${date}`;
-        const shift = shifts.find(s => s.id === shiftId);
+        const [userId, dateStr] = cellKey.split("_");
         
+        if (!dateStr || !dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          errorCount++;
+          continue;
+        }
+        
+        const scheduleId = `${userId}_${dateStr}`;
+        const shift = shifts.find(s => s.id === shiftId);
+        const currentSchedule = schedules[scheduleId];
+        const userName = users.find(u => u.uid === userId)?.name || "-";
+        
+        // Catat audit log
+        const isDelete = shiftId === "unassign";
+        const isCreate = !currentSchedule && !isDelete;
+        const isUpdate = currentSchedule && !isDelete;
+        
+        auditLogs.push({
+          userId,
+          userName,
+          date: dateStr,
+          oldShiftId: currentSchedule?.shiftId || null,
+          oldShiftName: currentSchedule?.shiftName || null,
+          newShiftId: isDelete ? null : shiftId,
+          newShiftName: isDelete ? null : (shift?.name || shiftName),
+          action: isDelete ? "delete" : (isCreate ? "create" : "update"),
+        });
+        
+        // 1. UPDATE shift_schedules
         if (shiftId === "unassign") {
           batch.delete(doc(db, "shift_schedules", scheduleId));
         } else {
           batch.set(doc(db, "shift_schedules", scheduleId), {
             userId,
             shiftId,
-            date,
+            date: dateStr,
             shiftName: shift?.name || shiftName,
             shiftColor: shift?.color,
             updatedBy: currentUser?.uid,
@@ -371,15 +455,60 @@ export default function ScheduleShiftPage() {
             updatedAt: new Date(),
           });
         }
+        
+        // 2. UPDATE attendance yang sudah ada (jika dokumennya ada)
+        const attendanceId = `${userId}_${dateStr}`;
+        const attendanceRef = doc(db, "attendance", attendanceId);
+        const attendanceDoc = await getDoc(attendanceRef);
+        
+        if (attendanceDoc.exists()) {
+          if (shiftId === "unassign") {
+            batch.update(attendanceRef, {
+              shift: null,
+              updatedAt: new Date(),
+            });
+          } else if (shift) {
+            batch.update(attendanceRef, {
+              shift: {
+                id: shift.id,
+                name: shift.name,
+                code: shift.code,
+                startTime: shift.startTime,
+                endTime: shift.endTime,
+                color: shift.color,
+                lateTolerance: shift.lateTolerance || 15,
+              },
+              updatedAt: new Date(),
+            });
+          }
+        }
+        
         successCount++;
       }
       
       await batch.commit();
       
+      // Simpan audit logs
+      for (const log of auditLogs) {
+        await addAuditLog(
+          log.userId,
+          log.userName,
+          log.date,
+          log.oldShiftId,
+          log.oldShiftName,
+          log.newShiftId,
+          log.newShiftName,
+          log.action,
+          currentUser?.uid || "",
+          currentUser?.name || "",
+          currentUser?.role || ""
+        );
+      }
+      
       // Update local state schedules
       for (const [cellKey, { shiftId, shiftName }] of pendingChanges.entries()) {
-        const [userId, date] = cellKey.split("_");
-        const scheduleId = `${userId}_${date}`;
+        const [userId, dateStr] = cellKey.split("_");
+        const scheduleId = `${userId}_${dateStr}`;
         const shift = shifts.find(s => s.id === shiftId);
         
         if (shiftId === "unassign") {
@@ -394,7 +523,7 @@ export default function ScheduleShiftPage() {
             [scheduleId]: {
               userId,
               shiftId,
-              date,
+              date: dateStr,
               shiftName: shift?.name || shiftName,
               shiftColor: shift?.color,
             }
@@ -405,6 +534,9 @@ export default function ScheduleShiftPage() {
       showToast(`✅ Berhasil menyimpan ${successCount} perubahan${errorCount > 0 ? `, ${errorCount} gagal` : ""}`);
       setPendingChanges(new Map());
       
+      // Reload data untuk memastikan semuanya sinkron
+      await loadData();
+      
     } catch (error) {
       console.error("Save all changes error:", error);
       showToast("❌ Gagal menyimpan perubahan", "error");
@@ -413,11 +545,10 @@ export default function ScheduleShiftPage() {
     }
   };
 
-  // 🔥 Batalkan semua perubahan
   const handleCancelChanges = () => {
     if (pendingChanges.size > 0 && confirm("Batalkan semua perubahan yang belum disimpan?")) {
       setPendingChanges(new Map());
-      loadData(); // Reload data untuk mengembalikan ke state semula
+      loadData();
     }
   };
 
@@ -438,51 +569,33 @@ export default function ScheduleShiftPage() {
       return;
     }
 
-    const start = new Date(dateRange.start);
-    const end = new Date(dateRange.end);
-    const dates = [];
+    const startDate = parseDateFromYYYYMMDD(dateRange.start);
+    const endDate = parseDateFromYYYYMMDD(dateRange.end);
+    const dates: string[] = [];
     
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      dates.push(new Date(d).toISOString().split("T")[0]);
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      dates.push(formatDateToYYYYMMDD(d));
     }
 
     setRangeLoading(true);
-    let successCount = 0;
+    let addedCount = 0;
     const selectedUsersList = users.filter(u => selectedUserIds.has(u.uid));
+    const shift = shifts.find(s => s.id === rangeShiftId);
     
     try {
       for (const user of selectedUsersList) {
-        for (const date of dates) {
-          const scheduleId = `${user.uid}_${date}`;
-          const shift = shifts.find(s => s.id === rangeShiftId);
-          
-          await setDoc(doc(db, "shift_schedules", scheduleId), {
-            userId: user.uid,
-            shiftId: rangeShiftId,
-            date,
-            shiftName: shift?.name,
-            shiftColor: shift?.color,
-            updatedBy: currentUser?.uid,
-            updatedByName: currentUser?.name,
-            updatedByRole: currentUser?.role,
-            updatedAt: new Date(),
+        for (const dateStr of dates) {
+          const cellKey = `${user.uid}_${dateStr}`;
+          setPendingChanges(prev => {
+            const newMap = new Map(prev);
+            newMap.set(cellKey, { shiftId: rangeShiftId, shiftName: shift?.name || "" });
+            return newMap;
           });
-          
-          setSchedules(prev => ({
-            ...prev,
-            [scheduleId]: {
-              userId: user.uid,
-              shiftId: rangeShiftId,
-              date,
-              shiftName: shift?.name,
-              shiftColor: shift?.color,
-            }
-          }));
-          successCount++;
+          addedCount++;
         }
       }
       
-      showToast(`✅ Berhasil assign shift ke ${selectedUsersList.length} karyawan untuk ${dates.length} hari`);
+      showToast(`✅ ${addedCount} perubahan ditambahkan. Klik "Simpan Perubahan" untuk menyimpan.`);
       setShowRangeModal(false);
       setDateRange({ start: "", end: "" });
       setRangeShiftId("");
@@ -490,14 +603,14 @@ export default function ScheduleShiftPage() {
       setSelectAll(false);
     } catch (error) {
       console.error(error);
-      showToast("❌ Gagal melakukan assign range", "error");
+      showToast("❌ Gagal menambahkan perubahan", "error");
     } finally {
       setRangeLoading(false);
     }
   };
 
   const isHoliday = (date: Date): { isHoliday: boolean; name?: string } => {
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = formatDateToYYYYMMDD(date);
     const holiday = holidays.find(h => h.date === dateStr);
     if (holiday) {
       return { isHoliday: true, name: holiday.name };
@@ -510,30 +623,11 @@ export default function ScheduleShiftPage() {
     return day === 0 || day === 6;
   };
 
-  const getDaysInMonth = (date: Date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const days: (Date | null)[] = [];
-    
-    for (let i = 0; i < firstDay.getDay(); i++) {
-      days.push(null);
-    }
-    
-    for (let i = 1; i <= lastDay.getDate(); i++) {
-      days.push(new Date(year, month, i));
-    }
-    
-    return days;
-  };
-
   const getScheduleForUserDate = (userId: string, date: Date) => {
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = formatDateToYYYYMMDD(date);
     return schedules[`${userId}_${dateStr}`];
   };
 
-  // Cek apakah suatu cell memiliki perubahan pending
   const hasPendingChange = (userId: string, date: string) => {
     return pendingChanges.has(`${userId}_${date}`);
   };
@@ -786,8 +880,8 @@ export default function ScheduleShiftPage() {
                   <button
                     onClick={() => {
                       const template = [
-                        { Nama: "Budi Santoso", Tanggal: new Date().toISOString().split("T")[0], Shift: "Pagi" },
-                        { Nama: "Siti Aminah", Tanggal: new Date().toISOString().split("T")[0], Shift: "Malam" },
+                        { Nama: "Budi Santoso", Tanggal: formatDateToYYYYMMDD(new Date()), Shift: "Pagi" },
+                        { Nama: "Siti Aminah", Tanggal: formatDateToYYYYMMDD(new Date()), Shift: "Malam" },
                       ];
                       const ws = XLSX.utils.json_to_sheet(template);
                       const wb = XLSX.utils.book_new();
@@ -814,7 +908,7 @@ export default function ScheduleShiftPage() {
                         Nama: user.name,
                         Departemen: user.department,
                         Jabatan: user.jabatan,
-                        Tanggal: date?.toISOString().split("T")[0],
+                        Tanggal: date ? formatDateToYYYYMMDD(date) : "",
                         Hari: dayNames[date?.getDay() || 0],
                         Status: holiday.isHoliday ? "Libur Nasional" : "",
                         Shift: shift?.name || "-",
@@ -864,7 +958,7 @@ export default function ScheduleShiftPage() {
                   
                   for (const row of rows as any) {
                     const userName = row.Nama || row.name || row.NAME;
-                    const date = row.Tanggal || row.date || row.DATE;
+                    let date = row.Tanggal || row.date || row.DATE;
                     const shiftName = row.Shift || row.shift || row.SHIFT;
                     
                     if (!userName || !date || !shiftName) {
@@ -872,11 +966,19 @@ export default function ScheduleShiftPage() {
                       continue;
                     }
                     
+                    if (date instanceof Date) {
+                      date = formatDateToYYYYMMDD(date);
+                    } else if (typeof date === 'string') {
+                      const parsed = new Date(date);
+                      if (!isNaN(parsed.getTime())) {
+                        date = formatDateToYYYYMMDD(parsed);
+                      }
+                    }
+                    
                     const user = users.find(u => u.name.toLowerCase() === userName.toLowerCase());
                     const shift = shifts.find(s => s.name.toLowerCase() === shiftName.toLowerCase());
                     
-                    if (user && shift) {
-                      // Tambahkan ke pending changes
+                    if (user && shift && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
                       handleShiftChange(user.uid, date, shift.id, shift.name);
                       importedCount++;
                     } else {
@@ -942,12 +1044,6 @@ export default function ScheduleShiftPage() {
                 <div className="w-3 h-3 rounded-full bg-gray-300" />
                 <span>Weekend</span>
               </div>
-              {allowHolidayAssign && (
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-orange-500" />
-                  <span>Bisa assign di hari libur</span>
-                </div>
-              )}
             </div>
           </div>
 
@@ -977,9 +1073,9 @@ export default function ScheduleShiftPage() {
                           if (!date) return <th key={idx} className="bg-gray-50 px-2 py-3"></th>;
                           const holiday = isHoliday(date);
                           const weekend = isWeekend(date);
-                          const isToday = date.toDateString() === new Date().toISOString().split("T")[0];
+                          const isToday = formatDateToYYYYMMDD(date) === formatDateToYYYYMMDD(new Date());
                           return (
-                            <th key={idx} className={`px-2 py-3 text-center min-w-[180px] border-r border-gray-100 ${
+                            <th key={idx} className={`px-2 py-3 text-center min-w-[160px] border-r border-gray-100 ${
                               isToday ? 'bg-green-50' : ''
                             }`}>
                               <div className="text-[11px] text-gray-400 font-medium">{dayNames[date.getDay()]}</div>
@@ -1022,9 +1118,9 @@ export default function ScheduleShiftPage() {
                             const shift = schedule ? shifts.find(s => s.id === schedule.shiftId) : null;
                             const holiday = isHoliday(date);
                             const weekend = isWeekend(date);
-                            const isToday = date.toDateString() === new Date().toISOString().split("T")[0];
+                            const isToday = formatDateToYYYYMMDD(date) === formatDateToYYYYMMDD(new Date());
                             const isLibur = holiday.isHoliday || weekend;
-                            const dateStr = date.toISOString().split("T")[0];
+                            const dateStr = formatDateToYYYYMMDD(date);
                             const hasChange = hasPendingChange(user.uid, dateStr);
                             
                             return (
@@ -1116,7 +1212,7 @@ export default function ScheduleShiftPage() {
                       {filteredUsers.map((user, idx) => {
                         const schedule = schedules[`${user.uid}_${selectedDate}`];
                         const currentShift = schedule ? shifts.find(s => s.id === schedule.shiftId) : null;
-                        const selectedDateObj = new Date(selectedDate);
+                        const selectedDateObj = parseDateFromYYYYMMDD(selectedDate);
                         const holiday = isHoliday(selectedDateObj);
                         const weekend = isWeekend(selectedDateObj);
                         const isLibur = holiday.isHoliday || weekend;
@@ -1221,7 +1317,7 @@ export default function ScheduleShiftPage() {
                     </div>
                     {dateRange.start && dateRange.end && (
                       <div className="text-xs text-blue-600 mt-2">
-                        📆 Total {Math.ceil((new Date(dateRange.end).getTime() - new Date(dateRange.start).getTime()) / (1000 * 60 * 60 * 24)) + 1} hari
+                        📆 Total {Math.ceil((parseDateFromYYYYMMDD(dateRange.end).getTime() - parseDateFromYYYYMMDD(dateRange.start).getTime()) / (1000 * 60 * 60 * 24)) + 1} hari
                       </div>
                     )}
                   </div>
@@ -1342,10 +1438,12 @@ export default function ScheduleShiftPage() {
           <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-4 text-center text-xs text-gray-500 border border-gray-200">
             <div className="flex flex-wrap justify-center gap-4">
               <span>✅ Ketik nama shift, perubahan akan ditampung sementara</span>
-              <span>📝 Cell yang berubah akan memiliki background kuning dan ikon 📝</span>
-              <span>💾 Klik tombol "Simpan X Perubahan" untuk menyimpan semua perubahan sekaligus</span>
+              <span>📝 Cell yang berubah akan memiliki background kuning</span>
+              <span>💾 Klik tombol "Simpan Perubahan" untuk menyimpan semua perubahan sekaligus</span>
+              <span>🔄 Perubahan shift akan otomatis mengupdate data attendance yang sudah ada</span>
               <span>🔍 Fitur search otomatis - ketik "AM" maka akan muncul shift yang mengandung "AM"</span>
               <span>📅 Gunakan fitur "Assign Rentang" untuk periode dan karyawan tertentu</span>
+              <span>📜 Setiap perubahan dicatat di audit log untuk keperluan monitoring</span>
             </div>
           </div>
         </div>
