@@ -33,6 +33,11 @@ type User = {
   joinDate?: string;
   photoUrl?: string;
   isActive: boolean;
+  bankName?: string;
+  bankAccountNumber?: string;
+  bankAccountName?: string;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 };
 
 export default function UsersPage() {
@@ -45,6 +50,10 @@ export default function UsersPage() {
   const [importData, setImportData] = useState<any[]>([]);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, success: 0, failed: 0 });
+  
+  // 🔥 STATE UNTUK MODAL DETAIL
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
 
   // Form state
   const [name, setName] = useState("");
@@ -59,9 +68,18 @@ export default function UsersPage() {
   const [joinDate, setJoinDate] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [isActive, setIsActive] = useState(true);
+  const [bankName, setBankName] = useState("");
+  const [bankAccountNumber, setBankAccountNumber] = useState("");
+  const [bankAccountName, setBankAccountName] = useState("");
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState("ALL");
+
+  const bankOptions = [
+    "BCA", "Mandiri", "BNI", "BRI", "CIMB Niaga", "Danamon", "Permata",
+    "Maybank", "OCBC NISP", "UOB", "Panin Bank", "Bank Mega",
+    "Bank Syariah Indonesia", "Bank Jago", "Bank Neo Commerce", "SeaBank", "Lainnya",
+  ];
 
   useEffect(() => {
     loadUsers();
@@ -99,16 +117,10 @@ export default function UsersPage() {
     try {
       if (editingId) {
         const updateData: any = {
-          name,
-          email,
-          role,
-          department,
-          jabatan,
+          name, email, role, department, jabatan,
           dailyRate: dailyRate ? Number(dailyRate) : null,
-          company,
-          location,
-          joinDate,
-          isActive,
+          company, location, joinDate, isActive,
+          bankName, bankAccountNumber, bankAccountName,
           updatedAt: Timestamp.now(),
         };
         await updateDoc(doc(db, "users", editingId), updateData);
@@ -124,17 +136,11 @@ export default function UsersPage() {
         const photoUrl = await uploadPhoto(uid);
 
         await setDoc(doc(db, "users", uid), {
-          name,
-          email,
-          role,
-          department,
-          jabatan,
+          name, email, role, department, jabatan,
           dailyRate: dailyRate ? Number(dailyRate) : null,
-          company,
-          location,
-          joinDate,
-          photoUrl,
+          company, location, joinDate, photoUrl,
           isActive: true,
+          bankName, bankAccountNumber, bankAccountName,
           createdAt: Timestamp.now(),
         });
         alert("✅ User berhasil ditambahkan");
@@ -182,6 +188,12 @@ export default function UsersPage() {
     }
   };
 
+  // 🔥 FUNGSI UNTUK MEMBUKA MODAL DETAIL
+  const openDetailModal = (user: User) => {
+    setSelectedUser(user);
+    setShowDetailModal(true);
+  };
+
   const editUser = (user: User) => {
     setName(user.name || "");
     setEmail(user.email || "");
@@ -193,8 +205,12 @@ export default function UsersPage() {
     setLocation(user.location || "");
     setJoinDate(user.joinDate || "");
     setIsActive(user.isActive ?? true);
+    setBankName(user.bankName || "");
+    setBankAccountNumber(user.bankAccountNumber || "");
+    setBankAccountName(user.bankAccountName || "");
     setEditingId(user.id);
     setShowForm(true);
+    setShowDetailModal(false);
   };
 
   const resetForm = () => {
@@ -210,6 +226,9 @@ export default function UsersPage() {
     setJoinDate("");
     setPhoto(null);
     setIsActive(true);
+    setBankName("");
+    setBankAccountNumber("");
+    setBankAccountName("");
     setEditingId(null);
   };
 
@@ -225,7 +244,6 @@ export default function UsersPage() {
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
       const rows = XLSX.utils.sheet_to_json(sheet);
-      
       setImportData(rows);
       setShowImportModal(true);
     };
@@ -284,18 +302,9 @@ export default function UsersPage() {
         Company: "AviaryParks",
         Location: "Jakarta",
         JoinDate: "2024-01-01",
-      },
-      {
-        Nama: "Jane Smith",
-        Email: "jane@example.com",
-        Password: "password123",
-        Role: "hr",
-        Department: "HR",
-        Jabatan: "HR Staff",
-        DailyRate: 0,
-        Company: "AviaryParks",
-        Location: "Jakarta",
-        JoinDate: "2024-01-01",
+        BankName: "BCA",
+        BankAccountNumber: "1234567890",
+        BankAccountName: "John Doe",
       },
     ];
     
@@ -327,6 +336,9 @@ export default function UsersPage() {
         const company = row.Company || row.company || "";
         const location = row.Location || row.location || "";
         const joinDate = row.JoinDate || row.joinDate || "";
+        const bankName = row.BankName || row.bankName || "";
+        const bankAccountNumber = row.BankAccountNumber || row.bankAccountNumber || "";
+        const bankAccountName = row.BankAccountName || row.bankAccountName || "";
         
         if (!name || !email || !password) {
           failed++;
@@ -337,16 +349,11 @@ export default function UsersPage() {
         const uid = cred.user.uid;
         
         await setDoc(doc(db, "users", uid), {
-          name,
-          email,
-          role,
-          department,
-          jabatan,
+          name, email, role, department, jabatan,
           dailyRate: dailyRate ? Number(dailyRate) : null,
-          company,
-          location,
-          joinDate,
+          company, location, joinDate,
           isActive: true,
+          bankName, bankAccountNumber, bankAccountName,
           createdAt: Timestamp.now(),
         });
         
@@ -401,6 +408,18 @@ export default function UsersPage() {
       .slice(0, 2);
   };
 
+  // 🔥 FORMAT DATE
+  const formatDate = (timestamp?: Timestamp) => {
+    if (!timestamp) return "-";
+    return timestamp.toDate().toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
       user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -421,13 +440,7 @@ export default function UsersPage() {
   ];
 
   const jabatanOptions = [
-    "Casual",
-    "Daily Worker",
-    "Staff",
-    "Supervisor",
-    "Manager",
-    "Training",
-    "Intern / Magang",
+    "Casual", "Daily Worker", "Staff", "Supervisor", "Manager", "Training", "Intern / Magang",
   ];
 
   if (loading) {
@@ -598,10 +611,9 @@ export default function UsersPage() {
                         Found <strong>{importData.length}</strong> records to import
                       </p>
                       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
-                        <strong>⚠️ Note:</strong> Email must be unique. Password will be used for initial login.
+                        <strong>⚠️ Note:</strong> Email must be unique.
                       </div>
                     </div>
-                    
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="bg-gray-100">
@@ -623,11 +635,6 @@ export default function UsersPage() {
                           ))}
                         </tbody>
                       </table>
-                      {importData.length > 10 && (
-                        <p className="text-xs text-gray-400 mt-2 text-center">
-                          and {importData.length - 10} more records...
-                        </p>
-                      )}
                     </div>
                   </>
                 )}
@@ -635,11 +642,8 @@ export default function UsersPage() {
               
               <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
                 <button
-                  onClick={() => {
-                    setShowImportModal(false);
-                    setImportData([]);
-                  }}
-                  className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                  onClick={() => setShowImportModal(false)}
+                  className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg"
                   disabled={importing}
                 >
                   Cancel
@@ -647,7 +651,7 @@ export default function UsersPage() {
                 {!importing && (
                   <button
                     onClick={importUsers}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg"
                   >
                     Import {importData.length} Users
                   </button>
@@ -661,40 +665,18 @@ export default function UsersPage() {
         {showForm && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-              <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                <span>{editingId ? "✏️" : "➕"}</span>
-                {editingId ? "Edit User" : "Add New User"}
+              <h2 className="text-lg font-semibold text-gray-800">
+                {editingId ? "✏️ Edit User" : "➕ Add New User"}
               </h2>
             </div>
             <div className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <input
-                  placeholder="Full Name *"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
-                />
-                <input
-                  placeholder="Email *"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
-                />
+                <input placeholder="Full Name *" value={name} onChange={(e) => setName(e.target.value)} className="border rounded-lg px-3 py-2" />
+                <input placeholder="Email *" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="border rounded-lg px-3 py-2" />
                 {!editingId && (
-                  <input
-                    type="password"
-                    placeholder="Password *"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
-                  />
+                  <input type="password" placeholder="Password *" value={password} onChange={(e) => setPassword(e.target.value)} className="border rounded-lg px-3 py-2" />
                 )}
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
-                >
+                <select value={role} onChange={(e) => setRole(e.target.value)} className="border rounded-lg px-3 py-2">
                   <option value="employee">Employee</option>
                   <option value="spv">Supervisor (SPV)</option>
                   <option value="hr">HR</option>
@@ -703,93 +685,41 @@ export default function UsersPage() {
                   <option value="training">Training</option>
                   <option value="intern">Intern / Magang</option>
                 </select>
-                <input
-                  placeholder="Department"
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
-                />
-                <select
-                  value={jabatan}
-                  onChange={(e) => setJabatan(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
-                >
+                <input placeholder="Department" value={department} onChange={(e) => setDepartment(e.target.value)} className="border rounded-lg px-3 py-2" />
+                <select value={jabatan} onChange={(e) => setJabatan(e.target.value)} className="border rounded-lg px-3 py-2">
                   <option value="">Select Position</option>
-                  {jabatanOptions.map((j) => (
-                    <option key={j} value={j}>
-                      {j}
-                    </option>
-                  ))}
+                  {jabatanOptions.map((j) => (<option key={j} value={j}>{j}</option>))}
                 </select>
                 {(jabatan === "Casual" || jabatan === "Daily Worker") && (
-                  <input
-                    placeholder="Daily Rate (Rp)"
-                    type="number"
-                    value={dailyRate}
-                    onChange={(e) => setDailyRate(e.target.value)}
-                    className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
-                  />
+                  <input placeholder="Daily Rate (Rp)" type="number" value={dailyRate} onChange={(e) => setDailyRate(e.target.value)} className="border rounded-lg px-3 py-2" />
                 )}
-                {(jabatan === "Training" || jabatan === "Intern / Magang") && (
-                  <div className="border border-gray-300 rounded-lg px-3 py-2 bg-gray-50 text-gray-500">
-                    No daily rate (Training/Magang)
-                  </div>
-                )}
-                <input
-                  placeholder="Company"
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
-                />
-                <input
-                  placeholder="Work Location"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
-                />
-                <input
-                  type="date"
-                  value={joinDate}
-                  onChange={(e) => setJoinDate(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
-                />
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setPhoto(e.target.files?.[0] || null)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-gray-100"
-                />
+                <input placeholder="Company" value={company} onChange={(e) => setCompany(e.target.value)} className="border rounded-lg px-3 py-2" />
+                <input placeholder="Work Location" value={location} onChange={(e) => setLocation(e.target.value)} className="border rounded-lg px-3 py-2" />
+                <input type="date" value={joinDate} onChange={(e) => setJoinDate(e.target.value)} className="border rounded-lg px-3 py-2" />
+                <input type="file" accept="image/*" onChange={(e) => setPhoto(e.target.files?.[0] || null)} className="border rounded-lg px-3 py-2" />
+                
+                <div className="col-span-full">
+                  <p className="text-sm font-medium text-gray-700 mb-2">🏦 Informasi Bank</p>
+                </div>
+                <select value={bankName} onChange={(e) => setBankName(e.target.value)} className="border rounded-lg px-3 py-2">
+                  <option value="">Pilih Bank</option>
+                  {bankOptions.map((bank) => (<option key={bank} value={bank}>{bank}</option>))}
+                </select>
+                <input placeholder="Nomor Rekening" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} className="border rounded-lg px-3 py-2" />
+                <input placeholder="Nama Pemilik Rekening" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} className="border rounded-lg px-3 py-2" />
+                
                 {editingId && (
                   <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={isActive}
-                      onChange={(e) => setIsActive(e.target.checked)}
-                      className="w-4 h-4 text-green-600"
-                    />
+                    <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="w-4 h-4 text-green-600" />
                     <span className="text-sm text-gray-700">Active</span>
                   </label>
                 )}
               </div>
               <div className="flex gap-3 mt-6">
-                <button
-                  onClick={saveUser}
-                  disabled={formLoading}
-                  className={`px-6 py-2 rounded-lg text-white font-medium transition-all ${
-                    formLoading
-                      ? "bg-gray-400 cursor-not-allowed"
-                      : "bg-green-600 hover:bg-green-700"
-                  }`}
-                >
+                <button onClick={saveUser} disabled={formLoading} className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
                   {formLoading ? "Saving..." : editingId ? "Update" : "Save"}
                 </button>
-                <button
-                  onClick={() => {
-                    resetForm();
-                    setShowForm(false);
-                  }}
-                  className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
-                >
+                <button onClick={() => { resetForm(); setShowForm(false); }} className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg">
                   Cancel
                 </button>
               </div>
@@ -797,14 +727,10 @@ export default function UsersPage() {
           </div>
         )}
 
-        {/* Users Table */}
+        {/* Users Table - Baris bisa diklik untuk melihat detail */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-            <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <span>📋</span>
-              User List
-              <span className="text-sm text-gray-500 ml-2">({filteredUsers.length} users)</span>
-            </h2>
+            <h2 className="text-lg font-semibold text-gray-800">📋 User List ({filteredUsers.length} users)</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -823,21 +749,18 @@ export default function UsersPage() {
                 {filteredUsers.map((user, idx) => (
                   <tr
                     key={user.id}
-                    className={`border-b ${idx % 2 === 0 ? "bg-white" : "bg-gray-50"} hover:bg-gray-100 transition-colors`}
+                    onClick={() => openDetailModal(user)}
+                    className={`border-b cursor-pointer transition-all duration-150 ${
+                      idx % 2 === 0 ? "bg-white" : "bg-gray-50"
+                    } hover:bg-blue-50 hover:shadow-inner`}
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         {user.photoUrl ? (
-                          <img
-                            src={user.photoUrl}
-                            alt={user.name}
-                            className="w-10 h-10 rounded-full object-cover"
-                          />
+                          <img src={user.photoUrl} alt={user.name} className="w-10 h-10 rounded-full object-cover" />
                         ) : (
                           <div className="w-10 h-10 rounded-full bg-gradient-to-r from-green-500 to-green-600 flex items-center justify-center">
-                            <span className="text-white text-sm font-bold">
-                              {getInitials(user.name)}
-                            </span>
+                            <span className="text-white text-sm font-bold">{getInitials(user.name)}</span>
                           </div>
                         )}
                         <div>
@@ -854,53 +777,21 @@ export default function UsersPage() {
                     <td className="px-4 py-3">{user.department || "-"}</td>
                     <td className="px-4 py-3">{user.jabatan || "-"}</td>
                     <td className="px-4 py-3">
-                      {user.jabatan === "Training" || user.jabatan === "Intern / Magang" ? (
-                        <span className="text-gray-400">-</span>
-                      ) : user.dailyRate ? (
-                        `Rp ${user.dailyRate.toLocaleString()}`
-                      ) : "-"}
+                      {user.jabatan === "Training" || user.jabatan === "Intern / Magang" ? "-" : user.dailyRate ? `Rp ${user.dailyRate.toLocaleString()}` : "-"}
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          user.isActive
-                            ? "bg-green-100 text-green-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${user.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                         {user.isActive ? "Active" : "Inactive"}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex gap-2 flex-wrap">
-                        <button
-                          onClick={() => editUser(user)}
-                          className="px-2 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-xs transition-colors"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => resetPassword(user.email)}
-                          className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs transition-colors"
-                        >
-                          Reset
-                        </button>
-                        <button
-                          onClick={() => toggleActive(user)}
-                          className={`px-2 py-1 rounded-lg text-xs transition-colors ${
-                            user.isActive
-                              ? "bg-red-600 hover:bg-red-700 text-white"
-                              : "bg-green-600 hover:bg-green-700 text-white"
-                          }`}
-                        >
+                        <button onClick={() => editUser(user)} className="px-2 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-xs">Edit</button>
+                        <button onClick={() => resetPassword(user.email)} className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs">Reset</button>
+                        <button onClick={() => toggleActive(user)} className={`px-2 py-1 rounded-lg text-xs ${user.isActive ? "bg-red-600 hover:bg-red-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"}`}>
                           {user.isActive ? "Deactivate" : "Activate"}
                         </button>
-                        <button
-                          onClick={() => deleteUser(user)}
-                          className="px-2 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-xs transition-colors"
-                        >
-                          Delete
-                        </button>
+                        <button onClick={() => deleteUser(user)} className="px-2 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-xs">Delete</button>
                       </div>
                     </td>
                   </tr>
@@ -916,6 +807,196 @@ export default function UsersPage() {
           </div>
         </div>
       </div>
+
+      {/* 🔥 MODAL DETAIL USER */}
+      {showDetailModal && selectedUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden animate-scale-in">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-4 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                {selectedUser.photoUrl ? (
+                  <img src={selectedUser.photoUrl} alt={selectedUser.name} className="w-14 h-14 rounded-full object-cover border-2 border-white" />
+                ) : (
+                  <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center">
+                    <span className="text-white text-xl font-bold">{getInitials(selectedUser.name)}</span>
+                  </div>
+                )}
+                <div>
+                  <h2 className="text-xl font-bold text-white">{selectedUser.name}</h2>
+                  <p className="text-green-100 text-sm">{selectedUser.email}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowDetailModal(false)} className="text-white hover:text-gray-200 transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto max-h-[70vh]">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Informasi Pribadi */}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span>👤</span> Informasi Pribadi
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Nama Lengkap</span>
+                      <span className="font-medium text-gray-800">{selectedUser.name}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Email</span>
+                      <span className="font-medium text-gray-800">{selectedUser.email}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Role</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getRoleBadge(selectedUser.role)}`}>
+                        {getRoleLabel(selectedUser.role)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Status</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${selectedUser.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                        {selectedUser.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Informasi Pekerjaan */}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span>💼</span> Informasi Pekerjaan
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Department</span>
+                      <span className="font-medium text-gray-800">{selectedUser.department || "-"}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Jabatan</span>
+                      <span className="font-medium text-gray-800">{selectedUser.jabatan || "-"}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Daily Rate</span>
+                      <span className="font-medium text-gray-800">
+                        {selectedUser.jabatan === "Training" || selectedUser.jabatan === "Intern / Magang" 
+                          ? "-" 
+                          : selectedUser.dailyRate 
+                            ? `Rp ${selectedUser.dailyRate.toLocaleString()}` 
+                            : "-"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Bergabung Sejak</span>
+                      <span className="font-medium text-gray-800">{selectedUser.joinDate || "-"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Informasi Perusahaan & Lokasi */}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span>🏢</span> Perusahaan & Lokasi
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Company</span>
+                      <span className="font-medium text-gray-800">{selectedUser.company || "-"}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Work Location</span>
+                      <span className="font-medium text-gray-800">{selectedUser.location || "-"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Informasi Bank */}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span>🏦</span> Informasi Bank
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Bank</span>
+                      <span className="font-medium text-gray-800">{selectedUser.bankName || "-"}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Nomor Rekening</span>
+                      <span className="font-mono font-medium text-gray-800">{selectedUser.bankAccountNumber || "-"}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Nama Pemilik</span>
+                      <span className="font-medium text-gray-800">{selectedUser.bankAccountName || "-"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Metadata (Waktu dibuat/diupdate) */}
+                <div className="md:col-span-2 bg-gray-50 rounded-xl p-4">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span>⏱️</span> Metadata
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Akun dibuat</span>
+                      <span className="text-sm text-gray-600">{formatDate(selectedUser.createdAt)}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Terakhir diupdate</span>
+                      <span className="text-sm text-gray-600">{formatDate(selectedUser.updatedAt) || "-"}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowDetailModal(false);
+                  editUser(selectedUser);
+                }}
+                className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg transition-colors flex items-center gap-2"
+              >
+                <span>✏️</span> Edit User
+              </button>
+              <button
+                onClick={() => {
+                  setShowDetailModal(false);
+                  resetPassword(selectedUser.email);
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"
+              >
+                <span>🔑</span> Reset Password
+              </button>
+              <button
+                onClick={() => setShowDetailModal(false)}
+                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        @keyframes fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes scale-in {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        .animate-fade-in { animation: fade-in 0.2s ease-out; }
+        .animate-scale-in { animation: scale-in 0.2s ease-out; }
+      `}</style>
     </ProtectedRoute>
   );
 }

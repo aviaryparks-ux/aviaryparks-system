@@ -17,6 +17,10 @@ type User = {
   dailyRate?: number;
   email?: string;
   role?: string;
+  photoUrl?: string;
+  bankName?: string;
+  bankAccountNumber?: string;
+  bankAccountName?: string;
 };
 
 type Attendance = {
@@ -32,12 +36,16 @@ type Attendance = {
     location?: string;
     note?: string;
     photo?: string;
+    lat?: number;
+    lng?: number;
   };
   checkOut?: {
     time: any;
     location?: string;
     note?: string;
     photo?: string;
+    lat?: number;
+    lng?: number;
   };
   workHours?: string;
   status?: string;
@@ -53,6 +61,16 @@ type Attendance = {
     color: string;
     lateTolerance?: number;
   };
+  officeLocation?: {
+    name: string;
+    lat: number;
+    lng: number;
+    radius: number;
+  };
+  distance?: number;
+  isWithinRadius?: boolean;
+  createdAt?: any;
+  updatedAt?: any;
 };
 
 type CorrectionRequest = {
@@ -112,6 +130,18 @@ const formatDate = (timestamp: any, locale: string = "id-ID"): string => {
   });
 };
 
+const formatDateTime = (timestamp: any, locale: string = "id-ID"): string => {
+  const date = toDate(timestamp);
+  if (!date) return "-";
+  return date.toLocaleDateString(locale, {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 const formatTime = (timestamp: any): string => {
   const date = toDate(timestamp);
   if (!date) return "--:--";
@@ -140,7 +170,6 @@ const calculateWorkHoursFromTimes = (checkInTime: Date, checkOutTime: Date): num
 };
 
 const getWorkHours = (attendance: Attendance): number => {
-  // PRIORITAS 1: Jika ada koreksi yang sudah approved, gunakan jam koreksi
   if (attendance.isCorrected && attendance.correctedCheckIn && attendance.correctedCheckOut) {
     const dateObj = toDate(attendance.date);
     if (dateObj) {
@@ -150,7 +179,6 @@ const getWorkHours = (attendance: Attendance): number => {
     }
   }
   
-  // PRIORITAS 2: Hitung dari checkIn dan checkOut yang sudah ada
   const checkInDate = toDate(attendance.checkIn?.time);
   const checkOutDate = toDate(attendance.checkOut?.time);
   
@@ -158,7 +186,6 @@ const getWorkHours = (attendance: Attendance): number => {
     return calculateWorkHoursFromTimes(checkInDate, checkOutDate);
   }
   
-  // PRIORITAS 3: Gunakan workHours yang sudah tersimpan
   if (attendance.workHours && attendance.workHours !== "-") {
     const hours = parseFloat(attendance.workHours);
     if (!isNaN(hours) && hours > 0) return hours;
@@ -182,33 +209,27 @@ const formatWorkHours = (hours: number): string => {
   return `${wholeHours} jam ${minutes} menit`;
 };
 
-// ================= FUNGSI STATUS ABSENSI (SELARAS DENGAN SHIFT) =================
 const getAttendanceStatus = (attendance: Attendance): StatusInfo => {
   const shift = attendance.shift;
   const checkIn = attendance.checkIn;
   const checkOut = attendance.checkOut;
   
-  // Cek apakah hari libur (shift khusus libur)
   const isHoliday = shift?.name === "Day Off" || shift?.name === "PHC";
   if (isHoliday) {
     return { status: "libur", label: "📅 Libur", color: "bg-purple-100 text-purple-700" };
   }
   
-  // Tidak Hadir (Alpha) - Ada shift tapi tidak ada check-in
   if (shift && !checkIn) {
     return { status: "alpha", label: "❌ Tidak Hadir", color: "bg-red-100 text-red-700" };
   }
   
-  // Tidak Absen Pulang (NSP) - Ada check-in tapi tidak ada check-out
   if (checkIn && !checkOut) {
     return { status: "nsp", label: "⚠️ NSP (Belum Pulang)", color: "bg-orange-100 text-orange-700" };
   }
   
-  // Cek keterlambatan jika ada check-in
   if (checkIn) {
     const checkInDate = toDate(checkIn.time);
     if (checkInDate) {
-      // Ambil jam mulai shift (default 08:00 jika tidak ada shift)
       let shiftStartHour = 8;
       let shiftStartMinute = 0;
       let toleransi = 15;
@@ -224,7 +245,6 @@ const getAttendanceStatus = (attendance: Attendance): StatusInfo => {
       const shiftStartTotalMenit = shiftStartHour * 60 + shiftStartMinute;
       const selisih = checkInTotalMenit - shiftStartTotalMenit;
       
-      // Terlambat jika melebihi toleransi
       if (selisih > toleransi) {
         return { 
           status: "terlambat", 
@@ -235,18 +255,24 @@ const getAttendanceStatus = (attendance: Attendance): StatusInfo => {
     }
   }
   
-  // Hadir lengkap (check-in dan check-out)
   if (checkIn && checkOut) {
     return { status: "hadir", label: "✅ Hadir", color: "bg-green-100 text-green-700" };
   }
   
-  // Default (belum diketahui)
   return { status: "unknown", label: "📋 Belum Absen", color: "bg-gray-100 text-gray-500" };
+};
+
+const getInitials = (name: string) => {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
 };
 
 // ================= KOMPONEN UTAMA =================
 export default function AttendancePage() {
-  // ================= STATE =================
   const [data, setData] = useState<Attendance[]>([]);
   const [users, setUsers] = useState<Record<string, User>>({});
   const [corrections, setCorrections] = useState<Record<string, CorrectionRequest>>({});
@@ -255,10 +281,11 @@ export default function AttendancePage() {
   const [correctionsLoading, setCorrectionsLoading] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
-  const [selectedPhotoInfo, setSelectedPhotoInfo] = useState<{ name: string; type: string; date: string } | null>(null);
+  
+  const [selectedAttendance, setSelectedAttendance] = useState<Attendance | null>(null);
+  const [selectedUserDetail, setSelectedUserDetail] = useState<User | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
 
-  // Filter states
   const [tempDept, setTempDept] = useState("ALL");
   const [tempJabatan, setTempJabatan] = useState("ALL");
   const [tempEmployee, setTempEmployee] = useState("ALL");
@@ -273,7 +300,6 @@ export default function AttendancePage() {
   const [endDate, setEndDate] = useState("");
   const [status, setStatus] = useState("ALL");
 
-  // ================= LOAD USERS =================
   useEffect(() => {
     setUsersLoading(true);
     const unsub = onSnapshot(
@@ -296,7 +322,6 @@ export default function AttendancePage() {
     return () => unsub();
   }, []);
 
-  // ================= LOAD APPROVED CORRECTIONS =================
   useEffect(() => {
     if (usersLoading) return;
     
@@ -344,7 +369,6 @@ export default function AttendancePage() {
     return () => unsub();
   }, [usersLoading]);
 
-  // ================= LOAD ATTENDANCE =================
   useEffect(() => {
     if (usersLoading || correctionsLoading) return;
     
@@ -428,7 +452,24 @@ export default function AttendancePage() {
     return () => unsub();
   }, [users, usersLoading, corrections, correctionsLoading]);
 
-  // ================= FILTERED DATA (MEMOIZED) =================
+  const openDetailModal = async (attendance: Attendance) => {
+    setSelectedAttendance(attendance);
+    
+    try {
+      const userDoc = await getDoc(doc(db, "users", attendance.uid));
+      if (userDoc.exists()) {
+        setSelectedUserDetail(userDoc.data() as User);
+      } else {
+        setSelectedUserDetail(null);
+      }
+    } catch (error) {
+      console.error("Error loading user detail:", error);
+      setSelectedUserDetail(null);
+    }
+    
+    setShowDetailModal(true);
+  };
+
   const filtered = useMemo(() => {
     return data.filter((a) => {
       let ok = true;
@@ -462,7 +503,6 @@ export default function AttendancePage() {
     });
   }, [data, dept, jabatan, employee, status, startDate, endDate]);
 
-  // ================= REKAP DATA (MEMOIZED) =================
   const recapList = useMemo(() => {
     const recap: Record<string, RecapItem> = {};
     
@@ -481,7 +521,6 @@ export default function AttendancePage() {
         };
       }
       
-      // Hanya hitung yang hadir atau terlambat (bukan libur/alpha)
       const statusInfo = getAttendanceStatus(a);
       if (statusInfo.status === "hadir" || statusInfo.status === "terlambat") {
         recap[a.uid].totalHari++;
@@ -496,7 +535,6 @@ export default function AttendancePage() {
     return Object.values(recap).sort((a, b) => b.totalGaji - a.totalGaji);
   }, [filtered]);
 
-  // ================= STATISTIK (SELARAS DENGAN SHIFT) =================
   const stats = useMemo(() => {
     const total = filtered.length;
     const hadir = filtered.filter((a) => getAttendanceStatus(a).status === "hadir").length;
@@ -509,7 +547,6 @@ export default function AttendancePage() {
     return { total, hadir, terlambat, alpha, nsp, libur, corrected };
   }, [filtered]);
 
-  // ================= FILTER OPTIONS =================
   const deptList = useMemo(() => {
     return [
       "ALL",
@@ -528,9 +565,6 @@ export default function AttendancePage() {
     return ["ALL", ...new Set(data.map((a) => a.uid))];
   }, [data]);
 
-  const statusList = ["ALL", "hadir", "terlambat", "alpha", "nsp", "libur"];
-
-  // ================= FILTER HANDLERS =================
   const setPayrollPeriod = useCallback(() => {
     const now = new Date();
     let start, end;
@@ -576,71 +610,98 @@ export default function AttendancePage() {
     setEndDate("");
   }, []);
 
-  // ================= EXPORT FUNCTIONS =================
-  const exportDetailExcel = async () => {
-    setExporting("detail-excel");
-    try {
-      const rows = filtered.map((a) => {
-        const statusInfo = getAttendanceStatus(a);
-        return {
-          Nama: a.name || "-",
-          Department: a.department || "-",
-          Jabatan: a.jabatan || "-",
-          Shift: a.shift?.name || "-",
-          Tanggal: formatDate(a.date) || "-",
-          Jam_Masuk: a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
-          Jam_Pulang: a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
-          Jam_Kerja: formatWorkHours(getWorkHours(a)) || "-",
-          Status: statusInfo.label,
-          Status_Koreksi: a.isCorrected ? "Sudah Dikoreksi" : "Normal",
-        };
-      });
-      
-      const ws = XLSX.utils.json_to_sheet(rows);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Detail Attendance");
-      XLSX.writeFile(wb, `attendance_detail_${new Date().toISOString().split("T")[0]}.xlsx`);
-    } catch (err) {
-      console.error("Export error:", err);
-      alert("Gagal mengexport data");
-    } finally {
-      setExporting(null);
-    }
-  };
+  // app/(admin)/attendance/page.tsx
+// Update fungsi exportDetailExcel dan exportDetailPDF
 
-  const exportDetailPDF = async () => {
-    setExporting("detail-pdf");
-    try {
-      const doc = new jsPDF({ orientation: "landscape" });
-      
-      autoTable(doc, {
-        head: [["Nama", "Dept", "Jabatan", "Shift", "Tanggal", "Masuk", "Pulang", "Jam Kerja", "Status"]],
-        body: filtered.map((a) => {
-          const statusInfo = getAttendanceStatus(a);
-          return [
-            a.name || "-",
-            a.department || "-",
-            a.jabatan || "-",
-            a.shift?.name || "-",
-            formatDate(a.date) || "-",
-            a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
-            a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
-            formatWorkHours(getWorkHours(a)) || "-",
-            statusInfo.label,
-          ];
-        }) as any,
-        headStyles: { fillColor: [5, 150, 105] },
-        startY: 20,
-      });
-      
-      doc.save(`attendance_detail_${new Date().toISOString().split("T")[0]}.pdf`);
-    } catch (err) {
-      console.error("Export error:", err);
-      alert("Gagal mengexport data");
-    } finally {
-      setExporting(null);
-    }
-  };
+const exportDetailExcel = async () => {
+  setExporting("detail-excel");
+  try {
+    const rows = filtered.map((a) => {
+      const statusInfo = getAttendanceStatus(a);
+      return {
+        Nama: a.name || "-",
+        Department: a.department || "-",
+        Jabatan: a.jabatan || "-",
+        Shift: a.shift?.name || "-",
+        Tanggal: formatDate(a.date) || "-",
+        Jam_Masuk: a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
+        Jam_Pulang: a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
+        Jam_Kerja: formatWorkHours(getWorkHours(a)) || "-",
+        Status: statusInfo.label,
+        // 🔥 TAMBAHKAN FIELD BANK
+        Bank: users[a.uid]?.bankName || "-",
+        No_Rekening: users[a.uid]?.bankAccountNumber || "-",
+        Nama_Rekening: users[a.uid]?.bankAccountName || "-",
+        Status_Koreksi: a.isCorrected ? "Sudah Dikoreksi" : "Normal",
+      };
+    });
+    
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Detail Attendance");
+    
+    // Set column width
+    ws['!cols'] = [
+      { wch: 20 }, // Nama
+      { wch: 15 }, // Department
+      { wch: 15 }, // Jabatan
+      { wch: 10 }, // Shift
+      { wch: 12 }, // Tanggal
+      { wch: 10 }, // Jam Masuk
+      { wch: 10 }, // Jam Pulang
+      { wch: 10 }, // Jam Kerja
+      { wch: 15 }, // Status
+      { wch: 15 }, // Bank
+      { wch: 20 }, // No Rekening
+      { wch: 20 }, // Nama Rekening
+      { wch: 15 }, // Status Koreksi
+    ];
+    
+    XLSX.writeFile(wb, `attendance_detail_${new Date().toISOString().split("T")[0]}.xlsx`);
+  } catch (err) {
+    console.error("Export error:", err);
+    alert("Gagal mengexport data");
+  } finally {
+    setExporting(null);
+  }
+};
+
+const exportDetailPDF = async () => {
+  setExporting("detail-pdf");
+  try {
+    const doc = new jsPDF({ orientation: "landscape" });
+    
+    autoTable(doc, {
+      head: [["Nama", "Dept", "Jabatan", "Shift", "Tanggal", "Masuk", "Pulang", "Jam Kerja", "Status", "Bank", "No Rekening", "Nama Rekening"]],
+      body: filtered.map((a) => {
+        const statusInfo = getAttendanceStatus(a);
+        return [
+          a.name || "-",
+          a.department || "-",
+          a.jabatan || "-",
+          a.shift?.name || "-",
+          formatDate(a.date) || "-",
+          a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
+          a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
+          formatWorkHours(getWorkHours(a)) || "-",
+          statusInfo.label,
+          users[a.uid]?.bankName || "-",
+          users[a.uid]?.bankAccountNumber || "-",
+          users[a.uid]?.bankAccountName || "-",
+        ];
+      }) as any,
+      headStyles: { fillColor: [5, 150, 105] },
+      startY: 20,
+    });
+    
+    doc.save(`attendance_detail_${new Date().toISOString().split("T")[0]}.pdf`);
+  } catch (err) {
+    console.error("Export error:", err);
+    alert("Gagal mengexport data");
+  } finally {
+    setExporting(null);
+  }
+};
 
   const exportRecapExcel = async () => {
     setExporting("recap-excel");
@@ -698,7 +759,6 @@ export default function AttendancePage() {
     }
   };
 
-  // ================= RENDER LOADING =================
   if (loading || usersLoading || correctionsLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -727,7 +787,6 @@ export default function AttendancePage() {
     );
   }
 
-  // ================= MAIN RENDER =================
   return (
     <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "employee"]}>
       <div className="space-y-6">
@@ -1003,7 +1062,13 @@ export default function AttendancePage() {
                   const hasCheckOutPhoto = !!a.checkOut?.photo;
                   
                   return (
-                    <tr key={a.id} className={`border-b ${idx % 2 === 0 ? "bg-white" : "bg-gray-50"} hover:bg-gray-100`}>
+                    <tr 
+                      key={a.id} 
+                      onClick={() => openDetailModal(a)}
+                      className={`border-b cursor-pointer transition-all duration-150 ${
+                        idx % 2 === 0 ? "bg-white" : "bg-gray-50"
+                      } hover:bg-blue-50 hover:shadow-inner`}
+                    >
                       <td className="px-4 py-3 font-medium">{a.name}</td>
                       <td className="px-4 py-3">{a.department}</td>
                       <td className="px-4 py-3">{a.jabatan}</td>
@@ -1020,70 +1085,36 @@ export default function AttendancePage() {
                         <span className={`px-2 py-1 rounded-full text-xs ${a.checkIn ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                           {masukDisplay || "--:--"}
                         </span>
-                       </td>
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded-full text-xs ${a.checkOut ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
                           {pulangDisplay || "--:--"}
                         </span>
-                       </td>
+                      </td>
                       <td className="px-4 py-3 font-mono">
                         {workHours > 0 ? formatWorkHours(workHours) : "-"}
-                       </td>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-2">
                           {hasCheckInPhoto && (
-                            <button
-                              onClick={() => {
-                                if (a.checkIn?.photo) {
-                                  setSelectedPhoto(a.checkIn.photo);
-                                  setSelectedPhotoInfo({
-                                    name: a.name,
-                                    type: "Check-in",
-                                    date: formatDate(a.date),
-                                  });
-                                }
-                              }}
-                              className="group relative"
-                            >
-                              <img
-                                src={a.checkIn?.photo || ""}
-                                alt="Check-in"
-                                className="w-10 h-10 rounded-lg object-cover ring-2 ring-green-300 hover:ring-4 transition-all"
-                              />
-                              <div className="absolute -top-2 -right-2 bg-green-500 text-white text-[10px] px-1 rounded-full">IN</div>
-                            </button>
+                            <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
+                              <span className="text-xs text-green-600">IN</span>
+                            </div>
                           )}
                           {hasCheckOutPhoto && (
-                            <button
-                              onClick={() => {
-                                if (a.checkOut?.photo) {
-                                  setSelectedPhoto(a.checkOut.photo);
-                                  setSelectedPhotoInfo({
-                                    name: a.name,
-                                    type: "Check-out",
-                                    date: formatDate(a.date),
-                                  });
-                                }
-                              }}
-                              className="group relative"
-                            >
-                              <img
-                                src={a.checkOut?.photo || ""}
-                                alt="Check-out"
-                                className="w-10 h-10 rounded-lg object-cover ring-2 ring-blue-300 hover:ring-4 transition-all"
-                              />
-                              <div className="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] px-1 rounded-full">OUT</div>
-                            </button>
+                            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                              <span className="text-xs text-blue-600">OUT</span>
+                            </div>
                           )}
                           {!hasCheckInPhoto && !hasCheckOutPhoto && <span className="text-gray-400 text-xs">-</span>}
                         </div>
-                       </td>
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusInfo.color}`}>
                           {statusInfo.label}
                         </span>
-                       </td>
-                     </tr>
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>
@@ -1154,53 +1185,232 @@ export default function AttendancePage() {
         )}
       </div>
 
-      {/* MODAL PREVIEW FOTO */}
-      {selectedPhoto && selectedPhotoInfo && (
-        <div 
-          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4"
-          onClick={() => setSelectedPhoto(null)}
-        >
-          <div className="relative max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => setSelectedPhoto(null)}
-              className="absolute -top-12 right-0 text-white bg-black/50 rounded-full p-2 hover:bg-black/70 transition-colors z-10"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-            
-            <div className="bg-white rounded-2xl overflow-hidden shadow-2xl">
-              <div className="bg-gradient-to-r from-green-600 to-green-700 p-4">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <p className="text-white font-medium">{selectedPhotoInfo.name}</p>
-                    <p className="text-white/80 text-sm">{selectedPhotoInfo.type}</p>
+      {/* MODAL DETAIL ABSENSI */}
+      {showDetailModal && selectedAttendance && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden animate-scale-in">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-4 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                {selectedUserDetail?.photoUrl ? (
+                  <img 
+                    src={selectedUserDetail.photoUrl} 
+                    alt={selectedAttendance.name} 
+                    className="w-12 h-12 rounded-full object-cover border-2 border-white"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+                    <span className="text-white text-lg font-bold">
+                      {getInitials(selectedAttendance.name)}
+                    </span>
                   </div>
-                  <span className="text-white/80 text-sm">{selectedPhotoInfo.date}</span>
+                )}
+                <div>
+                  <h2 className="text-xl font-bold text-white">{selectedAttendance.name}</h2>
+                  <p className="text-green-100 text-sm">{selectedAttendance.department} • {selectedAttendance.jabatan}</p>
                 </div>
               </div>
-              
-              <div className="relative">
-                <img 
-                  src={selectedPhoto} 
-                  alt="Preview Foto Absensi" 
-                  className="w-full h-auto max-h-[70vh] object-contain bg-gray-100"
-                />
+              <button 
+                onClick={() => setShowDetailModal(false)} 
+                className="text-white hover:text-gray-200 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto max-h-[70vh]">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Informasi Absensi */}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span>📋</span> Informasi Absensi
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Tanggal</span>
+                      <span className="font-medium text-gray-800">{formatDate(selectedAttendance.date)}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Shift</span>
+                      <div className="flex items-center gap-2">
+                        {selectedAttendance.shift && (
+                          <>
+                            <div 
+                              className="w-3 h-3 rounded-full" 
+                              style={{ backgroundColor: selectedAttendance.shift.color }}
+                            />
+                            <span className="font-medium">{selectedAttendance.shift.name}</span>
+                            <span className="text-xs text-gray-500">
+                              ({selectedAttendance.shift.startTime} - {selectedAttendance.shift.endTime})
+                            </span>
+                          </>
+                        )}
+                        {!selectedAttendance.shift && <span className="text-gray-400">-</span>}
+                      </div>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Status</span>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getAttendanceStatus(selectedAttendance).color}`}>
+                        {getAttendanceStatus(selectedAttendance).label}
+                      </span>
+                    </div>
+                    {selectedAttendance.isCorrected && (
+                      <div className="flex justify-between py-2 border-b border-gray-200">
+                        <span className="text-gray-500">Koreksi</span>
+                        <span className="text-purple-600 text-sm">✓ Sudah Dikoreksi</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Check-in & Check-out */}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span>⏰</span> Waktu Absensi
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <div>
+                        <span className="text-gray-500">Check-in</span>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {selectedAttendance.checkIn?.lat && selectedAttendance.checkIn?.lng && (
+                            <span>
+                              📍 {selectedAttendance.checkIn.lat.toFixed(6)}, {selectedAttendance.checkIn.lng.toFixed(6)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-medium text-green-600">
+                          {formatDateTime(selectedAttendance.checkIn?.time) || "--:--"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <div>
+                        <span className="text-gray-500">Check-out</span>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {selectedAttendance.checkOut?.lat && selectedAttendance.checkOut?.lng && (
+                            <span>
+                              📍 {selectedAttendance.checkOut.lat.toFixed(6)}, {selectedAttendance.checkOut.lng.toFixed(6)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-medium text-blue-600">
+                          {formatDateTime(selectedAttendance.checkOut?.time) || "--:--"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Jam Kerja</span>
+                      <span className="font-medium text-gray-800">
+                        {formatWorkHours(getWorkHours(selectedAttendance))}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lokasi Kantor */}
+                {selectedAttendance.officeLocation && (
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                      <span>📍</span> Lokasi Kantor
+                    </h3>
+                    <div className="space-y-3">
+                      <div className="flex justify-between py-2 border-b border-gray-200">
+                        <span className="text-gray-500">Nama Kantor</span>
+                        <span className="font-medium">{selectedAttendance.officeLocation.name}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-200">
+                        <span className="text-gray-500">Radius</span>
+                        <span>{selectedAttendance.officeLocation.radius} meter</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-200">
+                        <span className="text-gray-500">Jarak Anda</span>
+                        <span className={selectedAttendance.isWithinRadius ? "text-green-600" : "text-red-600"}>
+                          {selectedAttendance.distance?.toFixed(0) || 0} meter
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-2">
+                        <span className="text-gray-500">Status Radius</span>
+                        <span className={selectedAttendance.isWithinRadius ? "text-green-600" : "text-red-600"}>
+                          {selectedAttendance.isWithinRadius ? "✅ Dalam Radius" : "❌ Di Luar Radius"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Foto Absensi */}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span>📸</span> Foto Absensi
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    {selectedAttendance.checkIn?.photo && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Foto Check-in</p>
+                        <img 
+                          src={selectedAttendance.checkIn.photo} 
+                          alt="Check-in"
+                          className="w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                          onClick={() => window.open(selectedAttendance.checkIn?.photo, '_blank')}
+                        />
+                        <p className="text-xs text-gray-400 mt-1">{formatTime(selectedAttendance.checkIn?.time)}</p>
+                      </div>
+                    )}
+                    {selectedAttendance.checkOut?.photo && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Foto Check-out</p>
+                        <img 
+                          src={selectedAttendance.checkOut.photo} 
+                          alt="Check-out"
+                          className="w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                          onClick={() => window.open(selectedAttendance.checkOut?.photo, '_blank')}
+                        />
+                        <p className="text-xs text-gray-400 mt-1">{formatTime(selectedAttendance.checkOut?.time)}</p>
+                      </div>
+                    )}
+                    {!selectedAttendance.checkIn?.photo && !selectedAttendance.checkOut?.photo && (
+                      <div className="col-span-2 text-center py-4 text-gray-400">
+                        Tidak ada foto absensi
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-              
-              <div className="p-4 text-center border-t border-gray-200">
-                <button
-                  onClick={() => setSelectedPhoto(null)}
-                  className="px-6 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors"
-                >
-                  Tutup
-                </button>
-              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end">
+              <button
+                onClick={() => setShowDetailModal(false)}
+                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+              >
+                Tutup
+              </button>
             </div>
           </div>
         </div>
       )}
+
+      <style jsx>{`
+        @keyframes fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes scale-in {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        .animate-fade-in { animation: fade-in 0.2s ease-out; }
+        .animate-scale-in { animation: scale-in 0.2s ease-out; }
+      `}</style>
     </ProtectedRoute>
   );
 }
