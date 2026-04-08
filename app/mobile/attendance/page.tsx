@@ -1,4 +1,5 @@
-// app/mobile/attendance/page.tsx
+// app/mobile/attendance/page.tsx - VERSI FINAL
+
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -44,7 +45,6 @@ export default function Page() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [todayAttendance, setTodayAttendance] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
@@ -63,105 +63,163 @@ export default function Page() {
   const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  // 🔥 STATE UNTUK SHIFT DARI JADWAL
+  // STATE UNTUK SHIFT (OPSIONAL)
   const [scheduledShift, setScheduledShift] = useState<any>(null);
   const [isLoadingShift, setIsLoadingShift] = useState(true);
-  const [shiftError, setShiftError] = useState<string | null>(null);
 
-  // Load data
+  // STATE UNTUK REKENING BANK
+  const [bankAccount, setBankAccount] = useState({
+    bankName: "",
+    bankAccountNumber: "",
+    bankAccountName: ""
+  });
+  
+  // STATE UNTUK MODAL INPUT REKENING
+  const [showBankModal, setShowBankModal] = useState(false);
+  const [tempBankAccount, setTempBankAccount] = useState({
+    bankName: "",
+    bankAccountNumber: "",
+    bankAccountName: ""
+  });
+  const [isSavingBank, setIsSavingBank] = useState(false);
+
+  const bankOptions = [
+    "BCA", "Mandiri", "BNI", "BRI", "CIMB Niaga", "Danamon", "Permata",
+    "Maybank", "OCBC NISP", "UOB", "Panin Bank", "Bank Mega",
+    "Bank Syariah Indonesia", "Bank Jago", "Bank Neo Commerce", "SeaBank", "Lainnya",
+  ];
+
   useEffect(() => {
     loadOffice();
     if (user) {
       loadTodayAttendance();
       loadHistory();
-      loadScheduledShift(); // 🔥 Load shift dari jadwal
+      loadScheduledShift();
+      loadUserBankAccount();
     }
   }, [user]);
 
-  // 🔥 FUNGSI UNTUK MENGAMBIL SHIFT DARI shift_schedules
-  // 🔥 FUNGSI UNTUK MENGAMBIL SHIFT DARI shift_schedules
-// app/mobile/attendance/page.tsx
-
-const loadScheduledShift = async () => {
-  if (!user) return;
-  
-  setIsLoadingShift(true);
-  setShiftError(null);
-  
-  try {
-    const today = new Date();
-    const dateStr = today.toISOString().split("T")[0];
-    const scheduleId = `${user.uid}_${dateStr}`;
+  // 🔥 BACA DATA REKENING DARI DATABASE
+  const loadUserBankAccount = async () => {
+    if (!user) return;
     
-    console.log("🔍 Mencari jadwal shift:", scheduleId);
-    
-    const scheduleDoc = await getDoc(doc(db, "shift_schedules", scheduleId));
-    
-    if (scheduleDoc.exists()) {
-      const scheduleData = scheduleDoc.data();
-      console.log("📄 Data schedule:", scheduleData);
-      
-      let shiftData = null;
-      let shiftDocId = null;
-      
-      // 🔥 CARI BERDASARKAN NAMA SHIFT (bukan ID)
-      if (scheduleData.shiftName) {
-        console.log("🔍 Mencari shift berdasarkan nama:", scheduleData.shiftName);
-        
-        const shiftsQuery = query(
-          collection(db, "shifts"), 
-          where("name", "==", scheduleData.shiftName),
-          where("isActive", "==", true)
-        );
-        
-        const shiftsSnap = await getDocs(shiftsQuery);
-        
-        if (!shiftsSnap.empty) {
-          const shiftDoc = shiftsSnap.docs[0];
-          shiftData = shiftDoc.data();
-          shiftDocId = shiftDoc.id;
-          console.log("✅ Shift ditemukan berdasarkan nama:", shiftData.name, "dengan ID:", shiftDocId);
-        } else {
-          console.log("❌ Shift tidak ditemukan dengan nama:", scheduleData.shiftName);
-        }
-      }
-      
-      // Jika masih tidak ditemukan, coba berdasarkan shiftId (fallback)
-      if (!shiftData && scheduleData.shiftId) {
-        console.log("🔍 Mencoba mencari berdasarkan shiftId:", scheduleData.shiftId);
-        const shiftDoc = await getDoc(doc(db, "shifts", scheduleData.shiftId));
-        if (shiftDoc.exists()) {
-          shiftData = shiftDoc.data();
-          shiftDocId = shiftDoc.id;
-          console.log("✅ Shift ditemukan berdasarkan ID:", shiftData.name);
-        }
-      }
-      
-      if (shiftData) {
-        setScheduledShift({
-          id: shiftDocId,
-          name: shiftData.name,
-          code: shiftData.code,
-          startTime: shiftData.startTime,
-          endTime: shiftData.endTime,
-          color: shiftData.color,
-          lateTolerance: shiftData.lateTolerance || 15,
+    try {
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        setBankAccount({
+          bankName: userData.bankName || "",
+          bankAccountNumber: userData.bankAccountNumber || "",
+          bankAccountName: userData.bankAccountName || user.name || ""
         });
-        console.log("✅ Shift berhasil dimuat:", shiftData.name);
-      } else {
-        setShiftError(`Shift "${scheduleData.shiftName}" tidak ditemukan di database`);
       }
-    } else {
-      console.log("❌ Tidak ada jadwal shift untuk ID:", scheduleId);
-      setShiftError(`Tidak ada jadwal shift untuk tanggal ${dateStr}`);
+    } catch (error) {
+      console.error("Error loading bank account:", error);
     }
-  } catch (error) {
-    console.error("❌ Error loading shift:", error);
-    setShiftError("Gagal memuat jadwal shift");
-  } finally {
-    setIsLoadingShift(false);
-  }
-};
+  };
+
+  // 🔥 KARYAWAN INPUT REKENING SENDIRI
+  const saveOwnBankAccount = async () => {
+    if (!user) return;
+    
+    if (!tempBankAccount.bankAccountNumber) {
+      alert("Nomor rekening wajib diisi!");
+      return;
+    }
+    
+    setIsSavingBank(true);
+    
+    try {
+      await updateDoc(doc(db, "users", user.uid), {
+        bankName: tempBankAccount.bankName,
+        bankAccountNumber: tempBankAccount.bankAccountNumber,
+        bankAccountName: tempBankAccount.bankAccountName || user.name,
+        bankAccountUpdatedBy: "employee",
+        bankAccountUpdatedAt: Timestamp.now(),
+      });
+      
+      setBankAccount({
+        bankName: tempBankAccount.bankName,
+        bankAccountNumber: tempBankAccount.bankAccountNumber,
+        bankAccountName: tempBankAccount.bankAccountName || user.name
+      });
+      
+      alert("✅ Data rekening berhasil disimpan!");
+      setShowBankModal(false);
+      setTempBankAccount({ bankName: "", bankAccountNumber: "", bankAccountName: "" });
+    } catch (error: any) {
+      alert("❌ Gagal menyimpan: " + error.message);
+    } finally {
+      setIsSavingBank(false);
+    }
+  };
+
+  // 🔥 LOAD SHIFT (OPSIONAL - TIDAK MEMAKSA)
+  const loadScheduledShift = async () => {
+    if (!user) return;
+    
+    setIsLoadingShift(true);
+    
+    try {
+      const today = new Date();
+      const dateStr = today.toISOString().split("T")[0];
+      const scheduleId = `${user.uid}_${dateStr}`;
+      
+      const scheduleDoc = await getDoc(doc(db, "shift_schedules", scheduleId));
+      
+      if (scheduleDoc.exists()) {
+        const scheduleData = scheduleDoc.data();
+        
+        let shiftData = null;
+        let shiftDocId = null;
+        
+        if (scheduleData.shiftName) {
+          const shiftsQuery = query(
+            collection(db, "shifts"), 
+            where("name", "==", scheduleData.shiftName),
+            where("isActive", "==", true)
+          );
+          
+          const shiftsSnap = await getDocs(shiftsQuery);
+          
+          if (!shiftsSnap.empty) {
+            const shiftDoc = shiftsSnap.docs[0];
+            shiftData = shiftDoc.data();
+            shiftDocId = shiftDoc.id;
+          }
+        }
+        
+        if (!shiftData && scheduleData.shiftId) {
+          const shiftDoc = await getDoc(doc(db, "shifts", scheduleData.shiftId));
+          if (shiftDoc.exists()) {
+            shiftData = shiftDoc.data();
+            shiftDocId = shiftDoc.id;
+          }
+        }
+        
+        if (shiftData) {
+          setScheduledShift({
+            id: shiftDocId,
+            name: shiftData.name,
+            code: shiftData.code,
+            startTime: shiftData.startTime,
+            endTime: shiftData.endTime,
+            color: shiftData.color,
+            lateTolerance: shiftData.lateTolerance || 15,
+          });
+        } else {
+          setScheduledShift(null);
+        }
+      } else {
+        setScheduledShift(null);
+      }
+    } catch (error) {
+      console.error("Error loading shift:", error);
+      setScheduledShift(null);
+    } finally {
+      setIsLoadingShift(false);
+    }
+  };
 
   const loadOffice = async () => {
     const q = query(collection(db, "settings"), where("isActive", "==", true));
@@ -208,24 +266,6 @@ const loadScheduledShift = async () => {
   const formatTime = (timestamp: any) => {
     if (!timestamp?.toDate) return "--:--";
     return timestamp.toDate().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
-  };
-
-  const formatDate = (timestamp: any) => {
-    if (!timestamp?.toDate) return "--";
-    return timestamp.toDate().toLocaleDateString("id-ID", { 
-      weekday: "long", 
-      day: "numeric", 
-      month: "long",
-      year: "numeric"
-    });
-  };
-
-  const formatShortDate = (timestamp: any) => {
-    if (!timestamp?.toDate) return "--";
-    return timestamp.toDate().toLocaleDateString("id-ID", { 
-      day: "numeric", 
-      month: "short" 
-    });
   };
 
   const calculateWorkHours = (checkIn: any, checkOut: any) => {
@@ -285,12 +325,8 @@ const loadScheduledShift = async () => {
     }
   };
 
+  // 🔥 MULAI KAMERA - TANPA VALIDASI APAPUN
   const startCamera = async () => {
-    if (!scheduledShift && !isCheckedIn) {
-      alert(shiftError || "Tidak ada jadwal shift untuk hari ini. Silakan hubungi admin.");
-      return;
-    }
-
     if (stream) stream.getTracks().forEach(t => t.stop());
 
     try {
@@ -386,7 +422,7 @@ const loadScheduledShift = async () => {
     getLocation();
   };
 
-  // 🔥 SAVE ATTENDANCE - SEKARANG MENYIMPAN SHIFT!
+  // 🔥 SAVE ATTENDANCE - TANPA VALIDASI REKENING
   const saveAttendance = async () => {
     if (!user) {
       alert("User tidak ditemukan, silakan login ulang");
@@ -408,12 +444,6 @@ const loadScheduledShift = async () => {
       return;
     }
 
-    // 🔥 Validasi shift untuk check-in
-    if (!isCheckedIn && !scheduledShift) {
-      alert(shiftError || "Tidak ada jadwal shift untuk hari ini. Silakan hubungi admin.");
-      return;
-    }
-
     setIsSaving(true);
     setUploadProgress(0);
 
@@ -426,20 +456,31 @@ const loadScheduledShift = async () => {
       const snap = await getDoc(ref);
 
       if (!snap.exists()) {
-        // 🔥 CHECK-IN: SIMPAN SHIFT KE DATABASE
+        // SHIFT BISA NULL
+        const shiftData = scheduledShift ? {
+          id: scheduledShift.id,
+          name: scheduledShift.name,
+          code: scheduledShift.code,
+          startTime: scheduledShift.startTime,
+          endTime: scheduledShift.endTime,
+          color: scheduledShift.color,
+          lateTolerance: scheduledShift.lateTolerance || 15,
+        } : null;
+        
+        // REKENING BISA NULL (opsional)
+        const bankData = bankAccount.bankAccountNumber ? {
+          bankName: bankAccount.bankName,
+          accountNumber: bankAccount.bankAccountNumber,
+          accountName: bankAccount.bankAccountName
+        } : null;
+        
         await setDoc(ref, {
           uid: user.uid,
           name: user.name,
+          email: user.email,
           date: Timestamp.fromDate(today),
-          shift: {  // 🔥 INI YANG PALING PENTING!
-            id: scheduledShift.id,
-            name: scheduledShift.name,
-            code: scheduledShift.code,
-            startTime: scheduledShift.startTime,
-            endTime: scheduledShift.endTime,
-            color: scheduledShift.color,
-            lateTolerance: scheduledShift.lateTolerance || 15,
-          },
+          bankAccount: bankData, // BISA NULL
+          shift: shiftData, // BISA NULL
           checkIn: {
             time: Timestamp.now(),
             photo: photoUrl,
@@ -458,7 +499,6 @@ const loadScheduledShift = async () => {
         });
         alert("✅ Check-in berhasil!");
       } else if (!snap.data()?.checkOut) {
-        // 🔥 CHECK-OUT: UPDATE TANPA MENGUBAH SHIFT
         await updateDoc(ref, {
           checkOut: {
             time: Timestamp.now(),
@@ -540,57 +580,107 @@ const loadScheduledShift = async () => {
           </div>
         </div>
 
-        {/* 🔥 TAMPILKAN SHIFT YANG DIJADWALKAN */}
-        {!isCheckedIn && (
-          <div className="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-200">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-sm">📋</span>
-              <span className="text-sm font-medium text-blue-700">Shift Hari Ini (dari jadwal)</span>
-            </div>
-            {isLoadingShift ? (
-              <div className="flex justify-center py-2">
-                <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : scheduledShift ? (
+        {/* 🔥 TAMPILAN REKENING DENGAN TOMBOL INPUT */}
+        <div className="mb-4">
+          {bankAccount.bankAccountNumber ? (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-3">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-gray-800">{scheduledShift.name}</p>
-                  <p className="text-xs text-gray-600">
-                    {scheduledShift.startTime} - {scheduledShift.endTime}
-                  </p>
-                  <p className="text-[10px] text-gray-500 mt-1">
-                    Toleransi: {scheduledShift.lateTolerance} menit
-                  </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🏦</span>
+                  <div>
+                    <p className="text-xs text-green-600 font-medium">Data Rekening</p>
+                    <p className="text-sm font-semibold text-gray-800">
+                      {bankAccount.bankName} - {bankAccount.bankAccountNumber}
+                    </p>
+                    {bankAccount.bankAccountName && (
+                      <p className="text-xs text-gray-500">a.n. {bankAccount.bankAccountName}</p>
+                    )}
+                  </div>
                 </div>
-                <div 
-                  className="w-8 h-8 rounded-full" 
-                  style={{ backgroundColor: scheduledShift.color }}
-                />
+                <button
+                  onClick={() => {
+                    setTempBankAccount({
+                      bankName: bankAccount.bankName,
+                      bankAccountNumber: bankAccount.bankAccountNumber,
+                      bankAccountName: bankAccount.bankAccountName
+                    });
+                    setShowBankModal(true);
+                  }}
+                  className="text-blue-600 text-xs bg-blue-100 px-2 py-1 rounded-full hover:bg-blue-200"
+                >
+                  Update
+                </button>
               </div>
-            ) : (
-              <div className="text-center">
-                <p className="text-sm text-red-600">{shiftError || "Tidak ada jadwal shift"}</p>
-                <p className="text-xs text-gray-500 mt-1">Silakan hubungi admin untuk penjadwalan</p>
+            </div>
+          ) : (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">⚠️</span>
+                  <div>
+                    <p className="text-xs text-yellow-700 font-medium">Rekening Belum Diisi</p>
+                    <p className="text-xs text-gray-600">Isi rekening untuk memudahkan pembayaran gaji</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowBankModal(true)}
+                  className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700"
+                >
+                  + Isi Rekening
+                </button>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
 
-        {/* Tombol Absen */}
+        {/* 🔥 TAMPILAN SHIFT (OPSIONAL) */}
+        <div className="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-200">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm">📋</span>
+            <span className="text-sm font-medium text-blue-700">
+              {scheduledShift ? "Shift Hari Ini" : "Informasi Shift"}
+            </span>
+          </div>
+          {isLoadingShift ? (
+            <div className="flex justify-center py-2">
+              <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : scheduledShift ? (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-bold text-gray-800">{scheduledShift.name}</p>
+                <p className="text-xs text-gray-600">
+                  {scheduledShift.startTime} - {scheduledShift.endTime}
+                </p>
+              </div>
+              <div 
+                className="w-8 h-8 rounded-full" 
+                style={{ backgroundColor: scheduledShift.color }}
+              />
+            </div>
+          ) : (
+            <div className="text-center">
+              <p className="text-sm text-yellow-600">
+                Tidak ada jadwal shift untuk hari ini
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Anda tetap bisa absen
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Tombol Absen - SELALU AKTIF */}
         {!isCheckedOut ? (
           <button
             onClick={startCamera}
-            disabled={(!scheduledShift && !isCheckedIn) || isLoadingShift}
-            className={`w-full py-4 font-bold rounded-2xl shadow-lg transition-all ${
-              (scheduledShift || isCheckedIn)
-                ? "bg-gradient-to-r from-green-600 to-green-700 text-white hover:shadow-xl active:scale-95"
-                : "bg-gray-300 text-gray-500 cursor-not-allowed"
-            }`}
+            disabled={isLoadingShift}
+            className="w-full py-4 font-bold rounded-2xl shadow-lg transition-all bg-gradient-to-r from-green-600 to-green-700 text-white hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoadingShift ? (
               <div className="flex items-center justify-center gap-2">
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Memuat jadwal...</span>
+                <span>Memuat...</span>
               </div>
             ) : isCheckedIn ? (
               "📤 Ambil Foto Check-out"
@@ -678,13 +768,11 @@ const loadScheduledShift = async () => {
           <div className="relative h-full">
             <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
             <canvas ref={canvasRef} className="hidden" />
-
             <button onClick={switchCamera} className="absolute top-6 right-6 bg-black/50 backdrop-blur-sm text-white p-3 rounded-full">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
               </svg>
             </button>
-
             <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/70 to-transparent">
               <button onClick={takePhoto} className="w-full py-4 bg-white text-green-700 font-bold rounded-2xl">
                 📸 Ambil Foto
@@ -692,6 +780,90 @@ const loadScheduledShift = async () => {
               <button onClick={() => { if (stream) stream.getTracks().forEach(t => t.stop()); setShowCamera(false); }} className="w-full mt-3 py-3 bg-gray-500/80 text-white font-bold rounded-2xl">
                 Batal
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bank Account Modal - Karyawan Input Sendiri */}
+      {showBankModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-4 text-white">
+              <h2 className="text-lg font-bold text-center">
+                {bankAccount.bankAccountNumber ? "Update Rekening" : "Input Rekening"}
+              </h2>
+              <p className="text-xs text-center text-blue-100 mt-1">
+                Isi data rekening untuk memudahkan pembayaran gaji
+              </p>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Nama Bank <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={tempBankAccount.bankName}
+                  onChange={(e) => setTempBankAccount({...tempBankAccount, bankName: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Pilih Bank</option>
+                  {bankOptions.map((bank) => (
+                    <option key={bank} value={bank}>{bank}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Nomor Rekening <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={tempBankAccount.bankAccountNumber}
+                  onChange={(e) => setTempBankAccount({...tempBankAccount, bankAccountNumber: e.target.value})}
+                  placeholder="Masukkan nomor rekening"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Contoh: 1234567890</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Nama Pemilik Rekening
+                </label>
+                <input
+                  type="text"
+                  value={tempBankAccount.bankAccountName}
+                  onChange={(e) => setTempBankAccount({...tempBankAccount, bankAccountName: e.target.value})}
+                  placeholder={user?.name || "Nama sesuai rekening"}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="bg-yellow-50 rounded-xl p-3">
+                <p className="text-xs text-yellow-700">
+                  ℹ️ Data rekening akan digunakan untuk pembayaran gaji Anda.
+                  Pastikan nomor rekening benar.
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={saveOwnBankAccount}
+                  disabled={isSavingBank}
+                  className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isSavingBank ? "Menyimpan..." : "💾 Simpan"}
+                </button>
+                <button
+                  onClick={() => setShowBankModal(false)}
+                  className="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-300"
+                >
+                  Batal
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -709,18 +881,9 @@ const loadScheduledShift = async () => {
                 </svg>
               </button>
             </div>
-
             <div className="p-4">
               <img src={photoUri} alt="Preview" className="w-full rounded-xl" />
-              {scheduledShift && !isCheckedIn && (
-                <div className="mt-3 text-center">
-                  <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">
-                    Shift: {scheduledShift.name} ({scheduledShift.startTime} - {scheduledShift.endTime})
-                  </span>
-                </div>
-              )}
             </div>
-
             <div className="p-4">
               <div className="h-64 rounded-xl overflow-hidden">
                 <MapContainer bounds={[[location.lat, location.lng], [matchedLocation.lat, matchedLocation.lng]]} style={{ height: "100%", width: "100%" }} zoomControl={false}>
@@ -732,17 +895,14 @@ const loadScheduledShift = async () => {
                 </MapContainer>
               </div>
             </div>
-
             <div className="p-4 pt-0 space-y-3">
               <div className={`p-3 rounded-xl text-center ${isWithinRadius ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                 <div className="font-bold">{isWithinRadius ? "✓ Dalam Radius Kantor" : "✗ Di Luar Radius Kantor"}</div>
                 <div className="text-sm">Jarak: {distance.toFixed(0)}m (Maks: {matchedLocation.radius}m)</div>
               </div>
-
               <button onClick={saveAttendance} disabled={!isWithinRadius || isSaving} className={`w-full py-4 rounded-2xl font-bold ${isWithinRadius && !isSaving ? "bg-green-600 text-white" : "bg-gray-300 text-gray-500 cursor-not-allowed"}`}>
                 {isSaving ? "Mengupload..." : (isCheckedIn ? "✅ Simpan Check-out" : "✅ Simpan Check-in")}
               </button>
-
               <button onClick={() => { setShowMap(false); setPhotoUri(null); setLocation(null); }} className="w-full py-3 bg-gray-200 text-gray-700 font-bold rounded-2xl">
                 Kembali
               </button>
