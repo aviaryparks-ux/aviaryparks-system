@@ -243,82 +243,84 @@ export default function PayrollPage() {
   };
 
   const exportToExcel = () => {
-    const excelData = filteredSummary.map((item, index) => ({
-      No: index + 1,
-      "Nama Karyawan": item.name,
-      Email: item.email,
-      Departemen: item.department,
-      Jabatan: item.jabatan,
-      "Rate Harian": `Rp ${item.dailyRate.toLocaleString()}`,
-      Bank: item.bankName,
-      "Nomor Rekening": item.bankAccountNumber,
-      "Nama Pemilik": item.bankAccountName,
-      "Total Hari Kerja": item.totalDays,
-      "Total Jam Kerja": item.totalHours.toFixed(1),
-      "Total Gaji": `Rp ${item.totalSalary.toLocaleString()}`,
-    }));
+  const excelData = filteredSummary.map((item, index) => ({
+    No: index + 1,  // ← number, bukan string
+    "Nama Karyawan": item.name,
+    Email: item.email,
+    Departemen: item.department,
+    Jabatan: item.jabatan,
+    "Rate Harian": `Rp ${item.dailyRate.toLocaleString()}`,
+    Bank: item.bankName,
+    "Nomor Rekening": item.bankAccountNumber,
+    "Nama Pemilik": item.bankAccountName,
+    "Total Hari Kerja": item.totalDays,
+    "Total Jam Kerja": item.totalHours.toFixed(1),
+    "Total Gaji": `Rp ${item.totalSalary.toLocaleString()}`,
+  }));
 
-    const totalSalary = filteredSummary.reduce(
-      (sum, item) => sum + item.totalSalary,
-      0
-    );
-    const totalDays = filteredSummary.reduce(
-      (sum, item) => sum + item.totalDays,
-      0
-    );
-    const totalHours = filteredSummary.reduce(
-      (sum, item) => sum + item.totalHours,
-      0
-    );
+  const totalSalary = filteredSummary.reduce(
+    (sum, item) => sum + item.totalSalary,
+    0
+  );
+  const totalDays = filteredSummary.reduce(
+    (sum, item) => sum + item.totalDays,
+    0
+  );
+  const totalHours = filteredSummary.reduce(
+    (sum, item) => sum + item.totalHours,
+    0
+  );
 
-    excelData.push({
-      No: "",
-      "Nama Karyawan": "TOTAL",
-      Email: "",
-      Departemen: "",
-      Jabatan: "",
-      "Rate Harian": "",
-      Bank: "",
-      "Nomor Rekening": "",
-      "Nama Pemilik": "",
-      "Total Hari Kerja": totalDays,
-      "Total Jam Kerja": totalHours.toFixed(1),
-      "Total Gaji": `Rp ${totalSalary.toLocaleString()}`,
-    });
+  // 🔥 PERBAIKAN: Gunakan angka untuk No, bukan string kosong
+  excelData.push({
+    No: excelData.length + 1,  // ← number, bukan string kosong
+    "Nama Karyawan": "TOTAL",
+    Email: "",
+    Departemen: "",
+    Jabatan: "",
+    "Rate Harian": "",
+    Bank: "",
+    "Nomor Rekening": "",
+    "Nama Pemilik": "",
+    "Total Hari Kerja": totalDays,
+    "Total Jam Kerja": totalHours.toFixed(1),
+    "Total Gaji": `Rp ${totalSalary.toLocaleString()}`,
+  });
 
-    const ws = XLSX.utils.json_to_sheet(excelData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Rekap Gaji");
-    
-    const fileName = selectedDepartment === "ALL" 
-      ? `rekap_gaji_${dateRange.startDate}_${dateRange.endDate}.xlsx`
-      : `rekap_gaji_${selectedDepartment}_${dateRange.startDate}_${dateRange.endDate}.xlsx`;
-    
-    XLSX.writeFile(wb, fileName);
-  };
+  const ws = XLSX.utils.json_to_sheet(excelData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Rekap Gaji");
+  
+  const fileName = selectedDepartment === "ALL" 
+    ? `rekap_gaji_${dateRange.startDate}_${dateRange.endDate}.xlsx`
+    : `rekap_gaji_${selectedDepartment}_${dateRange.startDate}_${dateRange.endDate}.xlsx`;
+  
+  XLSX.writeFile(wb, fileName);
+};
 
   const exportDetailToExcel = (employee: PayrollSummary) => {
-    const detailData = employee.attendanceDetails.map((item, index) => ({
-      No: index + 1,
-      Tanggal: item.date,
-      "Jam Masuk": item.checkIn,
-      "Jam Pulang": item.checkOut,
-      "Jam Kerja": item.workHours.toFixed(1),
-    }));
+  const detailData = employee.attendanceDetails.map((item, index) => ({
+    No: index + 1,  // ← number
+    Tanggal: item.date,
+    "Jam Masuk": item.checkIn,
+    "Jam Pulang": item.checkOut,
+    "Jam Kerja": item.workHours.toFixed(1),
+  }));
 
-    detailData.push({
-      No: "",
-      Tanggal: "TOTAL",
-      "Jam Masuk": "",
-      "Jam Pulang": "",
-      "Jam Kerja": employee.totalHours.toFixed(1),
-    });
+  // 🔥 PERBAIKAN: Gunakan angka untuk No
+  detailData.push({
+    No: detailData.length + 1,  // ← number
+    Tanggal: "TOTAL",
+    "Jam Masuk": "",
+    "Jam Pulang": "",
+    "Jam Kerja": employee.totalHours.toFixed(1),
+  });
 
-    const ws = XLSX.utils.json_to_sheet(detailData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, `Detail_${employee.name}`);
-    XLSX.writeFile(wb, `detail_absensi_${employee.name}.xlsx`);
-  };
+  const ws = XLSX.utils.json_to_sheet(detailData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, `Detail_${employee.name}`);
+  XLSX.writeFile(wb, `detail_absensi_${employee.name}.xlsx`);
+};
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("id-ID", {
