@@ -10,8 +10,6 @@ import {
   getDocs,
   limit,
   startAfter,
-  where,
-  Timestamp,
 } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,7 +27,7 @@ type AuditLog = {
   changedBy: string;
   changedByName: string;
   changedByRole: string;
-  changedAt: Timestamp;
+  changedAt: any;
   notes: string;
 };
 
@@ -85,7 +83,6 @@ export default function ShiftAuditPage() {
       setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
       setHasMore(snapshot.docs.length === 50);
       
-      // Hitung statistik
       const allLogs = loadMore ? [...logs, ...newLogs] : newLogs;
       const total = allLogs.length;
       const create = allLogs.filter(l => l.action === "create").length;
@@ -126,17 +123,17 @@ export default function ShiftAuditPage() {
   const getActionBadge = (action: string) => {
     switch (action) {
       case "create":
-        return <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">➕ Tambah</span>;
+        return <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">➕ Tambah</span>;
       case "update":
-        return <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-700">✏️ Ubah</span>;
+        return <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">✏️ Ubah</span>;
       case "delete":
-        return <span className="px-2 py-1 rounded-full text-xs bg-red-100 text-red-700">🗑️ Hapus</span>;
+        return <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">🗑️ Hapus</span>;
       default:
-        return <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">-</span>;
+        return <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">-</span>;
     }
   };
 
-  const formatDate = (timestamp: Timestamp) => {
+  const formatDate = (timestamp: any) => {
     if (!timestamp?.toDate) return "-";
     const date = timestamp.toDate();
     return date.toLocaleDateString("id-ID", {
@@ -145,20 +142,29 @@ export default function ShiftAuditPage() {
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      second: "2-digit",
+    });
+  };
+
+  const formatShortDate = (timestamp: any) => {
+    if (!timestamp?.toDate) return "-";
+    const date = timestamp.toDate();
+    return date.toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
     });
   };
 
   const getRoleBadge = (role: string) => {
     switch (role) {
       case "super_admin":
-        return <span className="px-2 py-0.5 rounded-full text-[10px] bg-red-100 text-red-700">Super Admin</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">Super Admin</span>;
       case "admin":
-        return <span className="px-2 py-0.5 rounded-full text-[10px] bg-purple-100 text-purple-700">Admin</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700">Admin</span>;
       case "hr":
-        return <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-100 text-blue-700">HR</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">HR</span>;
       default:
-        return <span className="px-2 py-0.5 rounded-full text-[10px] bg-gray-100 text-gray-700">{role}</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-700">{role}</span>;
     }
   };
 
@@ -175,86 +181,97 @@ export default function ShiftAuditPage() {
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "admin", "hr"]}>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-              📜 Riwayat Perubahan Shift
-            </h1>
-            <p className="text-gray-500 mt-1">
+      <div className="space-y-6 p-6">
+        {/* Header dengan Glassmorphism */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-green-600 to-green-700 p-6 text-white shadow-xl">
+          <div className="relative z-10">
+            <h1 className="text-2xl font-bold">📜 Riwayat Perubahan Shift</h1>
+            <p className="text-green-100 mt-1">
               Melihat siapa yang mengubah shift dan kapan perubahan dilakukan
             </p>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-gray-400 bg-gray-100 px-3 py-1.5 rounded-lg">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            <span>Data real-time</span>
           </div>
         </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
-            <div className="flex justify-between items-center">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-blue-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
-                <p className="text-sm text-blue-600">Total Perubahan</p>
-                <p className="text-2xl font-bold text-blue-800">{stats.total}</p>
+                <p className="text-sm text-blue-600 font-medium">Total Perubahan</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{stats.total}</p>
               </div>
-              <span className="text-3xl">📊</span>
+              <div className="rounded-xl bg-blue-100 p-3">
+                <span className="text-2xl">📊</span>
+              </div>
             </div>
           </div>
-          <div className="bg-green-50 rounded-xl p-4 border border-green-200">
-            <div className="flex justify-between items-center">
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-green-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
-                <p className="text-sm text-green-600">Tambah Shift</p>
-                <p className="text-2xl font-bold text-green-800">{stats.create}</p>
+                <p className="text-sm text-green-600 font-medium">Tambah Shift</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{stats.create}</p>
               </div>
-              <span className="text-3xl">➕</span>
+              <div className="rounded-xl bg-green-100 p-3">
+                <span className="text-2xl">➕</span>
+              </div>
             </div>
           </div>
-          <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
-            <div className="flex justify-between items-center">
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-blue-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
-                <p className="text-sm text-blue-600">Ubah Shift</p>
-                <p className="text-2xl font-bold text-blue-800">{stats.update}</p>
+                <p className="text-sm text-blue-600 font-medium">Ubah Shift</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{stats.update}</p>
               </div>
-              <span className="text-3xl">✏️</span>
+              <div className="rounded-xl bg-blue-100 p-3">
+                <span className="text-2xl">✏️</span>
+              </div>
             </div>
           </div>
-          <div className="bg-red-50 rounded-xl p-4 border border-red-200">
-            <div className="flex justify-between items-center">
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-red-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
-                <p className="text-sm text-red-600">Hapus Shift</p>
-                <p className="text-2xl font-bold text-red-800">{stats.delete}</p>
+                <p className="text-sm text-red-600 font-medium">Hapus Shift</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{stats.delete}</p>
               </div>
-              <span className="text-3xl">🗑️</span>
+              <div className="rounded-xl bg-red-100 p-3">
+                <span className="text-2xl">🗑️</span>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Filter Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
+          <h2 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            Filter Data
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                🔍 Cari
-              </label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">🔍 Cari</label>
               <input
                 type="text"
                 placeholder="Cari nama karyawan, admin, atau shift..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                🏷️ Filter Aksi
-              </label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">🏷️ Filter Aksi</label>
               <select
                 value={filterAction}
                 onChange={(e) => setFilterAction(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
               >
                 <option value="all">Semua Aksi</option>
                 <option value="create">Tambah Shift</option>
@@ -263,25 +280,24 @@ export default function ShiftAuditPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                📅 Filter Tanggal
-              </label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">📅 Filter Tanggal</label>
               <input
                 type="date"
                 value={filterDate}
                 onChange={(e) => setFilterDate(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
               />
             </div>
           </div>
-          <div className="flex justify-end mt-3">
+          <div className="flex justify-end">
             <button
               onClick={() => {
                 setSearchTerm("");
                 setFilterAction("all");
                 setFilterDate("");
+                loadLogs();
               }}
-              className="text-sm text-gray-500 hover:text-gray-700"
+              className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
             >
               ↺ Reset Filter
             </button>
@@ -289,22 +305,24 @@ export default function ShiftAuditPage() {
         </div>
 
         {/* Audit Logs Table */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <span>📜</span>
-              Riwayat Perubahan
-              <span className="text-sm font-normal text-gray-500 ml-2">
-                ({filteredLogs.length} record)
-              </span>
-            </h2>
-            <button
-              onClick={() => loadLogs()}
-              className="text-green-600 text-sm hover:text-green-700 flex items-center gap-1"
-            >
-              <span>🔄</span>
-              Refresh
-            </button>
+        <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+            <div className="flex justify-between items-center">
+              <h2 className="text-md font-semibold text-gray-800 flex items-center gap-2">
+                <span>📜</span>
+                Riwayat Perubahan
+              </h2>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-500">{filteredLogs.length} record</span>
+                <button
+                  onClick={() => loadLogs()}
+                  className="text-green-600 text-sm hover:text-green-700 flex items-center gap-1 transition-colors"
+                >
+                  <span>🔄</span>
+                  Refresh
+                </button>
+              </div>
+            </div>
           </div>
           
           {loading && logs.length === 0 ? (
@@ -314,36 +332,43 @@ export default function ShiftAuditPage() {
           ) : filteredLogs.length === 0 ? (
             <div className="p-12 text-center text-gray-500">
               <div className="text-5xl mb-4">📭</div>
-              <p>Tidak ada riwayat perubahan</p>
+              <p className="text-lg font-medium">Tidak ada riwayat perubahan</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-100">
+                <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left">Waktu</th>
-                    <th className="px-4 py-3 text-left">Karyawan</th>
-                    <th className="px-4 py-3 text-left">Tanggal Shift</th>
-                    <th className="px-4 py-3 text-left">Shift Lama</th>
-                    <th className="px-4 py-3 text-left">Shift Baru</th>
-                    <th className="px-4 py-3 text-left">Aksi</th>
-                    <th className="px-4 py-3 text-left">Diubah Oleh</th>
-                    <th className="px-4 py-3 text-left">Role</th>
-                    <th className="px-4 py-3 text-left">Keterangan</th>
-                  </tr>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Waktu</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Karyawan</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Tanggal Shift</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Shift Lama</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Shift Baru</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Aksi</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Diubah Oleh</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Role</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Keterangan</th>
+                </tr>
                 </thead>
                 <tbody>
                   {filteredLogs.map((log, idx) => (
-                    <tr key={log.id} className={`border-t hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                    <tr 
+                      key={log.id} 
+                      className={`border-t transition-all duration-150 ${
+                        idx % 2 === 0 ? "bg-white" : "bg-gray-50"
+                      } hover:bg-green-50`}
+                    >
                       <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
                         {formatDate(log.changedAt)}
                       </td>
-                      <td className="px-4 py-3 font-medium">
-                        {log.userName}
-                        <div className="text-xs text-gray-400">{log.userId?.slice(0, 8)}...</div>
+                      <td className="px-4 py-3">
+                        <div>
+                          <p className="font-medium text-gray-800">{log.userName}</p>
+                          <p className="text-xs text-gray-400">{log.userId?.slice(0, 8)}...</p>
+                        </div>
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs">
-                        {log.date}
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-gray-600">{log.date}</span>
                       </td>
                       <td className="px-4 py-3">
                         {log.oldShiftName ? (
@@ -364,15 +389,15 @@ export default function ShiftAuditPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div>
-                          <span className="font-medium">{log.changedByName}</span>
-                          <div className="text-xs text-gray-400">{log.changedBy?.slice(0, 8)}...</div>
+                          <p className="font-medium text-gray-800">{log.changedByName}</p>
+                          <p className="text-xs text-gray-400">{log.changedBy?.slice(0, 8)}...</p>
                         </div>
                       </td>
                       <td className="px-4 py-3">
                         {getRoleBadge(log.changedByRole)}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs max-w-[200px] truncate" title={log.notes}>
-                        {log.notes}
+                      <td className="px-4 py-3 text-gray-500 text-xs max-w-[250px]" title={log.notes}>
+                        <div className="truncate">{log.notes}</div>
                       </td>
                     </tr>
                   ))}
@@ -382,10 +407,10 @@ export default function ShiftAuditPage() {
           )}
           
           {hasMore && !loading && filteredLogs.length > 0 && (
-            <div className="p-4 text-center border-t">
+            <div className="p-4 text-center border-t border-gray-100">
               <button
                 onClick={() => loadLogs(true)}
-                className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 text-sm"
+                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
               >
                 Load More
               </button>
@@ -394,10 +419,12 @@ export default function ShiftAuditPage() {
         </div>
 
         {/* Info Footer */}
-        <div className="bg-gray-50 rounded-xl p-4 text-center text-xs text-gray-500">
-          <p>✅ Setiap perubahan shift akan tercatat di sini untuk keperluan audit</p>
-          <p>👥 Data yang tercatat: siapa yang mengubah, shift apa yang diubah, dan kapan perubahan terjadi</p>
-          <p>🔍 Gunakan fitur filter untuk mencari perubahan tertentu</p>
+        <div className="rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 p-5 text-center text-xs text-gray-500">
+          <div className="flex flex-wrap justify-center gap-4">
+            <span>✅ Setiap perubahan shift akan tercatat di sini untuk keperluan audit</span>
+            <span>👥 Data yang tercatat: siapa yang mengubah, shift apa yang diubah, dan kapan perubahan terjadi</span>
+            <span>🔍 Gunakan fitur filter untuk mencari perubahan tertentu</span>
+          </div>
         </div>
       </div>
     </ProtectedRoute>

@@ -13,7 +13,6 @@ import {
   Timestamp,
   getDoc,
   setDoc,
-  where,
 } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useNotification } from "@/components/ToastNotification";
@@ -57,82 +56,49 @@ export default function AttendanceCorrectionsPage() {
   const { showNotification } = useNotification();
   const { user } = useAuth();
 
-  // Get user role and department
   const userRole = user?.role || "employee";
   const userDepartment = user?.department || "";
 
-  // 🔥 CEK APAKAH USER BISA MELIHAT REQUEST INI
   const canViewRequest = (request: Request): boolean => {
-    // Super Admin bisa melihat semua
     if (userRole === "super_admin") return true;
-    
-    // HR bisa melihat request yang sudah di-approve SPV (currentStep >= 1)
-    // DAN request yang masih pending (belum di-approve SPV) juga bisa dilihat untuk monitoring
-    if (userRole === "hr") {
-      // HR bisa melihat semua request dari semua departemen
-      // Tapi hanya bisa approve yang sudah di-approve SPV
-      return true;
-    }
-    
-    // Manager/SPV hanya melihat request dari departemennya
-    if (userRole === "manager" || userRole === "spv") {
+    if (userRole === "hr") return true;
+    if ((userRole === "manager" || userRole === "spv")) {
       return request.department?.toLowerCase() === userDepartment?.toLowerCase();
     }
-    
     return false;
   };
 
-  // 🔥 CEK APAKAH USER BISA APPROVE/REJECT REQUEST INI
   const canApprove = (request: Request): boolean => {
-    // Hanya request dengan status pending yang bisa diapprove
     if (request.status !== "pending") return false;
-
-    // Super Admin bisa approve semua
     if (userRole === "super_admin") return true;
 
-    // SPV/Manager: hanya bisa approve request yang currentStep = 0 (belum di-approve siapa pun)
-    // DAN dari departemennya sendiri
     if ((userRole === "manager" || userRole === "spv")) {
-      // Cek apakah dari departemen yang sama
       const isSameDept = request.department?.toLowerCase() === userDepartment?.toLowerCase();
-      // Cek apakah masih step 0 (belum di-approve SPV)
       const isStepZero = request.currentStep === 0;
-      // Cek apakah SPV belum approve (flowSnapshot[0].status === 'waiting')
       const spvNotApproved = request.flowSnapshot?.[0]?.status === 'waiting';
-      
       return isSameDept && isStepZero && spvNotApproved;
     }
 
-    // HR: hanya bisa approve request yang sudah di-approve SPV (currentStep >= 1)
-    // DAN belum di-approve HR (currentStep < 2)
     if (userRole === "hr") {
-      // Cek apakah SPV sudah approve (currentStep >= 1)
       const spvApproved = request.currentStep >= 1;
-      // Cek apakah HR belum approve (currentStep < 2)
       const hrNotApproved = request.currentStep < 2;
-      // Cek apakah flowSnapshot HR masih waiting
       const hrWaiting = request.flowSnapshot?.[1]?.status === 'waiting';
-      
       return spvApproved && hrNotApproved && hrWaiting;
     }
 
     return false;
   };
 
-  // Filter data berdasarkan role user
   const getFilteredByRole = (requests: Request[]) => {
-    if (userRole === "super_admin") {
-      return requests;
-    } else if (userRole === "hr") {
-      // HR melihat semua request, tapi sorting berdasarkan currentStep
-      // Urutkan: yang sudah di-approve SPV (currentStep >= 1) lebih dulu
+    if (userRole === "super_admin") return requests;
+    if (userRole === "hr") {
       return [...requests].sort((a, b) => {
-        // Prioritas: yang sudah di-approve SPV (currentStep >= 1) lebih dulu
         if (a.currentStep >= 1 && b.currentStep < 1) return -1;
         if (a.currentStep < 1 && b.currentStep >= 1) return 1;
         return 0;
       });
-    } else if (userRole === "manager" || userRole === "spv") {
+    }
+    if (userRole === "manager" || userRole === "spv") {
       return requests.filter(
         (req) => req.department?.toLowerCase() === userDepartment?.toLowerCase()
       );
@@ -140,24 +106,19 @@ export default function AttendanceCorrectionsPage() {
     return [];
   };
 
-  // Filter data berdasarkan tab status
   const getFilteredByStatus = (requests: Request[]) => {
     if (filter === "ALL") return requests;
     return requests.filter((req) => req.status === filter);
   };
 
-  // Data final yang ditampilkan
   const filteredByRole = getFilteredByRole(allData);
   const displayData = getFilteredByStatus(filteredByRole);
   
-  // Hitung pending count berdasarkan role
   const roleBasedPendingCount = filteredByRole.filter((r) => r.status === "pending").length;
   const approvedCount = filteredByRole.filter((r) => r.status === "approved").length;
   const rejectedCount = filteredByRole.filter((r) => r.status === "rejected").length;
 
-  // Real-time listener untuk attendance requests
   useEffect(() => {
-    // Query semua request
     const q = query(collection(db, "attendance_requests"), orderBy("createdAt", "desc"));
     
     const unsub = onSnapshot(q, (snap) => {
@@ -190,19 +151,14 @@ export default function AttendanceCorrectionsPage() {
         
         arr.push(requestData);
         
-        // Hitung pending berdasarkan role user
         if (data.status === "pending") {
           if (userRole === "super_admin") {
             newPending++;
           } else if (userRole === "hr") {
-            // HR: hanya hitung yang sudah di-approve SPV
-            if (data.currentStep >= 1) {
-              newPending++;
-            }
+            if (data.currentStep >= 1) newPending++;
           } else if ((userRole === "manager" || userRole === "spv") && 
                      data.department?.toLowerCase() === userDepartment?.toLowerCase() &&
                      data.currentStep === 0) {
-            // SPV: hanya hitung yang belum di-approve
             newPending++;
           }
         }
@@ -210,7 +166,6 @@ export default function AttendanceCorrectionsPage() {
       
       setAllData(arr);
       
-      // Notifikasi untuk request baru
       if (newPending > previousPendingCount && previousPendingCount !== 0) {
         const deptText = userRole === "spv" || userRole === "manager" 
           ? ` di departemen ${userDepartment}` 
@@ -241,7 +196,21 @@ export default function AttendanceCorrectionsPage() {
     }
   };
 
-  // 🔥 APPROVE FUNCTION dengan step yang benar
+  const formatDateTime = (ts: any) => {
+    if (!ts) return "-";
+    try {
+      return ts.toDate().toLocaleDateString("id-ID", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return "-";
+    }
+  };
+
   const approve = async (r: Request) => {
     if (!canApprove(r)) {
       showNotification("❌ Anda tidak memiliki akses untuk approve request ini", "error");
@@ -251,12 +220,9 @@ export default function AttendanceCorrectionsPage() {
     setLoading((prev) => ({ ...prev, [r.id]: true }));
     try {
       const userRole = user?.role || "employee";
-      const currentStep = r.currentStep;
       const updatedFlowSnapshot = [...r.flowSnapshot];
       
-      // Determine which step is being approved
       if (userRole === "spv" || userRole === "manager") {
-        // SPV approve step 0
         updatedFlowSnapshot[0] = {
           ...updatedFlowSnapshot[0],
           status: "approved",
@@ -265,18 +231,15 @@ export default function AttendanceCorrectionsPage() {
           at: Timestamp.now(),
         };
         
-        // Update ke step 1 (menunggu HR)
         await updateDoc(doc(db, "attendance_requests", r.id), {
           flowSnapshot: updatedFlowSnapshot,
           currentStep: 1,
-          // Status masih pending karena belum di-approve HR
           status: "pending",
         });
         
         showNotification(`✅ Request dari ${r.name} telah disetujui oleh SPV, menunggu approval HR`, "success");
         
       } else if (userRole === "hr") {
-        // HR approve step 1
         updatedFlowSnapshot[1] = {
           ...updatedFlowSnapshot[1],
           status: "approved",
@@ -285,7 +248,6 @@ export default function AttendanceCorrectionsPage() {
           at: Timestamp.now(),
         };
         
-        // Update data absensi
         const dateObj = r.date.toDate();
         const yyyy = dateObj.getFullYear();
         const mm = (dateObj.getMonth() + 1).toString().padStart(2, "0");
@@ -317,7 +279,6 @@ export default function AttendanceCorrectionsPage() {
         }
         await updateDoc(attendanceRef, updateData);
         
-        // Update final status
         await updateDoc(doc(db, "attendance_requests", r.id), {
           flowSnapshot: updatedFlowSnapshot,
           status: "approved",
@@ -337,7 +298,6 @@ export default function AttendanceCorrectionsPage() {
     }
   };
 
-  // 🔥 REJECT FUNCTION
   const reject = async (r: Request) => {
     if (!canApprove(r)) {
       showNotification("❌ Anda tidak memiliki akses untuk reject request ini", "error");
@@ -350,7 +310,6 @@ export default function AttendanceCorrectionsPage() {
       const updatedFlowSnapshot = [...r.flowSnapshot];
       
       if (userRole === "spv" || userRole === "manager") {
-        // SPV reject step 0
         updatedFlowSnapshot[0] = {
           ...updatedFlowSnapshot[0],
           status: "rejected",
@@ -370,7 +329,6 @@ export default function AttendanceCorrectionsPage() {
         showNotification(`❌ Request dari ${r.name} ditolak oleh SPV`, "warning");
         
       } else if (userRole === "hr") {
-        // HR reject step 1
         updatedFlowSnapshot[1] = {
           ...updatedFlowSnapshot[1],
           status: "rejected",
@@ -408,26 +366,22 @@ export default function AttendanceCorrectionsPage() {
     }
   };
 
-  // 🔥 GET STEP TEXT untuk ditampilkan
   const getStepText = (request: Request) => {
-    if (request.status === "approved") return "Selesai";
-    if (request.status === "rejected") return "Ditolak";
-    
-    if (request.currentStep === 0) return "Menunggu SPV";
-    if (request.currentStep === 1) return "Menunggu HRD";
-    return "Proses";
+    if (request.status === "approved") return "✅ Selesai";
+    if (request.status === "rejected") return "❌ Ditolak";
+    if (request.currentStep === 0) return "⏳ Menunggu SPV";
+    if (request.currentStep === 1) return "⏳ Menunggu HRD";
+    return "📋 Proses";
   };
 
   const getStepColor = (request: Request) => {
     if (request.status === "approved") return "text-green-600";
     if (request.status === "rejected") return "text-red-600";
-    
     if (request.currentStep === 0) return "text-yellow-600";
     if (request.currentStep === 1) return "text-blue-600";
     return "text-gray-600";
   };
 
-  // Cek apakah user memiliki akses ke halaman ini
   const hasAccess = userRole === "super_admin" || userRole === "hr" || userRole === "manager" || userRole === "spv";
 
   if (!hasAccess) {
@@ -444,104 +398,112 @@ export default function AttendanceCorrectionsPage() {
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "hr", "manager", "spv"]}>
-      <div className="space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-            Attendance Corrections
-          </h1>
-          <p className="text-gray-500 mt-1">
-            Manage and review employee attendance correction requests
-            {userRole === "spv" || userRole === "manager" ? (
-              <span className="block text-sm text-yellow-600 mt-1">
-                📍 Hanya menampilkan request dari departemen: <strong>{userDepartment}</strong>
-                <br />✓ Anda dapat approve request yang belum di-approve siapa pun
-              </span>
-            ) : userRole === "hr" ? (
-              <span className="block text-sm text-blue-600 mt-1">
-                📍 Menampilkan semua request dari semua departemen
-                <br />✓ Anda hanya dapat approve request yang sudah di-approve SPV
-              </span>
-            ) : userRole === "super_admin" ? (
-              <span className="block text-sm text-purple-600 mt-1">
-                📍 Full Access - Semua departemen, semua step
-              </span>
-            ) : null}
-          </p>
+      <div className="space-y-6 p-6">
+        {/* Header dengan Glassmorphism */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-green-600 to-green-700 p-6 text-white shadow-xl">
+          <div className="relative z-10">
+            <h1 className="text-2xl font-bold">Koreksi Absensi</h1>
+            <p className="text-green-100 mt-1">
+              Kelola dan review request koreksi absensi karyawan
+              {userRole === "spv" || userRole === "manager" ? (
+                <span className="block text-sm text-green-200 mt-1">
+                  📍 Hanya menampilkan request dari departemen: <strong>{userDepartment}</strong>
+                </span>
+              ) : userRole === "hr" ? (
+                <span className="block text-sm text-green-200 mt-1">
+                  📍 Menampilkan semua request dari semua departemen
+                </span>
+              ) : null}
+            </p>
+          </div>
         </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200">
-            <div className="flex justify-between items-center">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-yellow-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
-                <p className="text-sm text-yellow-600">
+                <p className="text-sm text-yellow-600 font-medium">
                   Pending
-                  {userRole === "hr" && <span className="block text-xs">(menunggu approval HR)</span>}
-                  {userRole === "spv" && <span className="block text-xs">(menunggu approval SPV)</span>}
+                  {userRole === "hr" && <span className="block text-xs text-yellow-500">(menunggu HR)</span>}
+                  {userRole === "spv" && <span className="block text-xs text-yellow-500">(menunggu SPV)</span>}
                 </p>
-                <p className="text-2xl font-bold text-yellow-800">{roleBasedPendingCount}</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{roleBasedPendingCount}</p>
               </div>
-              <span className="text-3xl">⏳</span>
+              <div className="rounded-xl bg-yellow-100 p-3">
+                <span className="text-2xl">⏳</span>
+              </div>
             </div>
           </div>
-          <div className="bg-green-50 rounded-xl p-4 border border-green-200">
-            <div className="flex justify-between items-center">
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-green-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
-                <p className="text-sm text-green-600">Approved</p>
-                <p className="text-2xl font-bold text-green-800">{approvedCount}</p>
+                <p className="text-sm text-green-600 font-medium">Approved</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{approvedCount}</p>
               </div>
-              <span className="text-3xl">✓</span>
+              <div className="rounded-xl bg-green-100 p-3">
+                <span className="text-2xl">✅</span>
+              </div>
             </div>
           </div>
-          <div className="bg-red-50 rounded-xl p-4 border border-red-200">
-            <div className="flex justify-between items-center">
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-red-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
-                <p className="text-sm text-red-600">Rejected</p>
-                <p className="text-2xl font-bold text-red-800">{rejectedCount}</p>
+                <p className="text-sm text-red-600 font-medium">Rejected</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{rejectedCount}</p>
               </div>
-              <span className="text-3xl">✗</span>
+              <div className="rounded-xl bg-red-100 p-3">
+                <span className="text-2xl">❌</span>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Filter Tabs */}
-        <div className="flex gap-2 border-b border-gray-200 overflow-x-auto pb-1">
-          {["ALL", "pending", "approved", "rejected"].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setFilter(tab)}
-              className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-                filter === tab
-                  ? "text-green-600 border-b-2 border-green-600"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {tab === "ALL" ? "All" : tab.charAt(0).toUpperCase() + tab.slice(1)}
-              {tab === "pending" && roleBasedPendingCount > 0 && (
-                <span className="ml-1 px-1.5 py-0.5 text-xs bg-yellow-500 text-white rounded-full">
-                  {roleBasedPendingCount}
-                </span>
-              )}
-            </button>
-          ))}
+        <div className="rounded-xl bg-white p-2 shadow-md border border-gray-100">
+          <div className="flex gap-1 overflow-x-auto">
+            {["ALL", "pending", "approved", "rejected"].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setFilter(tab)}
+                className={`px-5 py-2 text-sm font-medium transition-all duration-200 rounded-lg whitespace-nowrap ${
+                  filter === tab
+                    ? "bg-green-600 text-white shadow-md"
+                    : "text-gray-600 hover:bg-gray-100"
+                }`}
+              >
+                {tab === "ALL" ? "Semua" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === "pending" && roleBasedPendingCount > 0 && (
+                  <span className={`ml-2 px-1.5 py-0.5 text-xs rounded-full ${
+                    filter === tab ? "bg-white text-green-600" : "bg-yellow-100 text-yellow-700"
+                  }`}>
+                    {roleBasedPendingCount}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-100">
+              <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left">Nama</th>
-                  <th className="px-4 py-3 text-left">Dept</th>
-                  <th className="px-4 py-3 text-left">Jabatan</th>
-                  <th className="px-4 py-3 text-left">Tanggal</th>
-                  <th className="px-4 py-3 text-left">Jam</th>
-                  <th className="px-4 py-3 text-left">Alasan</th>
-                  <th className="px-4 py-3 text-left">Step</th>
-                  <th className="px-4 py-3 text-left">Status</th>
-                  <th className="px-4 py-3 text-left">Action</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Karyawan</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Dept</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Jabatan</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Tanggal</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Jam</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Alasan</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Aksi</th>
                 </tr>
               </thead>
               <tbody>
@@ -551,10 +513,15 @@ export default function AttendanceCorrectionsPage() {
                   const stepColor = getStepColor(r);
                   
                   return (
-                    <tr key={r.id} className={`border-b ${idx % 2 === 0 ? "bg-white" : "bg-gray-50"} hover:bg-gray-100`}>
-                      <td className="px-4 py-3 font-medium">{r.name}</td>
+                    <tr 
+                      key={r.id} 
+                      className={`border-b transition-all duration-150 ${
+                        idx % 2 === 0 ? "bg-white" : "bg-gray-50"
+                      } hover:bg-green-50`}
+                    >
+                      <td className="px-4 py-3 font-medium text-gray-800">{r.name}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                           r.department?.toLowerCase() === "wildlife" 
                             ? "bg-green-100 text-green-700" 
                             : "bg-blue-100 text-blue-700"
@@ -562,31 +529,38 @@ export default function AttendanceCorrectionsPage() {
                           {r.department || "-"}
                         </span>
                       </td>
-                      <td className="px-4 py-3">{r.jabatan || "-"}</td>
-                      <td className="px-4 py-3">{formatDate(r.date)}</td>
+                      <td className="px-4 py-3 text-gray-600">{r.jabatan || "-"}</td>
+                      <td className="px-4 py-3 text-gray-600">{formatDate(r.date)}</td>
                       <td className="px-4 py-3">
-                        <span className="font-mono">{r.checkIn ?? "--"} - {r.checkOut ?? "--"}</span>
+                        <span className="font-mono text-gray-700">{r.checkIn ?? "--"} - {r.checkOut ?? "--"}</span>
                       </td>
                       <td className="px-4 py-3 max-w-xs">
-                        <div className="truncate" title={r.reason}>
+                        <div className="truncate text-gray-600" title={r.reason}>
                           {r.reason.length > 60 ? `${r.reason.substring(0, 60)}...` : r.reason}
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`text-xs font-medium ${stepColor}`}>
-                          {stepText}
-                        </span>
-                        {/* Tooltip untuk info lebih detail */}
-                        <div className="text-xs text-gray-400 mt-1">
-                          {r.currentStep === 0 && "Menunggu SPV"}
-                          {r.currentStep === 1 && "SPV ✓, menunggu HR"}
-                          {r.currentStep === 2 && "Selesai"}
+                        <div className="flex flex-col gap-1">
+                          <span className={`text-xs font-medium ${stepColor}`}>
+                            {stepText}
+                          </span>
+                          {r.currentStep === 0 && r.status === "pending" && (
+                            <span className="text-[10px] text-yellow-500">Menunggu SPV</span>
+                          )}
+                          {r.currentStep === 1 && r.status === "pending" && (
+                            <span className="text-[10px] text-blue-500">SPV ✓, menunggu HR</span>
+                          )}
+                          {r.status === "approved" && (
+                            <span className="text-[10px] text-green-500">
+                              Oleh: {r.approvedByName} • {formatDateTime(r.approvedAt)}
+                            </span>
+                          )}
+                          {r.status === "rejected" && (
+                            <span className="text-[10px] text-red-500">
+                              Oleh: {r.rejectedByName} • {formatDateTime(r.rejectedAt)}
+                            </span>
+                          )}
                         </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(r.status)}`}>
-                          {r.status}
-                        </span>
                       </td>
                       <td className="px-4 py-3">
                         {r.status === "pending" && canAction ? (
@@ -594,26 +568,43 @@ export default function AttendanceCorrectionsPage() {
                             <button
                               onClick={() => approve(r)}
                               disabled={loading[r.id]}
-                              className={`px-3 py-1.5 rounded-lg text-white text-sm transition-colors ${
-                                loading[r.id] ? "bg-gray-400" : "bg-green-600 hover:bg-green-700"
+                              className={`px-3 py-1.5 rounded-lg text-white text-sm font-medium transition-all duration-200 ${
+                                loading[r.id] 
+                                  ? "bg-gray-400 cursor-not-allowed" 
+                                  : "bg-green-600 hover:bg-green-700 shadow-md hover:shadow-lg"
                               }`}
                             >
-                              {loading[r.id] ? "..." : "Approve"}
+                              {loading[r.id] ? (
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                "Approve"
+                              )}
                             </button>
                             <button
                               onClick={() => reject(r)}
                               disabled={loading[r.id]}
-                              className={`px-3 py-1.5 rounded-lg text-white text-sm transition-colors ${
-                                loading[r.id] ? "bg-gray-400" : "bg-red-600 hover:bg-red-700"
+                              className={`px-3 py-1.5 rounded-lg text-white text-sm font-medium transition-all duration-200 ${
+                                loading[r.id] 
+                                  ? "bg-gray-400 cursor-not-allowed" 
+                                  : "bg-red-600 hover:bg-red-700 shadow-md hover:shadow-lg"
                               }`}
                             >
-                              {loading[r.id] ? "..." : "Reject"}
+                              {loading[r.id] ? (
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                "Reject"
+                              )}
                             </button>
                           </div>
                         ) : r.status === "pending" && !canAction ? (
                           <span className="text-xs text-gray-400 italic">
-                            {userRole === "hr" ? "Menunggu approval SPV" : "Tidak ada akses"}
+                            {userRole === "hr" ? "Menunggu SPV" : 
+                             userRole === "spv" ? "Menunggu approval" : "Tidak ada akses"}
                           </span>
+                        ) : r.status === "approved" ? (
+                          <span className="text-xs text-green-600 font-medium">✓ Disetujui</span>
+                        ) : r.status === "rejected" ? (
+                          <span className="text-xs text-red-600 font-medium">✗ Ditolak</span>
                         ) : (
                           <span className="text-gray-400 text-sm">-</span>
                         )}
@@ -626,7 +617,7 @@ export default function AttendanceCorrectionsPage() {
             {displayData.length === 0 && (
               <div className="p-12 text-center text-gray-500">
                 <div className="text-5xl mb-4">📭</div>
-                <p className="text-lg font-medium">No correction requests</p>
+                <p className="text-lg font-medium">Tidak ada request koreksi</p>
                 {userRole === "hr" && (
                   <p className="text-sm mt-1">Tidak ada request yang menunggu approval HR</p>
                 )}

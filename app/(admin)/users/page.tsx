@@ -51,11 +51,9 @@ export default function UsersPage() {
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, success: 0, failed: 0 });
   
-  // 🔥 STATE UNTUK MODAL DETAIL
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
-  // Form state
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -188,7 +186,6 @@ export default function UsersPage() {
     }
   };
 
-  // 🔥 FUNGSI UNTUK MEMBUKA MODAL DETAIL
   const openDetailModal = (user: User) => {
     setSelectedUser(user);
     setShowDetailModal(true);
@@ -232,7 +229,6 @@ export default function UsersPage() {
     setEditingId(null);
   };
 
-  // ================= IMPORT EXCEL =================
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -408,7 +404,6 @@ export default function UsersPage() {
       .slice(0, 2);
   };
 
-  // 🔥 FORMAT DATE
   const formatDate = (timestamp?: Timestamp) => {
     if (!timestamp) return "-";
     return timestamp.toDate().toLocaleDateString("id-ID", {
@@ -456,132 +451,155 @@ export default function UsersPage() {
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "hr"]}>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-              Users Management
-            </h1>
-            <p className="text-gray-500 mt-1">Manage employee accounts and permissions</p>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => {
-                resetForm();
-                setShowForm(!showForm);
-              }}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shadow-sm"
-            >
-              <span className="text-xl">+</span>
-              {showForm ? "Close Form" : "Add User"}
-            </button>
-            <button
-              onClick={triggerFileUpload}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shadow-sm"
-            >
-              <span className="text-xl">📁</span>
-              Upload Excel
-            </button>
-            <button
-              onClick={importFromGoogleSheets}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shadow-sm"
-            >
-              <span className="text-xl">📊</span>
-              Google Sheets
-            </button>
-            <button
-              onClick={downloadTemplate}
-              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shadow-sm"
-            >
-              <span className="text-xl">📄</span>
-              Template
-            </button>
+      <div className="space-y-6 p-6">
+        {/* Header dengan Glassmorphism */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-green-600 to-green-700 p-6 text-white shadow-xl">
+          <div className="relative z-10">
+            <h1 className="text-2xl font-bold">Users Management</h1>
+            <p className="text-green-100 mt-1">Manage employee accounts and permissions</p>
           </div>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
-            <div className="flex justify-between items-center">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-blue-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
-                <p className="text-sm text-blue-600">Total Users</p>
-                <p className="text-2xl font-bold text-blue-800">{users.length}</p>
+                <p className="text-sm text-blue-600 font-medium">Total Users</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{users.length}</p>
               </div>
-              <span className="text-2xl">👥</span>
+              <div className="rounded-xl bg-blue-100 p-3">
+                <span className="text-2xl">👥</span>
+              </div>
             </div>
           </div>
-          <div className="bg-green-50 rounded-xl p-4 border border-green-200">
-            <div className="flex justify-between items-center">
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-green-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
-                <p className="text-sm text-green-600">Active</p>
-                <p className="text-2xl font-bold text-green-800">
-                  {users.filter((u) => u.isActive).length}
-                </p>
+                <p className="text-sm text-green-600 font-medium">Active</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{users.filter((u) => u.isActive).length}</p>
               </div>
-              <span className="text-2xl">✅</span>
+              <div className="rounded-xl bg-green-100 p-3">
+                <span className="text-2xl">✅</span>
+              </div>
             </div>
           </div>
-          <div className="bg-red-50 rounded-xl p-4 border border-red-200">
-            <div className="flex justify-between items-center">
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-red-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
-                <p className="text-sm text-red-600">Inactive</p>
-                <p className="text-2xl font-bold text-red-800">
-                  {users.filter((u) => !u.isActive).length}
-                </p>
+                <p className="text-sm text-red-600 font-medium">Inactive</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{users.filter((u) => !u.isActive).length}</p>
               </div>
-              <span className="text-2xl">⛔</span>
+              <div className="rounded-xl bg-red-100 p-3">
+                <span className="text-2xl">⛔</span>
+              </div>
             </div>
           </div>
-          <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
-            <div className="flex justify-between items-center">
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-purple-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
-                <p className="text-sm text-purple-600">Departments</p>
-                <p className="text-2xl font-bold text-purple-800">
-                  {new Set(users.map((u) => u.department).filter(Boolean)).size}
-                </p>
+                <p className="text-sm text-purple-600 font-medium">Departments</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{new Set(users.map((u) => u.department).filter(Boolean)).size}</p>
               </div>
-              <span className="text-2xl">🏢</span>
+              <div className="rounded-xl bg-purple-100 p-3">
+                <span className="text-2xl">🏢</span>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Search & Filter */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="Search by name or email..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
-            />
+        <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <input
+                type="text"
+                placeholder="🔍 Search by name or email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+              />
+            </div>
+            <select
+              value={filterRole}
+              onChange={(e) => setFilterRole(e.target.value)}
+              className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+            >
+              {roleOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                setSearchTerm("");
+                setFilterRole("ALL");
+              }}
+              className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              Reset
+            </button>
           </div>
-          <select
-            value={filterRole}
-            onChange={(e) => setFilterRole(e.target.value)}
-            className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => {
+              resetForm();
+              setShowForm(!showForm);
+            }}
+            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
           >
-            {roleOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+            <span className="text-lg">+</span>
+            {showForm ? "Close Form" : "Add User"}
+          </button>
+          <button
+            onClick={triggerFileUpload}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+          >
+            <span className="text-lg">📁</span>
+            Upload Excel
+          </button>
+          <button
+            onClick={importFromGoogleSheets}
+            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+          >
+            <span className="text-lg">📊</span>
+            Google Sheets
+          </button>
+          <button
+            onClick={downloadTemplate}
+            className="bg-gray-600 hover:bg-gray-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+          >
+            <span className="text-lg">📄</span>
+            Template
+          </button>
         </div>
 
         {/* Import Modal */}
         {showImportModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white flex justify-between items-center">
-                <h2 className="text-lg font-semibold text-gray-800">Import Users from Excel</h2>
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden animate-scale-in">
+              <div className="sticky top-0 bg-gradient-to-r from-blue-50 to-white border-b border-gray-200 p-5 flex justify-between items-center">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800">Import Users from Excel</h2>
+                  <p className="text-xs text-gray-500 mt-1">Upload file Excel untuk import data user</p>
+                </div>
                 <button
                   onClick={() => {
                     setShowImportModal(false);
                     setImportData([]);
                   }}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-100 rounded-lg"
                 >
                   ✕
                 </button>
@@ -591,7 +609,7 @@ export default function UsersPage() {
                 {importing ? (
                   <div className="text-center py-8">
                     <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                    <p className="text-gray-600">
+                    <p className="text-gray-600 font-medium">
                       Importing... ({importProgress.current} / {importProgress.total})
                     </p>
                     <p className="text-sm text-gray-500 mt-2">
@@ -611,9 +629,10 @@ export default function UsersPage() {
                         Found <strong>{importData.length}</strong> records to import
                       </p>
                       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
-                        <strong>⚠️ Note:</strong> Email must be unique.
+                        <strong>⚠️ Note:</strong> Email must be unique. Password will be used for initial login.
                       </div>
                     </div>
+                    
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="bg-gray-100">
@@ -640,10 +659,10 @@ export default function UsersPage() {
                 )}
               </div>
               
-              <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+              <div className="sticky bottom-0 bg-gray-50 p-4 border-t border-gray-200 flex justify-end gap-3">
                 <button
                   onClick={() => setShowImportModal(false)}
-                  className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg"
+                  className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
                   disabled={importing}
                 >
                   Cancel
@@ -651,7 +670,7 @@ export default function UsersPage() {
                 {!importing && (
                   <button
                     onClick={importUsers}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg"
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
                   >
                     Import {importData.length} Users
                   </button>
@@ -663,20 +682,44 @@ export default function UsersPage() {
 
         {/* User Form */}
         {showForm && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+          <div className="rounded-xl bg-white shadow-lg border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
               <h2 className="text-lg font-semibold text-gray-800">
                 {editingId ? "✏️ Edit User" : "➕ Add New User"}
               </h2>
+              <p className="text-xs text-gray-500 mt-1">
+                {editingId ? "Edit data user yang sudah ada" : "Isi form untuk menambahkan user baru"}
+              </p>
             </div>
             <div className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <input placeholder="Full Name *" value={name} onChange={(e) => setName(e.target.value)} className="border rounded-lg px-3 py-2" />
-                <input placeholder="Email *" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="border rounded-lg px-3 py-2" />
+                <input
+                  placeholder="Full Name *"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                />
+                <input
+                  placeholder="Email *"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                />
                 {!editingId && (
-                  <input type="password" placeholder="Password *" value={password} onChange={(e) => setPassword(e.target.value)} className="border rounded-lg px-3 py-2" />
+                  <input
+                    type="password"
+                    placeholder="Password *"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                  />
                 )}
-                <select value={role} onChange={(e) => setRole(e.target.value)} className="border rounded-lg px-3 py-2">
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                >
                   <option value="employee">Employee</option>
                   <option value="spv">Supervisor (SPV)</option>
                   <option value="hr">HR</option>
@@ -685,41 +728,107 @@ export default function UsersPage() {
                   <option value="training">Training</option>
                   <option value="intern">Intern / Magang</option>
                 </select>
-                <input placeholder="Department" value={department} onChange={(e) => setDepartment(e.target.value)} className="border rounded-lg px-3 py-2" />
-                <select value={jabatan} onChange={(e) => setJabatan(e.target.value)} className="border rounded-lg px-3 py-2">
+                <input
+                  placeholder="Department"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                />
+                <select
+                  value={jabatan}
+                  onChange={(e) => setJabatan(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                >
                   <option value="">Select Position</option>
                   {jabatanOptions.map((j) => (<option key={j} value={j}>{j}</option>))}
                 </select>
                 {(jabatan === "Casual" || jabatan === "Daily Worker") && (
-                  <input placeholder="Daily Rate (Rp)" type="number" value={dailyRate} onChange={(e) => setDailyRate(e.target.value)} className="border rounded-lg px-3 py-2" />
+                  <input
+                    placeholder="Daily Rate (Rp)"
+                    type="number"
+                    value={dailyRate}
+                    onChange={(e) => setDailyRate(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                  />
                 )}
-                <input placeholder="Company" value={company} onChange={(e) => setCompany(e.target.value)} className="border rounded-lg px-3 py-2" />
-                <input placeholder="Work Location" value={location} onChange={(e) => setLocation(e.target.value)} className="border rounded-lg px-3 py-2" />
-                <input type="date" value={joinDate} onChange={(e) => setJoinDate(e.target.value)} className="border rounded-lg px-3 py-2" />
-                <input type="file" accept="image/*" onChange={(e) => setPhoto(e.target.files?.[0] || null)} className="border rounded-lg px-3 py-2" />
+                <input
+                  placeholder="Company"
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                />
+                <input
+                  placeholder="Work Location"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                />
+                <input
+                  type="date"
+                  value={joinDate}
+                  onChange={(e) => setJoinDate(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                />
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setPhoto(e.target.files?.[0] || null)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-gray-100"
+                />
                 
                 <div className="col-span-full">
-                  <p className="text-sm font-medium text-gray-700 mb-2">🏦 Informasi Bank</p>
+                  <div className="border-t border-gray-200 my-2 pt-2">
+                    <p className="text-sm font-medium text-gray-700 mb-2">🏦 Informasi Bank</p>
+                  </div>
                 </div>
-                <select value={bankName} onChange={(e) => setBankName(e.target.value)} className="border rounded-lg px-3 py-2">
+                <select
+                  value={bankName}
+                  onChange={(e) => setBankName(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                >
                   <option value="">Pilih Bank</option>
                   {bankOptions.map((bank) => (<option key={bank} value={bank}>{bank}</option>))}
                 </select>
-                <input placeholder="Nomor Rekening" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} className="border rounded-lg px-3 py-2" />
-                <input placeholder="Nama Pemilik Rekening" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} className="border rounded-lg px-3 py-2" />
+                <input
+                  placeholder="Nomor Rekening"
+                  value={bankAccountNumber}
+                  onChange={(e) => setBankAccountNumber(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                />
+                <input
+                  placeholder="Nama Pemilik Rekening"
+                  value={bankAccountName}
+                  onChange={(e) => setBankAccountName(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                />
                 
                 {editingId && (
                   <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="w-4 h-4 text-green-600" />
+                    <input
+                      type="checkbox"
+                      checked={isActive}
+                      onChange={(e) => setIsActive(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                    />
                     <span className="text-sm text-gray-700">Active</span>
                   </label>
                 )}
               </div>
               <div className="flex gap-3 mt-6">
-                <button onClick={saveUser} disabled={formLoading} className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
+                <button
+                  onClick={saveUser}
+                  disabled={formLoading}
+                  className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                >
                   {formLoading ? "Saving..." : editingId ? "Update" : "Save"}
                 </button>
-                <button onClick={() => { resetForm(); setShowForm(false); }} className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg">
+                <button
+                  onClick={() => {
+                    resetForm();
+                    setShowForm(false);
+                  }}
+                  className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                >
                   Cancel
                 </button>
               </div>
@@ -727,22 +836,28 @@ export default function UsersPage() {
           </div>
         )}
 
-        {/* Users Table - Baris bisa diklik untuk melihat detail */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-            <h2 className="text-lg font-semibold text-gray-800">📋 User List ({filteredUsers.length} users)</h2>
+        {/* Users Table */}
+        <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+            <div className="flex justify-between items-center">
+              <h2 className="text-md font-semibold text-gray-800 flex items-center gap-2">
+                <span>📋</span>
+                User List
+              </h2>
+              <span className="text-sm text-gray-500">{filteredUsers.length} users</span>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-100">
+              <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left">User</th>
-                  <th className="px-4 py-3 text-left">Role</th>
-                  <th className="px-4 py-3 text-left">Department</th>
-                  <th className="px-4 py-3 text-left">Position</th>
-                  <th className="px-4 py-3 text-left">Rate</th>
-                  <th className="px-4 py-3 text-left">Status</th>
-                  <th className="px-4 py-3 text-left">Actions</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">User</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Role</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Department</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Position</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Rate</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -752,15 +867,21 @@ export default function UsersPage() {
                     onClick={() => openDetailModal(user)}
                     className={`border-b cursor-pointer transition-all duration-150 ${
                       idx % 2 === 0 ? "bg-white" : "bg-gray-50"
-                    } hover:bg-blue-50 hover:shadow-inner`}
+                    } hover:bg-green-50 hover:shadow-inner`}
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         {user.photoUrl ? (
-                          <img src={user.photoUrl} alt={user.name} className="w-10 h-10 rounded-full object-cover" />
+                          <img
+                            src={user.photoUrl}
+                            alt={user.name}
+                            className="w-10 h-10 rounded-full object-cover"
+                          />
                         ) : (
                           <div className="w-10 h-10 rounded-full bg-gradient-to-r from-green-500 to-green-600 flex items-center justify-center">
-                            <span className="text-white text-sm font-bold">{getInitials(user.name)}</span>
+                            <span className="text-white text-sm font-bold">
+                              {getInitials(user.name)}
+                            </span>
                           </div>
                         )}
                         <div>
@@ -774,24 +895,52 @@ export default function UsersPage() {
                         {getRoleLabel(user.role)}
                       </span>
                     </td>
-                    <td className="px-4 py-3">{user.department || "-"}</td>
-                    <td className="px-4 py-3">{user.jabatan || "-"}</td>
+                    <td className="px-4 py-3 text-gray-600">{user.department || "-"}</td>
+                    <td className="px-4 py-3 text-gray-600">{user.jabatan || "-"}</td>
                     <td className="px-4 py-3">
-                      {user.jabatan === "Training" || user.jabatan === "Intern / Magang" ? "-" : user.dailyRate ? `Rp ${user.dailyRate.toLocaleString()}` : "-"}
+                      {user.jabatan === "Training" || user.jabatan === "Intern / Magang" ? (
+                        <span className="text-gray-400">-</span>
+                      ) : user.dailyRate ? (
+                        `Rp ${user.dailyRate.toLocaleString()}`
+                      ) : "-"}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${user.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        user.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                      }`}>
                         {user.isActive ? "Active" : "Inactive"}
                       </span>
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex gap-2 flex-wrap">
-                        <button onClick={() => editUser(user)} className="px-2 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-xs">Edit</button>
-                        <button onClick={() => resetPassword(user.email)} className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs">Reset</button>
-                        <button onClick={() => toggleActive(user)} className={`px-2 py-1 rounded-lg text-xs ${user.isActive ? "bg-red-600 hover:bg-red-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"}`}>
+                        <button
+                          onClick={() => editUser(user)}
+                          className="px-2 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-xs transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => resetPassword(user.email)}
+                          className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs transition-colors"
+                        >
+                          Reset
+                        </button>
+                        <button
+                          onClick={() => toggleActive(user)}
+                          className={`px-2 py-1 rounded-lg text-xs transition-colors ${
+                            user.isActive
+                              ? "bg-red-600 hover:bg-red-700 text-white"
+                              : "bg-green-600 hover:bg-green-700 text-white"
+                          }`}
+                        >
                           {user.isActive ? "Deactivate" : "Activate"}
                         </button>
-                        <button onClick={() => deleteUser(user)} className="px-2 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-xs">Delete</button>
+                        <button
+                          onClick={() => deleteUser(user)}
+                          className="px-2 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-xs transition-colors"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -799,45 +948,49 @@ export default function UsersPage() {
               </tbody>
             </table>
             {filteredUsers.length === 0 && (
-              <div className="p-8 text-center text-gray-500">
-                <span className="text-4xl block mb-2">👥</span>
-                No users found
+              <div className="p-12 text-center text-gray-500">
+                <div className="text-5xl mb-4">👥</div>
+                <p className="text-lg font-medium">No users found</p>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* 🔥 MODAL DETAIL USER */}
+      {/* MODAL DETAIL USER */}
       {showDetailModal && selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden animate-scale-in">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-4 flex justify-between items-center">
-              <div className="flex items-center gap-3">
+            <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-5 flex justify-between items-center">
+              <div className="flex items-center gap-4">
                 {selectedUser.photoUrl ? (
-                  <img src={selectedUser.photoUrl} alt={selectedUser.name} className="w-14 h-14 rounded-full object-cover border-2 border-white" />
+                  <img 
+                    src={selectedUser.photoUrl} 
+                    alt={selectedUser.name} 
+                    className="w-16 h-16 rounded-full object-cover border-2 border-white"
+                  />
                 ) : (
-                  <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center">
-                    <span className="text-white text-xl font-bold">{getInitials(selectedUser.name)}</span>
+                  <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center">
+                    <span className="text-white text-2xl font-bold">{getInitials(selectedUser.name)}</span>
                   </div>
                 )}
                 <div>
-                  <h2 className="text-xl font-bold text-white">{selectedUser.name}</h2>
+                  <h2 className="text-2xl font-bold text-white">{selectedUser.name}</h2>
                   <p className="text-green-100 text-sm">{selectedUser.email}</p>
                 </div>
               </div>
-              <button onClick={() => setShowDetailModal(false)} className="text-white hover:text-gray-200 transition-colors">
+              <button 
+                onClick={() => setShowDetailModal(false)} 
+                className="text-white hover:text-gray-200 transition-colors"
+              >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
-            {/* Content */}
             <div className="p-6 overflow-y-auto max-h-[70vh]">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Informasi Pribadi */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="bg-gray-50 rounded-xl p-4">
                   <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
                     <span>👤</span> Informasi Pribadi
@@ -866,7 +1019,6 @@ export default function UsersPage() {
                   </div>
                 </div>
 
-                {/* Informasi Pekerjaan */}
                 <div className="bg-gray-50 rounded-xl p-4">
                   <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
                     <span>💼</span> Informasi Pekerjaan
@@ -897,7 +1049,6 @@ export default function UsersPage() {
                   </div>
                 </div>
 
-                {/* Informasi Perusahaan & Lokasi */}
                 <div className="bg-gray-50 rounded-xl p-4">
                   <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
                     <span>🏢</span> Perusahaan & Lokasi
@@ -914,7 +1065,6 @@ export default function UsersPage() {
                   </div>
                 </div>
 
-                {/* Informasi Bank */}
                 <div className="bg-gray-50 rounded-xl p-4">
                   <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
                     <span>🏦</span> Informasi Bank
@@ -935,7 +1085,6 @@ export default function UsersPage() {
                   </div>
                 </div>
 
-                {/* Metadata (Waktu dibuat/diupdate) */}
                 <div className="md:col-span-2 bg-gray-50 rounded-xl p-4">
                   <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
                     <span>⏱️</span> Metadata
@@ -954,7 +1103,6 @@ export default function UsersPage() {
               </div>
             </div>
 
-            {/* Footer Actions */}
             <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
               <button
                 onClick={() => {

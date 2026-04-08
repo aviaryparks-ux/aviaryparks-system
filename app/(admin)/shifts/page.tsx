@@ -111,7 +111,6 @@ export default function ShiftsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validasi kode unik
     const existingShift = shifts.find(s => s.code === formData.code && s.id !== editingShift?.id);
     if (existingShift) {
       alert(`Kode shift "${formData.code}" sudah digunakan!`);
@@ -187,22 +186,20 @@ export default function ShiftsPage() {
       color: shift.color,
       isActive: shift.isActive,
       description: shift.description || "",
-      lateTolerance: shift.lateTolerance || 15,
-      overtimeRate: shift.overtimeRate || 0,
+      lateTolerance: shift.lateTolerance ?? 15,
+      overtimeRate: shift.overtimeRate ?? 0,
       shiftType: shift.shiftType || "morning",
     });
     setIsModalOpen(true);
   };
 
   const addFromTemplate = (template: typeof shiftTemplates[0]) => {
-    // Cek apakah sudah ada
     const exists = shifts.some(s => s.code === template.code);
     if (exists) {
       alert(`Shift ${template.name} sudah ada!`);
       return;
     }
     
-    // Tentukan warna berdasarkan tipe
     let color = "#22c55e";
     if (template.type === "morning") color = "#f59e0b";
     if (template.type === "afternoon") color = "#ef4444";
@@ -238,66 +235,72 @@ export default function ShiftsPage() {
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "admin", "hr"]}>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-              📋 Manajemen Shift Kerja
-            </h1>
-            <p className="text-gray-500 mt-1">
-              Kelola jadwal shift untuk absensi karyawan
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setIsTemplateModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
-            >
-              <span>📋</span>
-              Dari Template
-            </button>
-            <button
-              onClick={() => {
-                resetForm();
-                setIsModalOpen(true);
-              }}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
-            >
-              <span>➕</span>
-              Buat Baru
-            </button>
+      <div className="space-y-6 p-6">
+        {/* Header dengan Glassmorphism */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-green-600 to-green-700 p-6 text-white shadow-xl">
+          <div className="relative z-10">
+            <h1 className="text-2xl font-bold">📋 Manajemen Shift Kerja</h1>
+            <p className="text-green-100 mt-1">Kelola jadwal shift untuk absensi karyawan</p>
           </div>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
-            <p className="text-sm text-blue-600">Total Shift</p>
-            <p className="text-2xl font-bold text-blue-800">{shifts.length}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-blue-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
+              <div>
+                <p className="text-sm text-blue-600 font-medium">Total Shift</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{shifts.length}</p>
+              </div>
+              <div className="rounded-xl bg-blue-100 p-3">
+                <span className="text-2xl">📋</span>
+              </div>
+            </div>
           </div>
-          <div className="bg-green-50 rounded-xl p-4 border border-green-200">
-            <p className="text-sm text-green-600">Shift Aktif</p>
-            <p className="text-2xl font-bold text-green-800">
-              {shifts.filter((s) => s.isActive).length}
-            </p>
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-green-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
+              <div>
+                <p className="text-sm text-green-600 font-medium">Shift Aktif</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{shifts.filter((s) => s.isActive).length}</p>
+              </div>
+              <div className="rounded-xl bg-green-100 p-3">
+                <span className="text-2xl">✅</span>
+              </div>
+            </div>
           </div>
-          <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200">
-            <p className="text-sm text-yellow-600">Shift Pagi</p>
-            <p className="text-2xl font-bold text-yellow-800">
-              {shifts.filter((s) => s.shiftType === "morning").length}
-            </p>
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-yellow-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
+              <div>
+                <p className="text-sm text-yellow-600 font-medium">Shift Pagi</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{shifts.filter((s) => s.shiftType === "morning").length}</p>
+              </div>
+              <div className="rounded-xl bg-yellow-100 p-3">
+                <span className="text-2xl">🌅</span>
+              </div>
+            </div>
           </div>
-          <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
-            <p className="text-sm text-purple-600">Shift Malam</p>
-            <p className="text-2xl font-bold text-purple-800">
-              {shifts.filter((s) => s.shiftType === "night").length}
-            </p>
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-purple-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
+              <div>
+                <p className="text-sm text-purple-600 font-medium">Shift Malam</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{shifts.filter((s) => s.shiftType === "night").length}</p>
+              </div>
+              <div className="rounded-xl bg-purple-100 p-3">
+                <span className="text-2xl">🌙</span>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Search & Filter */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1">
               <input
@@ -305,13 +308,13 @@ export default function ShiftsPage() {
                 placeholder="🔍 Cari shift (nama atau kode)..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
               />
             </div>
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-              className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+              className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
             >
               <option value="all">Semua Tipe</option>
               <option value="morning">🌅 Pagi</option>
@@ -319,6 +322,15 @@ export default function ShiftsPage() {
               <option value="night">🌙 Malam</option>
               <option value="special">⭐ Khusus</option>
             </select>
+            <button
+              onClick={() => {
+                setSearchTerm("");
+                setFilterType("all");
+              }}
+              className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              Reset
+            </button>
           </div>
         </div>
 
@@ -328,7 +340,7 @@ export default function ShiftsPage() {
             <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : filteredShifts.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+          <div className="rounded-xl bg-white p-12 text-center shadow-md border border-gray-100">
             <div className="text-6xl mb-4">📅</div>
             <p className="text-gray-500 text-lg">Belum ada shift yang ditambahkan</p>
             <p className="text-gray-400 text-sm mt-1">
@@ -336,7 +348,7 @@ export default function ShiftsPage() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredShifts.map((shift) => {
               const shiftTypeInfo = getShiftTypeLabel(shift.shiftType);
               const isSpecial = shift.name === "Day Off" || shift.name === "PHC" || shift.name === "Pending OFF";
@@ -344,7 +356,7 @@ export default function ShiftsPage() {
               return (
                 <div
                   key={shift.id}
-                  className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-all group"
+                  className="group relative overflow-hidden rounded-2xl bg-white shadow-lg border border-gray-100 transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
                 >
                   <div className="h-1.5" style={{ backgroundColor: shift.color }} />
                   <div className="p-5">
@@ -412,11 +424,11 @@ export default function ShiftsPage() {
                       )}
 
                       {!isSpecial && (shift.lateTolerance ?? 0) > 0 && (
-  <div className="flex items-center gap-2 text-sm">
-    <span className="text-gray-500 w-20">Toleransi:</span>
-    <span className="font-medium">{shift.lateTolerance ?? 0} menit</span>
-  </div>
-)}
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-gray-500 w-20">Toleransi:</span>
+                          <span className="font-medium">{shift.lateTolerance ?? 0} menit</span>
+                        </div>
+                      )}
                       
                       {shift.description && (
                         <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
@@ -428,13 +440,13 @@ export default function ShiftsPage() {
                     <div className="flex gap-2 pt-2">
                       <button
                         onClick={() => editShift(shift)}
-                        className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
+                        className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
                       >
                         ✏️ Edit
                       </button>
                       <button
                         onClick={() => handleDelete(shift)}
-                        className="flex-1 bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
+                        className="flex-1 bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
                       >
                         🗑️ Hapus
                       </button>
@@ -445,109 +457,139 @@ export default function ShiftsPage() {
             })}
           </div>
         )}
+
+        {/* Action Buttons */}
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={() => setIsTemplateModalOpen(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+          >
+            <span>📋</span>
+            Dari Template
+          </button>
+          <button
+            onClick={() => {
+              resetForm();
+              setIsModalOpen(true);
+            }}
+            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+          >
+            <span>➕</span>
+            Buat Baru
+          </button>
+        </div>
       </div>
 
       {/* Modal Template Pilihan */}
       {isTemplateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col">
-            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-800">
-                📋 Pilih Template Shift
-              </h2>
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col animate-scale-in">
+            <div className="sticky top-0 bg-gradient-to-r from-purple-50 to-white border-b border-gray-200 p-5 flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">📋 Pilih Template Shift</h2>
+                <p className="text-xs text-gray-500 mt-1">Pilih template shift yang sudah tersedia</p>
+              </div>
               <button
                 onClick={() => setIsTemplateModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-100 rounded-lg"
               >
                 ✕
               </button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="flex-1 overflow-y-auto p-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Pagi */}
-                <div className="bg-yellow-50 rounded-xl p-3">
-                  <h3 className="font-bold text-yellow-800 mb-2">🌅 Shift Pagi</h3>
+                <div className="bg-gradient-to-br from-yellow-50 to-yellow-100/50 rounded-xl p-4">
+                  <h3 className="font-bold text-yellow-800 mb-3 flex items-center gap-2">
+                    <span>🌅</span> Shift Pagi
+                  </h3>
                   <div className="space-y-2">
                     {shiftTemplates.filter(t => t.type === "morning").map((template) => (
                       <button
                         key={template.code}
                         onClick={() => addFromTemplate(template)}
-                        className="w-full text-left p-2 bg-white rounded-lg hover:bg-yellow-100 transition-colors flex justify-between items-center"
+                        className="w-full text-left p-3 bg-white rounded-lg hover:bg-yellow-50 transition-all flex justify-between items-center shadow-sm"
                       >
                         <div>
-                          <span className="font-medium">{template.name}</span>
+                          <span className="font-medium text-gray-800">{template.name}</span>
                           <span className="text-xs text-gray-500 ml-2">
                             {template.startTime} - {template.endTime}
                           </span>
                         </div>
-                        <span className="text-green-600">+</span>
+                        <span className="text-green-600 text-lg">+</span>
                       </button>
                     ))}
                   </div>
                 </div>
 
                 {/* Siang */}
-                <div className="bg-orange-50 rounded-xl p-3">
-                  <h3 className="font-bold text-orange-800 mb-2">🌤️ Shift Siang</h3>
+                <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 rounded-xl p-4">
+                  <h3 className="font-bold text-orange-800 mb-3 flex items-center gap-2">
+                    <span>🌤️</span> Shift Siang
+                  </h3>
                   <div className="space-y-2">
                     {shiftTemplates.filter(t => t.type === "afternoon").map((template) => (
                       <button
                         key={template.code}
                         onClick={() => addFromTemplate(template)}
-                        className="w-full text-left p-2 bg-white rounded-lg hover:bg-orange-100 transition-colors flex justify-between items-center"
+                        className="w-full text-left p-3 bg-white rounded-lg hover:bg-orange-50 transition-all flex justify-between items-center shadow-sm"
                       >
                         <div>
-                          <span className="font-medium">{template.name}</span>
+                          <span className="font-medium text-gray-800">{template.name}</span>
                           <span className="text-xs text-gray-500 ml-2">
                             {template.startTime} - {template.endTime}
                           </span>
                         </div>
-                        <span className="text-green-600">+</span>
+                        <span className="text-green-600 text-lg">+</span>
                       </button>
                     ))}
                   </div>
                 </div>
 
                 {/* Malam */}
-                <div className="bg-purple-50 rounded-xl p-3">
-                  <h3 className="font-bold text-purple-800 mb-2">🌙 Shift Malam</h3>
+                <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-xl p-4">
+                  <h3 className="font-bold text-purple-800 mb-3 flex items-center gap-2">
+                    <span>🌙</span> Shift Malam
+                  </h3>
                   <div className="space-y-2">
                     {shiftTemplates.filter(t => t.type === "night").map((template) => (
                       <button
                         key={template.code}
                         onClick={() => addFromTemplate(template)}
-                        className="w-full text-left p-2 bg-white rounded-lg hover:bg-purple-100 transition-colors flex justify-between items-center"
+                        className="w-full text-left p-3 bg-white rounded-lg hover:bg-purple-50 transition-all flex justify-between items-center shadow-sm"
                       >
                         <div>
-                          <span className="font-medium">{template.name}</span>
+                          <span className="font-medium text-gray-800">{template.name}</span>
                           <span className="text-xs text-gray-500 ml-2">
                             {template.startTime} - {template.endTime}
                           </span>
                         </div>
-                        <span className="text-green-600">+</span>
+                        <span className="text-green-600 text-lg">+</span>
                       </button>
                     ))}
                   </div>
                 </div>
 
                 {/* Khusus */}
-                <div className="bg-cyan-50 rounded-xl p-3">
-                  <h3 className="font-bold text-cyan-800 mb-2">⭐ Shift Khusus</h3>
+                <div className="bg-gradient-to-br from-cyan-50 to-cyan-100/50 rounded-xl p-4">
+                  <h3 className="font-bold text-cyan-800 mb-3 flex items-center gap-2">
+                    <span>⭐</span> Shift Khusus
+                  </h3>
                   <div className="space-y-2">
                     {shiftTemplates.filter(t => t.type === "special").map((template) => (
                       <button
                         key={template.code}
                         onClick={() => addFromTemplate(template)}
-                        className="w-full text-left p-2 bg-white rounded-lg hover:bg-cyan-100 transition-colors flex justify-between items-center"
+                        className="w-full text-left p-3 bg-white rounded-lg hover:bg-cyan-50 transition-all flex justify-between items-center shadow-sm"
                       >
                         <div>
-                          <span className="font-medium">{template.name}</span>
+                          <span className="font-medium text-gray-800">{template.name}</span>
                           <span className="text-xs text-gray-500 ml-2">
                             {template.startTime} - {template.endTime}
                           </span>
                         </div>
-                        <span className="text-green-600">+</span>
+                        <span className="text-green-600 text-lg">+</span>
                       </button>
                     ))}
                   </div>
@@ -558,7 +600,7 @@ export default function ShiftsPage() {
             <div className="sticky bottom-0 bg-gray-50 p-4 border-t border-gray-200">
               <button
                 onClick={() => setIsTemplateModalOpen(false)}
-                className="w-full py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+                className="w-full py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
               >
                 Tutup
               </button>
@@ -569,18 +611,23 @@ export default function ShiftsPage() {
 
       {/* Modal Form Tambah/Edit Shift */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-800">
-                {editingShift ? "✏️ Edit Shift" : "➕ Tambah Shift Baru"}
-              </h2>
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto animate-scale-in">
+            <div className="sticky top-0 bg-gradient-to-r from-green-50 to-white border-b border-gray-200 p-5 flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">
+                  {editingShift ? "✏️ Edit Shift" : "➕ Tambah Shift Baru"}
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  {editingShift ? "Ubah data shift yang sudah ada" : "Isi form untuk menambahkan shift baru"}
+                </p>
+              </div>
               <button
                 onClick={() => {
                   setIsModalOpen(false);
                   resetForm();
                 }}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-100 rounded-lg"
               >
                 ✕
               </button>
@@ -596,10 +643,8 @@ export default function ShiftsPage() {
                     type="text"
                     required
                     value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                     placeholder="Contoh: Shift Pagi"
                   />
                 </div>
@@ -611,10 +656,8 @@ export default function ShiftsPage() {
                     type="text"
                     required
                     value={formData.code}
-                    onChange={(e) =>
-                      setFormData({ ...formData, code: e.target.value.toUpperCase() })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none font-mono"
+                    onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none font-mono"
                     placeholder="Contoh: MORNING"
                   />
                 </div>
@@ -626,10 +669,8 @@ export default function ShiftsPage() {
                 </label>
                 <select
                   value={formData.shiftType}
-                  onChange={(e) =>
-                    setFormData({ ...formData, shiftType: e.target.value as any })
-                  }
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                  onChange={(e) => setFormData({ ...formData, shiftType: e.target.value as any })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                 >
                   <option value="morning">🌅 Pagi</option>
                   <option value="afternoon">🌤️ Siang</option>
@@ -647,10 +688,8 @@ export default function ShiftsPage() {
                     type="time"
                     required
                     value={formData.startTime}
-                    onChange={(e) =>
-                      setFormData({ ...formData, startTime: e.target.value })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -661,10 +700,8 @@ export default function ShiftsPage() {
                     type="time"
                     required
                     value={formData.endTime}
-                    onChange={(e) =>
-                      setFormData({ ...formData, endTime: e.target.value })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -679,10 +716,10 @@ export default function ShiftsPage() {
                       key={color.value}
                       type="button"
                       onClick={() => setFormData({ ...formData, color: color.value })}
-                      className={`w-10 h-10 rounded-full ${color.class} ${
+                      className={`w-10 h-10 rounded-full ${color.class} transition-all ${
                         formData.color === color.value
-                          ? "ring-4 ring-offset-2 ring-gray-400"
-                          : ""
+                          ? "ring-4 ring-offset-2 ring-green-500 scale-110"
+                          : "hover:scale-105"
                       }`}
                       title={color.label}
                     />
@@ -698,10 +735,8 @@ export default function ShiftsPage() {
                   <input
                     type="number"
                     value={formData.lateTolerance}
-                    onChange={(e) =>
-                      setFormData({ ...formData, lateTolerance: parseInt(e.target.value) || 0 })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                    onChange={(e) => setFormData({ ...formData, lateTolerance: parseInt(e.target.value) || 0 })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -711,10 +746,8 @@ export default function ShiftsPage() {
                   <input
                     type="number"
                     value={formData.overtimeRate}
-                    onChange={(e) =>
-                      setFormData({ ...formData, overtimeRate: parseInt(e.target.value) || 0 })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                    onChange={(e) => setFormData({ ...formData, overtimeRate: parseInt(e.target.value) || 0 })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -725,11 +758,9 @@ export default function ShiftsPage() {
                 </label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, description: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={2}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:outline-none"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   placeholder="Deskripsi shift..."
                 />
               </div>
@@ -739,10 +770,8 @@ export default function ShiftsPage() {
                   type="checkbox"
                   id="isActive"
                   checked={formData.isActive}
-                  onChange={(e) =>
-                    setFormData({ ...formData, isActive: e.target.checked })
-                  }
-                  className="w-4 h-4 text-green-600 focus:ring-green-500"
+                  onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                  className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
                 />
                 <label htmlFor="isActive" className="text-sm text-gray-700">
                   Aktifkan shift ini
@@ -752,7 +781,7 @@ export default function ShiftsPage() {
               <div className="flex gap-3 pt-4">
                 <button
                   type="submit"
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded-lg transition-colors"
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg transition-colors"
                 >
                   {editingShift ? "Update Shift" : "Simpan Shift"}
                 </button>
@@ -762,7 +791,7 @@ export default function ShiftsPage() {
                     setIsModalOpen(false);
                     resetForm();
                   }}
-                  className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-2 rounded-lg transition-colors"
+                  className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-2.5 rounded-lg transition-colors"
                 >
                   Batal
                 </button>
@@ -771,6 +800,36 @@ export default function ShiftsPage() {
           </div>
         </div>
       )}
+
+      <style jsx>{`
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+        
+        @keyframes scale-in {
+          from {
+            transform: scale(0.95);
+            opacity: 0;
+          }
+          to {
+            transform: scale(1);
+            opacity: 1;
+          }
+        }
+        
+        .animate-fade-in {
+          animation: fade-in 0.2s ease-out;
+        }
+        
+        .animate-scale-in {
+          animation: scale-in 0.2s ease-out;
+        }
+      `}</style>
     </ProtectedRoute>
   );
 }

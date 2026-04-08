@@ -395,7 +395,6 @@ export default function ScheduleShiftPage() {
     }
   };
 
-  // 🔥 FUNGSI UTAMA: SIMPAN SEMUA PERUBAHAN + UPDATE ATTENDANCE
   const handleSaveAllChanges = async () => {
     if (pendingChanges.size === 0) {
       showToast("Tidak ada perubahan yang perlu disimpan", "error");
@@ -423,7 +422,6 @@ export default function ScheduleShiftPage() {
         const currentSchedule = schedules[scheduleId];
         const userName = users.find(u => u.uid === userId)?.name || "-";
         
-        // Catat audit log
         const isDelete = shiftId === "unassign";
         const isCreate = !currentSchedule && !isDelete;
         const isUpdate = currentSchedule && !isDelete;
@@ -439,7 +437,6 @@ export default function ScheduleShiftPage() {
           action: isDelete ? "delete" : (isCreate ? "create" : "update"),
         });
         
-        // 1. UPDATE shift_schedules
         if (shiftId === "unassign") {
           batch.delete(doc(db, "shift_schedules", scheduleId));
         } else {
@@ -456,7 +453,6 @@ export default function ScheduleShiftPage() {
           });
         }
         
-        // 2. UPDATE attendance yang sudah ada (jika dokumennya ada)
         const attendanceId = `${userId}_${dateStr}`;
         const attendanceRef = doc(db, "attendance", attendanceId);
         const attendanceDoc = await getDoc(attendanceRef);
@@ -488,7 +484,6 @@ export default function ScheduleShiftPage() {
       
       await batch.commit();
       
-      // Simpan audit logs
       for (const log of auditLogs) {
         await addAuditLog(
           log.userId,
@@ -505,7 +500,6 @@ export default function ScheduleShiftPage() {
         );
       }
       
-      // Update local state schedules
       for (const [cellKey, { shiftId, shiftName }] of pendingChanges.entries()) {
         const [userId, dateStr] = cellKey.split("_");
         const scheduleId = `${userId}_${dateStr}`;
@@ -533,8 +527,6 @@ export default function ScheduleShiftPage() {
       
       showToast(`✅ Berhasil menyimpan ${successCount} perubahan${errorCount > 0 ? `, ${errorCount} gagal` : ""}`);
       setPendingChanges(new Map());
-      
-      // Reload data untuk memastikan semuanya sinkron
       await loadData();
       
     } catch (error) {
@@ -640,7 +632,7 @@ export default function ScheduleShiftPage() {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
   };
 
-  const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
   const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 
   const filteredUsers = users.filter(user => 
@@ -683,768 +675,753 @@ export default function ScheduleShiftPage() {
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv"]}>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-        <div className="space-y-6 p-6 max-w-[1600px] mx-auto">
-          {/* Toast Notification */}
-          {showSuccessToast && (
-            <div className="fixed top-20 right-6 z-50 animate-slide-in">
-              <div className="bg-green-500 text-white px-5 py-3 rounded-xl shadow-lg flex items-center gap-2">
-                <span>✅</span>
-                <span className="text-sm font-medium">{successMessage}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-                📅 Penjadwalan Shift
-              </h1>
-              <p className="text-gray-500 mt-1">Atur dan kelola jadwal shift karyawan dengan mudah</p>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-gray-400 bg-gray-100 px-3 py-1.5 rounded-lg">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span>Data real-time</span>
-            </div>
+      <div className="space-y-6 p-6">
+        {/* Header dengan Glassmorphism */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-green-600 to-green-700 p-6 text-white shadow-xl">
+          <div className="relative z-10">
+            <h1 className="text-2xl font-bold">📅 Penjadwalan Shift</h1>
+            <p className="text-green-100 mt-1">Atur dan kelola jadwal shift karyawan dengan mudah</p>
           </div>
+        </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-            <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-sm text-blue-600">Total Jadwal</p>
-                  <p className="text-2xl font-bold text-blue-800">{stats.totalAssignments}</p>
-                </div>
-                <span className="text-3xl">📅</span>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-blue-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
+              <div>
+                <p className="text-sm text-blue-600 font-medium">Total Jadwal</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{stats.totalAssignments}</p>
               </div>
-            </div>
-            <div className="bg-green-50 rounded-xl p-4 border border-green-200">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-sm text-green-600">Karyawan</p>
-                  <p className="text-2xl font-bold text-green-800">{stats.totalUsers}</p>
-                </div>
-                <span className="text-3xl">👥</span>
-              </div>
-            </div>
-            <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-sm text-purple-600">Periode</p>
-                  <p className="text-2xl font-bold text-purple-800">{stats.totalDays}</p>
-                </div>
-                <span className="text-3xl">📆</span>
-              </div>
-            </div>
-            <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-sm text-orange-600">Terisi</p>
-                  <p className="text-2xl font-bold text-orange-800">{stats.filledPercentage}%</p>
-                </div>
-                <span className="text-3xl">📊</span>
+              <div className="rounded-xl bg-blue-100 p-3">
+                <span className="text-2xl">📅</span>
               </div>
             </div>
           </div>
-
-          {/* Info Pending Changes */}
-          {pendingChanges.size > 0 && (
-            <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">📝</span>
-                <span className="text-sm text-yellow-800">
-                  {pendingChanges.size} perubahan belum disimpan
-                </span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleCancelChanges}
-                  disabled={saving}
-                  className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                >
-                  Batalkan
-                </button>
-                <button
-                  onClick={handleSaveAllChanges}
-                  disabled={saving}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
-                >
-                  {saving ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Menyimpan...
-                    </>
-                  ) : (
-                    <>
-                      <span>💾</span>
-                      Simpan {pendingChanges.size} Perubahan
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Filter Section */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-              </svg>
-              Filter Data
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-green-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">🏢 Departemen</label>
-                <select
-                  value={selectedDepartment}
-                  onChange={(e) => setSelectedDepartment(e.target.value)}
-                  disabled={!canSeeAllDepartments}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 disabled:bg-gray-100"
-                >
-                  <option value="ALL">Semua Departemen</option>
-                  {canSeeAllDepartments && [...new Set(users.map(u => u.department))].map(dept => (
-                    <option key={dept} value={dept}>{dept}</option>
-                  ))}
-                </select>
+                <p className="text-sm text-green-600 font-medium">Karyawan</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{stats.totalUsers}</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">👤 Karyawan</label>
-                <select
-                  value={selectedEmployee}
-                  onChange={(e) => setSelectedEmployee(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
-                >
-                  <option value="ALL">Semua Karyawan</option>
-                  {users.map(user => (
-                    <option key={user.uid} value={user.uid}>{user.name} - {user.department}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">🔍 Cari</label>
-                <input
-                  type="text"
-                  placeholder="Nama atau jabatan..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500"
-                />
-              </div>
-              <div className="flex gap-2 items-end">
-                <button
-                  onClick={loadData}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
-                  <span>🔄</span>
-                  Refresh
-                </button>
-                <button
-                  onClick={() => setCurrentView(currentView === "calendar" ? "table" : "calendar")}
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
-                  <span>{currentView === "calendar" ? "📋" : "📅"}</span>
-                  {currentView === "calendar" ? "Tabel" : "Kalender"}
-                </button>
+              <div className="rounded-xl bg-green-100 p-3">
+                <span className="text-2xl">👥</span>
               </div>
             </div>
           </div>
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-purple-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
+              <div>
+                <p className="text-sm text-purple-600 font-medium">Periode</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{stats.totalDays}</p>
+              </div>
+              <div className="rounded-xl bg-purple-100 p-3">
+                <span className="text-2xl">📆</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-orange-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
+              <div>
+                <p className="text-sm text-orange-600 font-medium">Terisi</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{stats.filledPercentage}%</p>
+              </div>
+              <div className="rounded-xl bg-orange-100 p-3">
+                <span className="text-2xl">📊</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
-          {/* Action Buttons */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              Aksi Cepat
-            </h2>
-            <div className="flex flex-wrap gap-3">
-              {canBulkAssign && (
-                <>
-                  <button
-                    onClick={() => setShowRangeModal(true)}
-                    className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all duration-200"
-                  >
-                    <span>📅</span>
-                    Assign Rentang
-                  </button>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all duration-200"
-                  >
-                    <span>📥</span>
-                    Import Excel
-                  </button>
-                  <button
-                    onClick={() => {
-                      const template = [
-                        { Nama: "Budi Santoso", Tanggal: formatDateToYYYYMMDD(new Date()), Shift: "Pagi" },
-                        { Nama: "Siti Aminah", Tanggal: formatDateToYYYYMMDD(new Date()), Shift: "Malam" },
-                      ];
-                      const ws = XLSX.utils.json_to_sheet(template);
-                      const wb = XLSX.utils.book_new();
-                      XLSX.utils.book_append_sheet(wb, ws, "Template Schedule");
-                      XLSX.writeFile(wb, "template_schedule_shift.xlsx");
-                      showToast("✅ Template berhasil diunduh");
-                    }}
-                    className="bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all duration-200"
-                  >
-                    <span>📄</span>
-                    Download Template
-                  </button>
-                </>
-              )}
+        {/* Info Pending Changes */}
+        {pendingChanges.size > 0 && (
+          <div className="rounded-xl bg-yellow-50 p-4 border border-yellow-200 flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">📝</span>
+              <span className="text-sm text-yellow-800 font-medium">
+                {pendingChanges.size} perubahan belum disimpan
+              </span>
+            </div>
+            <div className="flex gap-2">
               <button
-                onClick={() => {
-                  const exportData = filteredUsers.flatMap(user => {
-                    const daysInMonth = getDaysInMonth(currentMonth).filter(d => d !== null);
-                    return daysInMonth.map(date => {
-                      const schedule = getScheduleForUserDate(user.uid, date!);
-                      const shift = schedule ? shifts.find(s => s.id === schedule.shiftId) : null;
-                      const holiday = isHoliday(date!);
-                      return {
-                        Nama: user.name,
-                        Departemen: user.department,
-                        Jabatan: user.jabatan,
-                        Tanggal: date ? formatDateToYYYYMMDD(date) : "",
-                        Hari: dayNames[date?.getDay() || 0],
-                        Status: holiday.isHoliday ? "Libur Nasional" : "",
-                        Shift: shift?.name || "-",
-                        Jam_Masuk: shift?.startTime || "-",
-                        Jam_Keluar: shift?.endTime || "-",
-                      };
-                    });
-                  });
-                  const ws = XLSX.utils.json_to_sheet(exportData);
-                  const wb = XLSX.utils.book_new();
-                  XLSX.utils.book_append_sheet(wb, ws, "Schedule Shift");
-                  XLSX.writeFile(wb, `schedule_shift_${currentMonth.getFullYear()}_${currentMonth.getMonth() + 1}.xlsx`);
-                  showToast("✅ Data berhasil diexport");
-                }}
-                className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all duration-200"
+                onClick={handleCancelChanges}
+                disabled={saving}
+                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
               >
-                <span>📤</span>
-                Export Excel
+                Batalkan
               </button>
-              <label className="flex items-center gap-2 ml-auto px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition">
-                <input
-                  type="checkbox"
-                  checked={allowHolidayAssign}
-                  onChange={(e) => setAllowHolidayAssign(e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                />
-                <span className="text-sm text-gray-700">Izinkan assign di hari libur</span>
-              </label>
+              <button
+                onClick={handleSaveAllChanges}
+                disabled={saving}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
+              >
+                {saving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Menyimpan...
+                  </>
+                ) : (
+                  <>
+                    <span>💾</span>
+                    Simpan {pendingChanges.size} Perubahan
+                  </>
+                )}
+              </button>
             </div>
           </div>
+        )}
 
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={async (event) => {
-              const file = event.target.files?.[0];
-              if (!file) return;
-              const reader = new FileReader();
-              reader.onload = async (e) => {
-                try {
-                  const data = new Uint8Array(e.target?.result as ArrayBuffer);
-                  const workbook = XLSX.read(data, { type: 'array' });
-                  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                  const rows = XLSX.utils.sheet_to_json(sheet);
-                  let importedCount = 0;
-                  let errorCount = 0;
+        {/* Filter Section */}
+        <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
+          <h2 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            Filter Data
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">🏢 Departemen</label>
+              <select
+                value={selectedDepartment}
+                onChange={(e) => setSelectedDepartment(e.target.value)}
+                disabled={!canSeeAllDepartments}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-gray-100"
+              >
+                <option value="ALL">Semua Departemen</option>
+                {canSeeAllDepartments && [...new Set(users.map(u => u.department))].map(dept => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">👤 Karyawan</label>
+              <select
+                value={selectedEmployee}
+                onChange={(e) => setSelectedEmployee(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500"
+              >
+                <option value="ALL">Semua Karyawan</option>
+                {users.map(user => (
+                  <option key={user.uid} value={user.uid}>{user.name} - {user.department}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">🔍 Cari</label>
+              <input
+                type="text"
+                placeholder="Nama atau jabatan..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={loadData}
+                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+              >
+                <span>🔄</span>
+                Refresh
+              </button>
+              <button
+                onClick={() => setCurrentView(currentView === "calendar" ? "table" : "calendar")}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+              >
+                <span>{currentView === "calendar" ? "📋" : "📅"}</span>
+                {currentView === "calendar" ? "Tabel" : "Kalender"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
+          <h2 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Aksi Cepat
+          </h2>
+          <div className="flex flex-wrap gap-3">
+            {canBulkAssign && (
+              <>
+                <button
+                  onClick={() => setShowRangeModal(true)}
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+                >
+                  <span>📅</span>
+                  Assign Rentang
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+                >
+                  <span>📥</span>
+                  Import Excel
+                </button>
+                <button
+                  onClick={() => {
+                    const template = [
+                      { Nama: "Budi Santoso", Tanggal: formatDateToYYYYMMDD(new Date()), Shift: "Pagi" },
+                      { Nama: "Siti Aminah", Tanggal: formatDateToYYYYMMDD(new Date()), Shift: "Malam" },
+                    ];
+                    const ws = XLSX.utils.json_to_sheet(template);
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, "Template Schedule");
+                    XLSX.writeFile(wb, "template_schedule_shift.xlsx");
+                    showToast("✅ Template berhasil diunduh");
+                  }}
+                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+                >
+                  <span>📄</span>
+                  Download Template
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => {
+                const exportData = filteredUsers.flatMap(user => {
+                  const daysInMonth = getDaysInMonth(currentMonth).filter(d => d !== null);
+                  return daysInMonth.map(date => {
+                    const schedule = getScheduleForUserDate(user.uid, date!);
+                    const shift = schedule ? shifts.find(s => s.id === schedule.shiftId) : null;
+                    const holiday = isHoliday(date!);
+                    return {
+                      Nama: user.name,
+                      Departemen: user.department,
+                      Jabatan: user.jabatan,
+                      Tanggal: date ? formatDateToYYYYMMDD(date) : "",
+                      Hari: dayNames[date?.getDay() || 0],
+                      Status: holiday.isHoliday ? "Libur Nasional" : "",
+                      Shift: shift?.name || "-",
+                      Jam_Masuk: shift?.startTime || "-",
+                      Jam_Keluar: shift?.endTime || "-",
+                    };
+                  });
+                });
+                const ws = XLSX.utils.json_to_sheet(exportData);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Schedule Shift");
+                XLSX.writeFile(wb, `schedule_shift_${currentMonth.getFullYear()}_${currentMonth.getMonth() + 1}.xlsx`);
+                showToast("✅ Data berhasil diexport");
+              }}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+            >
+              <span>📤</span>
+              Export Excel
+            </button>
+            <label className="flex items-center gap-2 ml-auto px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition">
+              <input
+                type="checkbox"
+                checked={allowHolidayAssign}
+                onChange={(e) => setAllowHolidayAssign(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+              />
+              <span className="text-sm text-gray-700">Izinkan assign di hari libur</span>
+            </label>
+          </div>
+        </div>
+
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={async (event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+              try {
+                const data = new Uint8Array(e.target?.result as ArrayBuffer);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(sheet);
+                let importedCount = 0;
+                let errorCount = 0;
+                
+                for (const row of rows as any) {
+                  const userName = row.Nama || row.name || row.NAME;
+                  let date = row.Tanggal || row.date || row.DATE;
+                  const shiftName = row.Shift || row.shift || row.SHIFT;
                   
-                  for (const row of rows as any) {
-                    const userName = row.Nama || row.name || row.NAME;
-                    let date = row.Tanggal || row.date || row.DATE;
-                    const shiftName = row.Shift || row.shift || row.SHIFT;
-                    
-                    if (!userName || !date || !shiftName) {
-                      errorCount++;
-                      continue;
-                    }
-                    
-                    if (date instanceof Date) {
-                      date = formatDateToYYYYMMDD(date);
-                    } else if (typeof date === 'string') {
-                      const parsed = new Date(date);
-                      if (!isNaN(parsed.getTime())) {
-                        date = formatDateToYYYYMMDD(parsed);
-                      }
-                    }
-                    
-                    const user = users.find(u => u.name.toLowerCase() === userName.toLowerCase());
-                    const shift = shifts.find(s => s.name.toLowerCase() === shiftName.toLowerCase());
-                    
-                    if (user && shift && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                      handleShiftChange(user.uid, date, shift.id, shift.name);
-                      importedCount++;
-                    } else {
-                      errorCount++;
+                  if (!userName || !date || !shiftName) {
+                    errorCount++;
+                    continue;
+                  }
+                  
+                  if (date instanceof Date) {
+                    date = formatDateToYYYYMMDD(date);
+                  } else if (typeof date === 'string') {
+                    const parsed = new Date(date);
+                    if (!isNaN(parsed.getTime())) {
+                      date = formatDateToYYYYMMDD(parsed);
                     }
                   }
                   
-                  showToast(`✅ Import selesai: ${importedCount} perubahan ditambahkan, ${errorCount} gagal`);
-                  if (fileInputRef.current) fileInputRef.current.value = "";
-                } catch (error) {
-                  showToast("❌ Gagal import file", "error");
+                  const user = users.find(u => u.name.toLowerCase() === userName.toLowerCase());
+                  const shift = shifts.find(s => s.name.toLowerCase() === shiftName.toLowerCase());
+                  
+                  if (user && shift && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                    handleShiftChange(user.uid, date, shift.id, shift.name);
+                    importedCount++;
+                  } else {
+                    errorCount++;
+                  }
                 }
-              };
-              reader.readAsArrayBuffer(file);
-            }}
-            accept=".xlsx, .xls, .csv"
-            className="hidden"
-          />
+                
+                showToast(`✅ Import selesai: ${importedCount} perubahan ditambahkan, ${errorCount} gagal`);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              } catch (error) {
+                showToast("❌ Gagal import file", "error");
+              }
+            };
+            reader.readAsArrayBuffer(file);
+          }}
+          accept=".xlsx, .xls, .csv"
+          className="hidden"
+        />
 
-          {/* Calendar Navigation */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="flex justify-between items-center flex-wrap gap-4">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={prevMonth}
-                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  ◀
-                </button>
-                <h2 className="text-xl font-semibold text-gray-800">
-                  {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-                </h2>
-                <button
-                  onClick={nextMonth}
-                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  ▶
-                </button>
-              </div>
+        {/* Calendar Navigation */}
+        <div className="rounded-xl bg-white p-4 shadow-md border border-gray-100">
+          <div className="flex justify-between items-center flex-wrap gap-4">
+            <div className="flex items-center gap-2">
               <button
-                onClick={() => setCurrentMonth(new Date())}
-                className="px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
+                onClick={prevMonth}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
               >
-                📍 Hari Ini
+                ◀
+              </button>
+              <h2 className="text-xl font-semibold text-gray-800">
+                {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+              </h2>
+              <button
+                onClick={nextMonth}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                ▶
               </button>
             </div>
+            <button
+              onClick={() => setCurrentMonth(new Date())}
+              className="px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
+            >
+              📍 Hari Ini
+            </button>
           </div>
+        </div>
 
-          {/* Legend */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="flex flex-wrap gap-4 text-xs">
-              {shifts.map(shift => (
-                <div key={shift.id} className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: shift.color }} />
-                  <span>{shift.name}</span>
-                </div>
-              ))}
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
-                <span>Libur Nasional</span>
+        {/* Legend */}
+        <div className="rounded-xl bg-white p-4 shadow-md border border-gray-100">
+          <div className="flex flex-wrap gap-4 text-xs">
+            {shifts.slice(0, 6).map(shift => (
+              <div key={shift.id} className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: shift.color }} />
+                <span className="text-gray-600">{shift.name}</span>
               </div>
+            ))}
+            {shifts.length > 6 && (
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-gray-300" />
-                <span>Weekend</span>
+                <span className="text-gray-600">+{shifts.length - 6} lainnya</span>
               </div>
+            )}
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-red-500" />
+              <span className="text-gray-600">Libur Nasional</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-gray-300" />
+              <span className="text-gray-600">Weekend</span>
             </div>
           </div>
+        </div>
 
-          {/* Calendar View */}
-          {currentView === "calendar" && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              {loading ? (
-                <div className="p-16 text-center">
-                  <div className="inline-block">
-                    <div className="w-12 h-12 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
-                  </div>
-                  <p className="text-gray-500 mt-4">Memuat data jadwal...</p>
+        {/* Calendar View */}
+        {currentView === "calendar" && (
+          <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
+            {loading ? (
+              <div className="p-16 text-center">
+                <div className="inline-block">
+                  <div className="w-12 h-12 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
                 </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[800px]">
-                    <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                      <tr>
-                        <th className="sticky left-0 bg-gradient-to-r from-gray-50 to-gray-100 z-20 px-4 py-3 text-left border-r border-gray-200 min-w-[180px]">
-                          <div className="font-semibold text-gray-700 flex items-center gap-2">
-                            <span>👥</span>
-                            Karyawan
+                <p className="text-gray-500 mt-4">Memuat data jadwal...</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[800px]">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="sticky left-0 bg-gray-50 z-20 px-4 py-3 text-left border-r border-gray-200 min-w-[180px]">
+                        <div className="font-semibold text-gray-700 flex items-center gap-2">
+                          <span>👥</span>
+                          Karyawan
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5">{filteredUsers.length} orang</div>
+                      </th>
+                      {getDaysInMonth(currentMonth).map((date, idx) => {
+                        if (!date) return <th key={idx} className="bg-gray-50 px-2 py-3"></th>;
+                        const holiday = isHoliday(date);
+                        const weekend = isWeekend(date);
+                        const isToday = formatDateToYYYYMMDD(date) === formatDateToYYYYMMDD(new Date());
+                        return (
+                          <th key={idx} className={`px-2 py-3 text-center min-w-[100px] border-r border-gray-100 ${
+                            isToday ? 'bg-green-50' : ''
+                          }`}>
+                            <div className="text-[11px] text-gray-400 font-medium">{dayNames[date.getDay()]}</div>
+                            <div className={`text-base font-bold ${
+                              holiday.isHoliday ? "text-red-500" : 
+                              weekend ? "text-gray-400" : "text-gray-700"
+                            }`}>
+                              {date.getDate()}
+                            </div>
+                            <div className="text-[10px] text-gray-400">{monthNames[date.getMonth()]}</div>
+                            {holiday.isHoliday && (
+                              <div className="mt-1 px-1.5 py-0.5 bg-red-50 rounded text-[8px] text-red-600 font-medium truncate max-w-[80px]" title={holiday.name}>
+                                {holiday.name?.substring(0, 10)}
+                              </div>
+                            )}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.map((user, idx) => (
+                      <tr key={user.uid} className={`border-t ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-green-50 transition-colors`}>
+                        <td className="sticky left-0 bg-white z-10 px-4 py-3 border-r border-gray-100 min-w-[180px]">
+                          <div className="font-medium text-gray-800 text-sm">{user.name}</div>
+                          <div className="flex items-center gap-1 mt-1">
+                            <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">
+                              {user.department}
+                            </span>
+                            <span className="text-[10px] text-gray-400">•</span>
+                            <span className="text-[10px] text-gray-500">{user.jabatan}</span>
                           </div>
-                          <div className="text-xs text-gray-400 mt-0.5">{filteredUsers.length} orang</div>
-                        </th>
+                        </td>
                         {getDaysInMonth(currentMonth).map((date, idx) => {
-                          if (!date) return <th key={idx} className="bg-gray-50 px-2 py-3"></th>;
+                          if (!date) return <td key={idx} className="bg-gray-50" />;
+                          
+                          const schedule = getScheduleForUserDate(user.uid, date);
+                          const shift = schedule ? shifts.find(s => s.id === schedule.shiftId) : null;
                           const holiday = isHoliday(date);
                           const weekend = isWeekend(date);
                           const isToday = formatDateToYYYYMMDD(date) === formatDateToYYYYMMDD(new Date());
+                          const isLibur = holiday.isHoliday || weekend;
+                          const dateStr = formatDateToYYYYMMDD(date);
+                          const hasChange = hasPendingChange(user.uid, dateStr);
+                          
                           return (
-                            <th key={idx} className={`px-2 py-3 text-center min-w-[160px] border-r border-gray-100 ${
-                              isToday ? 'bg-green-50' : ''
-                            }`}>
-                              <div className="text-[11px] text-gray-400 font-medium">{dayNames[date.getDay()]}</div>
-                              <div className={`text-base font-bold ${
-                                holiday.isHoliday ? "text-red-500" : 
-                                weekend ? "text-gray-400" : "text-gray-700"
-                              }`}>
-                                {date.getDate()}
-                              </div>
-                              <div className="text-[10px] text-gray-400">{monthNames[date.getMonth()]}</div>
-                              {holiday.isHoliday && (
-                                <div className="mt-1 px-1.5 py-0.5 bg-red-50 rounded text-[8px] text-red-600 font-medium truncate max-w-[120px]" title={holiday.name}>
-                                  {holiday.name?.substring(0, 12)}
-                                </div>
+                            <td 
+                              key={idx} 
+                              className={`px-2 py-2 text-center border-r border-gray-50 align-top ${
+                                holiday.isHoliday ? "bg-red-50/30" : 
+                                weekend ? "bg-gray-50" : ""
+                              } ${isToday ? "ring-1 ring-green-300 ring-inset" : ""} ${
+                                hasChange ? "bg-yellow-50/50" : ""
+                              }`}
+                            >
+                              {hasChange && (
+                                <div className="text-[8px] text-yellow-600 mb-1">📝</div>
                               )}
-                            </th>
-                          );
-                        })}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredUsers.map((user, idx) => (
-                        <tr key={user.uid} className={`border-t border-gray-100 hover:bg-gradient-to-r hover:from-green-50 hover:to-transparent transition-all duration-150 ${
-                          idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
-                        }`}>
-                          <td className="sticky left-0 bg-inherit z-10 px-4 py-3 border-r border-gray-100 min-w-[180px]">
-                            <div className="font-medium text-gray-800 text-sm">{user.name}</div>
-                            <div className="flex items-center gap-1 mt-1">
-                              <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">
-                                {user.department}
-                              </span>
-                              <span className="text-[10px] text-gray-400">•</span>
-                              <span className="text-[10px] text-gray-500">{user.jabatan}</span>
-                            </div>
-                          </td>
-                          {getDaysInMonth(currentMonth).map((date, idx) => {
-                            if (!date) return <td key={idx} className="bg-gray-50" />;
-                            
-                            const schedule = getScheduleForUserDate(user.uid, date);
-                            const shift = schedule ? shifts.find(s => s.id === schedule.shiftId) : null;
-                            const holiday = isHoliday(date);
-                            const weekend = isWeekend(date);
-                            const isToday = formatDateToYYYYMMDD(date) === formatDateToYYYYMMDD(new Date());
-                            const isLibur = holiday.isHoliday || weekend;
-                            const dateStr = formatDateToYYYYMMDD(date);
-                            const hasChange = hasPendingChange(user.uid, dateStr);
-                            
-                            return (
-                              <td 
-                                key={idx} 
-                                className={`px-2 py-2 border-r border-gray-50 align-top transition-all ${
-                                  holiday.isHoliday ? "bg-red-50/30" : 
-                                  weekend ? "bg-gray-50" : ""
-                                } ${isToday ? "ring-1 ring-green-300 ring-inset" : ""} ${
-                                  hasChange ? "bg-yellow-50/50 shadow-inner" : ""
-                                }`}
-                              >
-                                {hasChange && (
-                                  <div className="text-[8px] text-yellow-600 mb-1">📝</div>
-                                )}
-                                <ShiftSelectCell
-                                  userId={user.uid}
-                                  date={dateStr}
-                                  currentShiftId={schedule?.shiftId || null}
-                                  currentShiftName={shift?.name || null}
-                                  shifts={shifts}
-                                  onShiftChange={handleShiftChange}
-                                  isLibur={isLibur}
-                                  allowHolidayAssign={allowHolidayAssign}
-                                />
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  
-                  {filteredUsers.length === 0 && !loading && (
-                    <div className="p-12 text-center">
-                      <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-3 text-3xl">
-                        👥
-                      </div>
-                      <p className="text-gray-500 font-medium">Tidak ada karyawan ditemukan</p>
-                      <p className="text-xs text-gray-400 mt-1">Coba ubah kata kunci pencarian atau filter departemen</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Table View */}
-          {currentView === "table" && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center flex-wrap gap-2">
-                <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                  <span>📋</span>
-                  Daftar Karyawan
-                </h2>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">Tanggal:</span>
-                  <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-500"
-                  />
-                  <span className="text-sm text-gray-500">({filteredUsers.length} karyawan)</span>
-                </div>
-              </div>
-              
-              {loading ? (
-                <div className="p-16 text-center">
-                  <div className="inline-block">
-                    <div className="w-12 h-12 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
-                  </div>
-                  <p className="text-gray-500 mt-4">Memuat data...</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                      <tr>
-                        <th className="px-4 py-3 text-left">No</th>
-                        <th className="px-4 py-3 text-left">Nama</th>
-                        <th className="px-4 py-3 text-left">Departemen</th>
-                        <th className="px-4 py-3 text-left">Jabatan</th>
-                        <th className="px-4 py-3 text-left">Shift Saat Ini</th>
-                        <th className="px-4 py-3 text-left min-w-[250px]">Ganti Shift</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredUsers.map((user, idx) => {
-                        const schedule = schedules[`${user.uid}_${selectedDate}`];
-                        const currentShift = schedule ? shifts.find(s => s.id === schedule.shiftId) : null;
-                        const selectedDateObj = parseDateFromYYYYMMDD(selectedDate);
-                        const holiday = isHoliday(selectedDateObj);
-                        const weekend = isWeekend(selectedDateObj);
-                        const isLibur = holiday.isHoliday || weekend;
-                        const hasChange = hasPendingChange(user.uid, selectedDate);
-                        
-                        return (
-                          <tr key={user.uid} className={`border-t border-gray-100 hover:bg-green-50 transition-colors ${
-                            idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
-                          } ${hasChange ? 'bg-yellow-50/50' : ''}`}>
-                            <td className="px-4 py-3 text-gray-500">{idx + 1}</td>
-                            <td className="px-4 py-3 font-medium text-gray-800">{user.name}</td>
-                            <td className="px-4 py-3 text-gray-600">{user.department}</td>
-                            <td className="px-4 py-3 text-gray-600">{user.jabatan}</td>
-                            <td className="px-4 py-3">
-                              {currentShift ? (
-                                <div className="flex items-center gap-2">
-                                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: currentShift.color }} />
-                                  <span className="font-medium text-gray-800">{currentShift.name}</span>
-                                  <span className="text-xs text-gray-400">
-                                    ({currentShift.startTime} - {currentShift.endTime})
-                                  </span>
-                                </div>
-                              ) : (
-                                <span className="text-gray-400">- Belum diatur -</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
                               <ShiftSelectCell
                                 userId={user.uid}
-                                date={selectedDate}
+                                date={dateStr}
                                 currentShiftId={schedule?.shiftId || null}
-                                currentShiftName={currentShift?.name || null}
+                                currentShiftName={shift?.name || null}
                                 shifts={shifts}
                                 onShiftChange={handleShiftChange}
                                 isLibur={isLibur}
                                 allowHolidayAssign={allowHolidayAssign}
                               />
-                              {hasChange && (
-                                <div className="text-[8px] text-yellow-600 mt-1 text-center">📝 Belum disimpan</div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              
-              {filteredUsers.length === 0 && !loading && (
-                <div className="p-12 text-center">
-                  <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-3 text-3xl">
-                    👥
-                  </div>
-                  <p className="text-gray-500 font-medium">Tidak ada karyawan ditemukan</p>
-                  <p className="text-xs text-gray-400 mt-1">Coba ubah kata kunci pencarian atau filter departemen</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Modal Assign Rentang Tanggal */}
-          {showRangeModal && (
-            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
-              <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col animate-scale-in">
-                <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-purple-50 to-white">
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                      <span>✨</span>
-                      Assign Shift Massal
-                    </h2>
-                    <p className="text-xs text-gray-500 mt-1">Assign shift untuk banyak karyawan sekaligus</p>
-                  </div>
-                  <button 
-                    onClick={() => setShowRangeModal(false)} 
-                    className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-100 rounded-lg"
-                  >
-                    ✕
-                  </button>
-                </div>
+                             </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
                 
-                <div className="p-5 space-y-4 overflow-y-auto flex-1">
-                  <div className="bg-gradient-to-r from-blue-50 to-blue-100/50 p-4 rounded-xl">
-                    <label className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2 flex items-center gap-1">
-                      <span>📅</span>
-                      Rentang Tanggal
-                    </label>
-                    <div className="flex gap-2 mt-2">
-                      <input
-                        type="date"
-                        value={dateRange.start}
-                        onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                        className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
-                      />
-                      <span className="text-gray-400 self-center">→</span>
-                      <input
-                        type="date"
-                        value={dateRange.end}
-                        onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                        className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
-                      />
-                    </div>
-                    {dateRange.start && dateRange.end && (
-                      <div className="text-xs text-blue-600 mt-2">
-                        📆 Total {Math.ceil((parseDateFromYYYYMMDD(dateRange.end).getTime() - parseDateFromYYYYMMDD(dateRange.start).getTime()) / (1000 * 60 * 60 * 24)) + 1} hari
-                      </div>
-                    )}
+                {filteredUsers.length === 0 && !loading && (
+                  <div className="p-12 text-center text-gray-500">
+                    <div className="text-5xl mb-4">👥</div>
+                    <p className="text-lg font-medium">Tidak ada karyawan ditemukan</p>
+                    <p className="text-sm mt-1">Coba ubah kata kunci pencarian atau filter departemen</p>
                   </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
-                  <div className="bg-gradient-to-r from-purple-50 to-purple-100/50 p-4 rounded-xl">
-                    <label className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-2 flex items-center gap-1">
-                      <span>⏰</span>
-                      Pilih Shift
-                    </label>
-                    <select
-                      value={rangeShiftId}
-                      onChange={(e) => setRangeShiftId(e.target.value)}
-                      className="w-full border border-purple-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white mt-2"
-                    >
-                      <option value="">-- Pilih Shift --</option>
-                      {shifts.map(shift => (
-                        <option key={shift.id} value={shift.id}>
-                          {shift.name} ({shift.startTime} - {shift.endTime})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="bg-gradient-to-r from-green-50 to-green-100/50 p-4 rounded-xl">
-                    <label className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2 flex items-center gap-1">
-                      <span>👥</span>
-                      Pilih Karyawan
-                    </label>
-                    <div className="relative mt-2">
-                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">🔍</span>
-                      <input
-                        type="text"
-                        placeholder="Cari karyawan..."
-                        value={userSearchTerm}
-                        onChange={(e) => setUserSearchTerm(e.target.value)}
-                        className="w-full border border-green-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
-                      />
-                    </div>
-                    
-                    <div className="flex items-center gap-2 mt-3 mb-2 pb-2 border-b border-green-200">
-                      <input
-                        type="checkbox"
-                        id="selectAll"
-                        checked={selectAll}
-                        onChange={() => {
-                          if (selectAll) {
-                            setSelectedUserIds(new Set());
-                          } else {
-                            setSelectedUserIds(new Set(filteredUsersForModal.map(u => u.uid)));
-                          }
-                          setSelectAll(!selectAll);
-                        }}
-                        className="w-4 h-4 rounded border-green-300 text-purple-600 focus:ring-purple-500"
-                      />
-                      <label htmlFor="selectAll" className="text-sm font-medium text-gray-700">
-                        Pilih Semua ({filteredUsersForModal.length})
-                      </label>
-                    </div>
-                    
-                    <div className="max-h-48 overflow-y-auto space-y-1">
-                      {filteredUsersForModal.map(user => (
-                        <label key={user.uid} className="flex items-center gap-2 p-2 hover:bg-white rounded-lg cursor-pointer transition-all">
-                          <input
-                            type="checkbox"
-                            checked={selectedUserIds.has(user.uid)}
-                            onChange={() => {
-                              const newSelected = new Set(selectedUserIds);
-                              if (newSelected.has(user.uid)) newSelected.delete(user.uid);
-                              else newSelected.add(user.uid);
-                              setSelectedUserIds(newSelected);
-                              setSelectAll(newSelected.size === filteredUsersForModal.length);
-                            }}
-                            className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                          />
-                          <div className="flex-1">
-                            <div className="text-sm font-medium text-gray-800">{user.name}</div>
-                            <div className="text-xs text-gray-500">{user.department} • {user.jabatan}</div>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                    
-                    <div className="mt-3 pt-2 border-t border-green-200">
-                      <div className="text-xs font-medium text-green-700">
-                        ✓ {selectedUserIds.size} karyawan terpilih
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="p-5 border-t border-gray-100 bg-gray-50 flex gap-3">
-                  <button
-                    onClick={assignDateRangeToSelectedUsers}
-                    disabled={rangeLoading || !dateRange.start || !dateRange.end || !rangeShiftId || selectedUserIds.size === 0}
-                    className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white py-2.5 rounded-xl text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md"
-                  >
-                    {rangeLoading ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        Memproses...
-                      </span>
-                    ) : (
-                      `Assign ke ${selectedUserIds.size} Karyawan`
-                    )}
-                  </button>
-                  <button
-                    onClick={() => setShowRangeModal(false)}
-                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
-                  >
-                    Batal
-                  </button>
-                </div>
+        {/* Table View */}
+        {currentView === "table" && (
+          <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center flex-wrap gap-2">
+              <h2 className="text-md font-semibold text-gray-800 flex items-center gap-2">
+                <span>📋</span>
+                Daftar Karyawan
+              </h2>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">Tanggal:</span>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-500"
+                />
+                <span className="text-sm text-gray-500">({filteredUsers.length} karyawan)</span>
               </div>
             </div>
-          )}
+            
+            {loading ? (
+              <div className="p-16 text-center">
+                <div className="inline-block">
+                  <div className="w-12 h-12 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
+                </div>
+                <p className="text-gray-500 mt-4">Memuat data...</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">No</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Nama</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Departemen</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Jabatan</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Shift Saat Ini</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 min-w-[250px]">Ganti Shift</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.map((user, idx) => {
+                      const schedule = schedules[`${user.uid}_${selectedDate}`];
+                      const currentShift = schedule ? shifts.find(s => s.id === schedule.shiftId) : null;
+                      const selectedDateObj = parseDateFromYYYYMMDD(selectedDate);
+                      const holiday = isHoliday(selectedDateObj);
+                      const weekend = isWeekend(selectedDateObj);
+                      const isLibur = holiday.isHoliday || weekend;
+                      const hasChange = hasPendingChange(user.uid, selectedDate);
+                      
+                      return (
+                        <tr key={user.uid} className={`border-t ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-green-50 transition-colors ${hasChange ? 'bg-yellow-50/50' : ''}`}>
+                          <td className="px-4 py-3 text-gray-500">{idx + 1}</td>
+                          <td className="px-4 py-3 font-medium text-gray-800">{user.name}</td>
+                          <td className="px-4 py-3 text-gray-600">{user.department}</td>
+                          <td className="px-4 py-3 text-gray-600">{user.jabatan}</td>
+                          <td className="px-4 py-3">
+                            {currentShift ? (
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: currentShift.color }} />
+                                <span className="font-medium text-gray-800">{currentShift.name}</span>
+                                <span className="text-xs text-gray-400">
+                                  ({currentShift.startTime} - {currentShift.endTime})
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">- Belum diatur -</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <ShiftSelectCell
+                              userId={user.uid}
+                              date={selectedDate}
+                              currentShiftId={schedule?.shiftId || null}
+                              currentShiftName={currentShift?.name || null}
+                              shifts={shifts}
+                              onShiftChange={handleShiftChange}
+                              isLibur={isLibur}
+                              allowHolidayAssign={allowHolidayAssign}
+                            />
+                            {hasChange && (
+                              <div className="text-[8px] text-yellow-600 mt-1 text-center">📝 Belum disimpan</div>
+                            )}
+                           </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            
+            {filteredUsers.length === 0 && !loading && (
+              <div className="p-12 text-center text-gray-500">
+                <div className="text-5xl mb-4">👥</div>
+                <p className="text-lg font-medium">Tidak ada karyawan ditemukan</p>
+                <p className="text-sm mt-1">Coba ubah kata kunci pencarian atau filter departemen</p>
+              </div>
+            )}
+          </div>
+        )}
 
-          {/* Footer Info */}
-          <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-4 text-center text-xs text-gray-500 border border-gray-200">
-            <div className="flex flex-wrap justify-center gap-4">
-              <span>✅ Ketik nama shift, perubahan akan ditampung sementara</span>
-              <span>📝 Cell yang berubah akan memiliki background kuning</span>
-              <span>💾 Klik tombol "Simpan Perubahan" untuk menyimpan semua perubahan sekaligus</span>
-              <span>🔄 Perubahan shift akan otomatis mengupdate data attendance yang sudah ada</span>
-              <span>🔍 Fitur search otomatis - ketik "AM" maka akan muncul shift yang mengandung "AM"</span>
-              <span>📅 Gunakan fitur "Assign Rentang" untuk periode dan karyawan tertentu</span>
-              <span>📜 Setiap perubahan dicatat di audit log untuk keperluan monitoring</span>
+        {/* Modal Assign Rentang Tanggal */}
+        {showRangeModal && (
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col animate-scale-in">
+              <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-purple-50 to-white">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <span>✨</span>
+                    Assign Shift Massal
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-1">Assign shift untuk banyak karyawan sekaligus</p>
+                </div>
+                <button 
+                  onClick={() => setShowRangeModal(false)} 
+                  className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-100 rounded-lg"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                <div className="bg-gradient-to-r from-blue-50 to-blue-100/50 p-4 rounded-xl">
+                  <label className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">📅 Rentang Tanggal</label>
+                  <div className="flex gap-2 mt-2">
+                    <input
+                      type="date"
+                      value={dateRange.start}
+                      onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                      className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                    />
+                    <span className="text-gray-400 self-center">→</span>
+                    <input
+                      type="date"
+                      value={dateRange.end}
+                      onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                      className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                    />
+                  </div>
+                  {dateRange.start && dateRange.end && (
+                    <div className="text-xs text-blue-600 mt-2">
+                      📆 Total {Math.ceil((parseDateFromYYYYMMDD(dateRange.end).getTime() - parseDateFromYYYYMMDD(dateRange.start).getTime()) / (1000 * 60 * 60 * 24)) + 1} hari
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-gradient-to-r from-purple-50 to-purple-100/50 p-4 rounded-xl">
+                  <label className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-2">⏰ Pilih Shift</label>
+                  <select
+                    value={rangeShiftId}
+                    onChange={(e) => setRangeShiftId(e.target.value)}
+                    className="w-full border border-purple-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white mt-2"
+                  >
+                    <option value="">-- Pilih Shift --</option>
+                    {shifts.map(shift => (
+                      <option key={shift.id} value={shift.id}>
+                        {shift.name} ({shift.startTime} - {shift.endTime})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="bg-gradient-to-r from-green-50 to-green-100/50 p-4 rounded-xl">
+                  <label className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">👥 Pilih Karyawan</label>
+                  <div className="relative mt-2">
+                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">🔍</span>
+                    <input
+                      type="text"
+                      placeholder="Cari karyawan..."
+                      value={userSearchTerm}
+                      onChange={(e) => setUserSearchTerm(e.target.value)}
+                      className="w-full border border-green-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                    />
+                  </div>
+                  
+                  <div className="flex items-center gap-2 mt-3 mb-2 pb-2 border-b border-green-200">
+                    <input
+                      type="checkbox"
+                      id="selectAll"
+                      checked={selectAll}
+                      onChange={() => {
+                        if (selectAll) {
+                          setSelectedUserIds(new Set());
+                        } else {
+                          setSelectedUserIds(new Set(filteredUsersForModal.map(u => u.uid)));
+                        }
+                        setSelectAll(!selectAll);
+                      }}
+                      className="w-4 h-4 rounded border-green-300 text-purple-600 focus:ring-purple-500"
+                    />
+                    <label htmlFor="selectAll" className="text-sm font-medium text-gray-700">
+                      Pilih Semua ({filteredUsersForModal.length})
+                    </label>
+                  </div>
+                  
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {filteredUsersForModal.map(user => (
+                      <label key={user.uid} className="flex items-center gap-2 p-2 hover:bg-white rounded-lg cursor-pointer transition-all">
+                        <input
+                          type="checkbox"
+                          checked={selectedUserIds.has(user.uid)}
+                          onChange={() => {
+                            const newSelected = new Set(selectedUserIds);
+                            if (newSelected.has(user.uid)) newSelected.delete(user.uid);
+                            else newSelected.add(user.uid);
+                            setSelectedUserIds(newSelected);
+                            setSelectAll(newSelected.size === filteredUsersForModal.length);
+                          }}
+                          className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                        />
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-gray-800">{user.name}</div>
+                          <div className="text-xs text-gray-500">{user.department} • {user.jabatan}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  
+                  <div className="mt-3 pt-2 border-t border-green-200">
+                    <div className="text-xs font-medium text-green-700">
+                      ✓ {selectedUserIds.size} karyawan terpilih
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="p-5 border-t border-gray-100 bg-gray-50 flex gap-3">
+                <button
+                  onClick={assignDateRangeToSelectedUsers}
+                  disabled={rangeLoading || !dateRange.start || !dateRange.end || !rangeShiftId || selectedUserIds.size === 0}
+                  className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white py-2.5 rounded-xl text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md"
+                >
+                  {rangeLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Memproses...
+                    </span>
+                  ) : (
+                    `Assign ke ${selectedUserIds.size} Karyawan`
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowRangeModal(false)}
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-2.5 rounded-xl text-sm font-medium transition-all"
+                >
+                  Batal
+                </button>
+              </div>
             </div>
+          </div>
+        )}
+
+        {/* Footer Info */}
+        <div className="rounded-xl bg-gray-50 p-4 text-center text-xs text-gray-500">
+          <div className="flex flex-wrap justify-center gap-4">
+            <span>✅ Ketik nama shift, perubahan akan ditampung sementara</span>
+            <span>📝 Cell yang berubah akan memiliki background kuning</span>
+            <span>💾 Klik tombol "Simpan Perubahan" untuk menyimpan semua perubahan sekaligus</span>
+            <span>🔄 Perubahan shift akan otomatis mengupdate data attendance</span>
+            <span>🔍 Fitur search otomatis - ketik "AM" maka akan muncul shift yang mengandung "AM"</span>
+            <span>📅 Gunakan fitur "Assign Rentang" untuk periode dan karyawan tertentu</span>
           </div>
         </div>
       </div>

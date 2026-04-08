@@ -135,7 +135,6 @@ export default function SettingsPage() {
     setEditingId(null);
   };
 
-  // Wrapper functions untuk MapPicker
   const handleSetLat = (value: string) => {
     setLat(value);
   };
@@ -157,72 +156,83 @@ export default function SettingsPage() {
 
   return (
     <ProtectedRoute allowedRoles={["super_admin"]}>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-              Pengaturan Lokasi Absensi
-            </h1>
-            <p className="text-gray-500 mt-1">
-              Atur lokasi dan radius absensi karyawan
-            </p>
+      <div className="space-y-6 p-6">
+        {/* Header dengan Glassmorphism */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-green-600 to-green-700 p-6 text-white shadow-xl">
+          <div className="relative z-10">
+            <h1 className="text-2xl font-bold">Pengaturan Lokasi Absensi</h1>
+            <p className="text-green-100 mt-1">Atur lokasi dan radius absensi karyawan</p>
           </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-blue-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
+              <div>
+                <p className="text-sm text-blue-600 font-medium">Total Lokasi</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{locations.length}</p>
+              </div>
+              <div className="rounded-xl bg-blue-100 p-3">
+                <span className="text-2xl">📍</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-green-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
+              <div>
+                <p className="text-sm text-green-600 font-medium">Lokasi Aktif</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{locations.filter((l) => l.isActive).length}</p>
+              </div>
+              <div className="rounded-xl bg-green-100 p-3">
+                <span className="text-2xl">✅</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-purple-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
+              <div>
+                <p className="text-sm text-purple-600 font-medium">Perusahaan</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{new Set(locations.map((l) => l.company)).size}</p>
+              </div>
+              <div className="rounded-xl bg-purple-100 p-3">
+                <span className="text-2xl">🏢</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Button */}
+        <div className="flex justify-end">
           <button
             onClick={() => {
               resetForm();
               setShowForm(!showForm);
             }}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shadow-sm"
+            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
           >
-            <span className="text-xl">📍</span>
+            <span className="text-lg">📍</span>
             {showForm ? "Tutup Form" : "Tambah Lokasi"}
           </button>
         </div>
 
-        {/* Statistik */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-blue-600">Total Lokasi</p>
-                <p className="text-2xl font-bold text-blue-800">{locations.length}</p>
-              </div>
-              <span className="text-3xl">📍</span>
-            </div>
-          </div>
-          <div className="bg-green-50 rounded-xl p-4 border border-green-200">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-green-600">Lokasi Aktif</p>
-                <p className="text-2xl font-bold text-green-800">
-                  {locations.filter((l) => l.isActive).length}
-                </p>
-              </div>
-              <span className="text-3xl">✅</span>
-            </div>
-          </div>
-          <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-purple-600">Perusahaan</p>
-                <p className="text-2xl font-bold text-purple-800">
-                  {new Set(locations.map((l) => l.company)).size}
-                </p>
-              </div>
-              <span className="text-3xl">🏢</span>
-            </div>
-          </div>
-        </div>
-
         {/* Form Tambah/Edit Lokasi */}
         {showForm && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-              <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                <span>{editingId ? "✏️" : "➕"}</span>
-                {editingId ? "Edit Lokasi" : "Tambah Lokasi Baru"}
-              </h2>
+          <div className="rounded-xl bg-white shadow-lg border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-800">
+                  {editingId ? "✏️ Edit Lokasi" : "➕ Tambah Lokasi Baru"}
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  {editingId ? "Ubah data lokasi yang sudah ada" : "Isi form untuk menambahkan lokasi baru"}
+                </p>
+              </div>
             </div>
             <div className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -234,7 +244,7 @@ export default function SettingsPage() {
                     placeholder="Contoh: Kantor Pusat"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -245,7 +255,7 @@ export default function SettingsPage() {
                     placeholder="Nama Perusahaan"
                     value={company}
                     onChange={(e) => setCompany(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -257,7 +267,7 @@ export default function SettingsPage() {
                     type="number"
                     value={radius}
                     onChange={(e) => setRadius(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -269,7 +279,7 @@ export default function SettingsPage() {
                       placeholder="Contoh: -6.200000"
                       value={lat}
                       onChange={(e) => setLat(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                     />
                   </div>
                   <div>
@@ -280,7 +290,7 @@ export default function SettingsPage() {
                       placeholder="Contoh: 106.816666"
                       value={lng}
                       onChange={(e) => setLng(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -293,7 +303,7 @@ export default function SettingsPage() {
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
                     rows={2}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -303,7 +313,7 @@ export default function SettingsPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Pilih Lokasi di Peta
                 </label>
-                <div className="border border-gray-200 rounded-lg overflow-hidden h-80">
+                <div className="border border-gray-200 rounded-xl overflow-hidden h-80 shadow-inner">
                   <MapPicker
                     setLat={handleSetLat}
                     setLng={handleSetLng}
@@ -312,9 +322,20 @@ export default function SettingsPage() {
                     initialLng={lng ? parseFloat(lng) : undefined}
                   />
                 </div>
-                <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
-                  <span className="text-green-500">●</span> Lingkaran hijau = area absensi
-                </p>
+                <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-green-500"></span>
+                    Area Absensi (Radius)
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-red-500"></span>
+                    Titik Lokasi Kantor
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-blue-500"></span>
+                    Posisi Anda (Preview)
+                  </span>
+                </div>
               </div>
 
               <div className="flex gap-3 mt-6">
@@ -324,7 +345,7 @@ export default function SettingsPage() {
                   className={`px-6 py-2 rounded-lg text-white font-medium transition-all ${
                     formLoading
                       ? "bg-gray-400 cursor-not-allowed"
-                      : "bg-green-600 hover:bg-green-700"
+                      : "bg-green-600 hover:bg-green-700 shadow-md hover:shadow-lg"
                   }`}
                 >
                   {formLoading ? "Menyimpan..." : editingId ? "Update" : "Simpan"}
@@ -344,41 +365,45 @@ export default function SettingsPage() {
         )}
 
         {/* Tabel Lokasi */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-            <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <span>🗺️</span>
-              Daftar Lokasi Absensi
-              <span className="text-sm text-gray-500 ml-2">({locations.length} lokasi)</span>
-            </h2>
+        <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+            <div className="flex justify-between items-center">
+              <h2 className="text-md font-semibold text-gray-800 flex items-center gap-2">
+                <span>🗺️</span>
+                Daftar Lokasi Absensi
+              </h2>
+              <span className="text-sm text-gray-500">{locations.length} lokasi</span>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-100">
+              <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left">Lokasi</th>
-                  <th className="px-4 py-3 text-left">Perusahaan</th>
-                  <th className="px-4 py-3 text-left">Radius</th>
-                  <th className="px-4 py-3 text-left">Koordinat</th>
-                  <th className="px-4 py-3 text-left">Alamat</th>
-                  <th className="px-4 py-3 text-left">Status</th>
-                  <th className="px-4 py-3 text-left">Aksi</th>
-                 </tr>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Lokasi</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Perusahaan</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Radius</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Koordinat</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Alamat</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Aksi</th>
+                </tr>
               </thead>
               <tbody>
                 {locations.map((loc, idx) => (
                   <tr
                     key={loc.id}
-                    className={`border-b ${idx % 2 === 0 ? "bg-white" : "bg-gray-50"} hover:bg-gray-100 transition-colors`}
+                    className={`border-b transition-all duration-150 ${
+                      idx % 2 === 0 ? "bg-white" : "bg-gray-50"
+                    } hover:bg-green-50`}
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className="text-lg">📍</span>
-                        <span className="font-medium">{loc.name}</span>
+                        <span className="font-medium text-gray-800">{loc.name}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs">
+                      <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
                         {loc.company}
                       </span>
                     </td>
@@ -386,9 +411,9 @@ export default function SettingsPage() {
                       <span className="font-mono text-blue-600 font-medium">{loc.radius} m</span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-xs font-mono">
-                        <div>Lat: {loc.lat}</div>
-                        <div>Lng: {loc.lng}</div>
+                      <div className="text-xs font-mono text-gray-600">
+                        <div>Lat: {loc.lat.toFixed(6)}</div>
+                        <div>Lng: {loc.lng.toFixed(6)}</div>
                       </div>
                     </td>
                     <td className="px-4 py-3 max-w-xs">
@@ -411,13 +436,13 @@ export default function SettingsPage() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => editLocation(loc)}
-                          className="px-3 py-1.5 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm transition-colors"
+                          className="px-3 py-1.5 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-xs font-medium transition-colors"
                         >
                           Edit
                         </button>
                         <button
                           onClick={() => deleteLocation(loc.id, loc.name)}
-                          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm transition-colors"
+                          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-medium transition-colors"
                         >
                           Hapus
                         </button>
@@ -438,7 +463,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Info Card */}
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+        <div className="rounded-xl bg-gradient-to-r from-blue-50 to-blue-100/50 border border-blue-200 p-5">
           <div className="flex gap-3">
             <div className="text-2xl">💡</div>
             <div>
@@ -447,6 +472,11 @@ export default function SettingsPage() {
                 Karyawan hanya dapat melakukan absensi jika berada dalam radius yang ditentukan dari titik koordinat GPS.
                 Pastikan koordinat yang dimasukkan akurat. Radius default: 100 meter.
               </p>
+              <div className="mt-2 flex gap-4 text-xs text-blue-600">
+                <span>📍 Klik pada peta untuk menentukan titik lokasi</span>
+                <span>⚪ Lingkaran hijau menunjukkan area radius</span>
+                <span>📱 Karyawan harus berada dalam lingkaran untuk absen</span>
+              </div>
             </div>
           </div>
         </div>

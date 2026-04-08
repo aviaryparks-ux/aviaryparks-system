@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// Fix Leaflet icon
+// Fix Leaflet icon issue
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
@@ -13,106 +13,148 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
 });
 
-interface MapPickerProps {
+type MapPickerProps = {
   setLat: (lat: string) => void;
   setLng: (lng: string) => void;
-  radius?: number;
+  radius: number;
   initialLat?: number;
   initialLng?: number;
-}
+};
 
-export default function MapPicker({ 
-  setLat, 
-  setLng, 
-  radius = 100, 
-  initialLat, 
-  initialLng 
-}: MapPickerProps) {
+export default function MapPicker({ setLat, setLng, radius, initialLat, initialLng }: MapPickerProps) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const [map, setMap] = useState<L.Map | null>(null);
-  const [marker, setMarker] = useState<L.Marker | null>(null);
-  const [circle, setCircle] = useState<L.Circle | null>(null);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  const circleRef = useRef<L.Circle | null>(null);
+  const [isMapReady, setIsMapReady] = useState(false);
+  const [currentLat, setCurrentLat] = useState(initialLat || -6.200000);
+  const [currentLng, setCurrentLng] = useState(initialLng || 106.816666);
 
-  // Default center (Indonesia) - ini hanya fallback
-  const defaultLat = initialLat || -6.2;
-  const defaultLng = initialLng || 106.816;
-
+  // Initialize map
   useEffect(() => {
-    if (typeof setLat !== "function" || typeof setLng !== "function") {
-      console.error("MapPicker: setLat or setLng is not a function");
-      return;
+    // Tunggu hingga DOM benar-benar siap
+    if (!mapRef.current || mapInstanceRef.current) return;
+
+    // Delay initialization untuk memastikan container siap
+    const timer = setTimeout(() => {
+      if (!mapRef.current) return;
+
+      try {
+        const mapInstance = L.map(mapRef.current).setView([currentLat, currentLng], 15);
+        
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        }).addTo(mapInstance);
+
+        mapInstanceRef.current = mapInstance;
+        setIsMapReady(true);
+      } catch (error) {
+        console.error("Error initializing map:", error);
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Update marker and circle when map is ready
+  useEffect(() => {
+    if (!isMapReady || !mapInstanceRef.current) return;
+
+    const map = mapInstanceRef.current;
+
+    // Remove existing marker and circle
+    if (markerRef.current) {
+      markerRef.current.remove();
+    }
+    if (circleRef.current) {
+      circleRef.current.remove();
     }
 
-    if (!mapRef.current || map) return;
+    // Add marker
+    const marker = L.marker([currentLat, currentLng], { draggable: true }).addTo(map);
+    markerRef.current = marker;
 
-    try {
-      const mapInstance = L.map(mapRef.current).setView([defaultLat, defaultLng], 15);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '© OpenStreetMap contributors',
-      }).addTo(mapInstance);
+    // Add circle
+    const circle = L.circle([currentLat, currentLng], {
+      color: "#22c55e",
+      fillColor: "#22c55e",
+      fillOpacity: 0.15,
+      radius: radius,
+      weight: 2,
+    }).addTo(map);
+    circleRef.current = circle;
 
-      // Create marker di posisi awal
-      const markerInstance = L.marker([defaultLat, defaultLng], { draggable: true }).addTo(mapInstance);
+    // Set view to marker position
+    map.setView([currentLat, currentLng], 15);
+
+    // Handle marker drag
+    marker.on("dragend", () => {
+      const latLng = marker.getLatLng();
+      const newLat = latLng.lat;
+      const newLng = latLng.lng;
       
-      // Create circle
-      const circleInstance = L.circle([defaultLat, defaultLng], {
-        radius: radius,
-        color: "#10b981",
-        fillColor: "#10b981",
-        fillOpacity: 0.2,
-      }).addTo(mapInstance);
+      setCurrentLat(newLat);
+      setCurrentLng(newLng);
+      setLat(newLat.toFixed(6));
+      setLng(newLng.toFixed(6));
 
-      // Event ketika marker di-drag
-      markerInstance.on("dragend", () => {
-        const position = markerInstance.getLatLng();
-        console.log("Marker dragged to:", position);
-        setLat(position.lat.toFixed(6));
-        setLng(position.lng.toFixed(6));
-        circleInstance.setLatLng(position);
-      });
+      // Update circle position
+      if (circleRef.current) {
+        circleRef.current.setLatLng([newLat, newLng]);
+      }
+    });
 
-      // Event ketika map diklik
-      mapInstance.on("click", (e) => {
-        const { lat, lng } = e.latlng;
-        console.log("Map clicked at:", { lat, lng });
-        markerInstance.setLatLng([lat, lng]);
-        setLat(lat.toFixed(6));
-        setLng(lng.toFixed(6));
-        circleInstance.setLatLng([lat, lng]);
-      });
+    // Handle map click
+    map.on("click", (e: L.LeafletMouseEvent) => {
+      const { lat, lng } = e.latlng;
+      
+      setCurrentLat(lat);
+      setCurrentLng(lng);
+      setLat(lat.toFixed(6));
+      setLng(lng.toFixed(6));
 
-      // Set initial coordinates ke parent
-      console.log("Initial coordinates:", { defaultLat, defaultLng });
-      setLat(defaultLat.toFixed(6));
-      setLng(defaultLng.toFixed(6));
+      // Update marker position
+      if (markerRef.current) {
+        markerRef.current.setLatLng([lat, lng]);
+      }
+      if (circleRef.current) {
+        circleRef.current.setLatLng([lat, lng]);
+      }
+    });
+  }, [isMapReady, currentLat, currentLng, radius, setLat, setLng]);
 
-      setMap(mapInstance);
-      setMarker(markerInstance);
-      setCircle(circleInstance);
-      setIsInitialized(true);
-    } catch (error) {
-      console.error("MapPicker error:", error);
-    }
-  }, [map, defaultLat, defaultLng, radius, setLat, setLng]);
-
-  // Update circle radius when radius prop changes
+  // Update circle radius when radius changes
   useEffect(() => {
-    if (circle) {
-      circle.setRadius(radius);
+    if (circleRef.current && radius) {
+      circleRef.current.setRadius(radius);
     }
-  }, [circle, radius]);
+  }, [radius]);
+
+  // Cleanup map on unmount
+  useEffect(() => {
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="relative w-full h-full">
-      <div ref={mapRef} className="w-full h-full rounded-lg" />
-      {!isInitialized && (
+      <div ref={mapRef} className="w-full h-full rounded-lg" style={{ minHeight: "300px" }} />
+      {!isMapReady && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-lg">
-          <p className="text-gray-500 text-sm">Memuat peta...</p>
+          <div className="text-center">
+            <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+            <p className="text-sm text-gray-500">Memuat peta...</p>
+          </div>
         </div>
       )}
-      <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded shadow text-xs text-gray-600">
-        📍 Klik peta atau drag marker
+      <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm rounded-lg px-2 py-1 text-xs shadow-md">
+        <span className="text-gray-600">
+          📍 {currentLat.toFixed(6)}, {currentLng.toFixed(6)}
+        </span>
       </div>
     </div>
   );

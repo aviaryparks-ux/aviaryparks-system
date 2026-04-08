@@ -8,6 +8,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ================= TYPE DEFINITIONS =================
 type User = {
@@ -273,6 +274,7 @@ const getInitials = (name: string) => {
 
 // ================= KOMPONEN UTAMA =================
 export default function AttendancePage() {
+  const { user: currentUser } = useAuth();
   const [data, setData] = useState<Attendance[]>([]);
   const [users, setUsers] = useState<Record<string, User>>({});
   const [corrections, setCorrections] = useState<Record<string, CorrectionRequest>>({});
@@ -281,6 +283,7 @@ export default function AttendancePage() {
   const [correctionsLoading, setCorrectionsLoading] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [userDepartment, setUserDepartment] = useState<string>("");
   
   const [selectedAttendance, setSelectedAttendance] = useState<Attendance | null>(null);
   const [selectedUserDetail, setSelectedUserDetail] = useState<User | null>(null);
@@ -299,6 +302,24 @@ export default function AttendancePage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [status, setStatus] = useState("ALL");
+
+  // Role checking
+  const isSuperAdmin = currentUser?.role === "super_admin";
+  const isAdmin = currentUser?.role === "admin";
+  const isHR = currentUser?.role === "hr";
+  const isSPV = currentUser?.role === "spv";
+  
+  // Load department untuk SPV
+  useEffect(() => {
+    const loadUserDepartment = async () => {
+      if (currentUser?.uid && isSPV) {
+        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        const userData = userDoc.data();
+        setUserDepartment(userData?.department || "");
+      }
+    };
+    loadUserDepartment();
+  }, [currentUser, isSPV]);
 
   useEffect(() => {
     setUsersLoading(true);
@@ -470,8 +491,16 @@ export default function AttendancePage() {
     setShowDetailModal(true);
   };
 
+  // Filter untuk SPV
   const filtered = useMemo(() => {
-    return data.filter((a) => {
+    let filteredData = data;
+    
+    // Filter untuk SPV hanya melihat departmentnya sendiri
+    if (isSPV && userDepartment) {
+      filteredData = filteredData.filter(a => a.department === userDepartment);
+    }
+    
+    return filteredData.filter((a) => {
       let ok = true;
       
       if (dept !== "ALL") {
@@ -501,7 +530,7 @@ export default function AttendancePage() {
       
       return ok;
     });
-  }, [data, dept, jabatan, employee, status, startDate, endDate]);
+  }, [data, dept, jabatan, employee, status, startDate, endDate, isSPV, userDepartment]);
 
   const recapList = useMemo(() => {
     const recap: Record<string, RecapItem> = {};
@@ -548,11 +577,12 @@ export default function AttendancePage() {
   }, [filtered]);
 
   const deptList = useMemo(() => {
-    return [
-      "ALL",
-      ...new Set(Object.values(users).map((u) => u.department).filter(Boolean)),
-    ];
-  }, [users]);
+    const depts = new Set(Object.values(users).map((u) => u.department).filter(Boolean));
+    if (isSPV && userDepartment) {
+      return ["ALL", userDepartment];
+    }
+    return ["ALL", ...Array.from(depts)];
+  }, [users, isSPV, userDepartment]);
 
   const jabatanList = useMemo(() => {
     return [
@@ -562,8 +592,13 @@ export default function AttendancePage() {
   }, [users]);
 
   const employeeList = useMemo(() => {
-    return ["ALL", ...new Set(data.map((a) => a.uid))];
-  }, [data]);
+    let employees = [...new Set(data.map((a) => a.uid))];
+    if (isSPV && userDepartment) {
+      const deptEmployees = data.filter(a => a.department === userDepartment).map(a => a.uid);
+      employees = [...new Set(deptEmployees)];
+    }
+    return ["ALL", ...employees];
+  }, [data, isSPV, userDepartment]);
 
   const setPayrollPeriod = useCallback(() => {
     const now = new Date();
@@ -610,98 +645,83 @@ export default function AttendancePage() {
     setEndDate("");
   }, []);
 
-  // app/(admin)/attendance/page.tsx
-// Update fungsi exportDetailExcel dan exportDetailPDF
-
-const exportDetailExcel = async () => {
-  setExporting("detail-excel");
-  try {
-    const rows = filtered.map((a) => {
-      const statusInfo = getAttendanceStatus(a);
-      return {
-        Nama: a.name || "-",
-        Department: a.department || "-",
-        Jabatan: a.jabatan || "-",
-        Shift: a.shift?.name || "-",
-        Tanggal: formatDate(a.date) || "-",
-        Jam_Masuk: a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
-        Jam_Pulang: a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
-        Jam_Kerja: formatWorkHours(getWorkHours(a)) || "-",
-        Status: statusInfo.label,
-        // 🔥 TAMBAHKAN FIELD BANK
-        Bank: users[a.uid]?.bankName || "-",
-        No_Rekening: users[a.uid]?.bankAccountNumber || "-",
-        Nama_Rekening: users[a.uid]?.bankAccountName || "-",
-        Status_Koreksi: a.isCorrected ? "Sudah Dikoreksi" : "Normal",
-      };
-    });
-    
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Detail Attendance");
-    
-    // Set column width
-    ws['!cols'] = [
-      { wch: 20 }, // Nama
-      { wch: 15 }, // Department
-      { wch: 15 }, // Jabatan
-      { wch: 10 }, // Shift
-      { wch: 12 }, // Tanggal
-      { wch: 10 }, // Jam Masuk
-      { wch: 10 }, // Jam Pulang
-      { wch: 10 }, // Jam Kerja
-      { wch: 15 }, // Status
-      { wch: 15 }, // Bank
-      { wch: 20 }, // No Rekening
-      { wch: 20 }, // Nama Rekening
-      { wch: 15 }, // Status Koreksi
-    ];
-    
-    XLSX.writeFile(wb, `attendance_detail_${new Date().toISOString().split("T")[0]}.xlsx`);
-  } catch (err) {
-    console.error("Export error:", err);
-    alert("Gagal mengexport data");
-  } finally {
-    setExporting(null);
-  }
-};
-
-const exportDetailPDF = async () => {
-  setExporting("detail-pdf");
-  try {
-    const doc = new jsPDF({ orientation: "landscape" });
-    
-    autoTable(doc, {
-      head: [["Nama", "Dept", "Jabatan", "Shift", "Tanggal", "Masuk", "Pulang", "Jam Kerja", "Status", "Bank", "No Rekening", "Nama Rekening"]],
-      body: filtered.map((a) => {
+  const exportDetailExcel = async () => {
+    setExporting("detail-excel");
+    try {
+      const rows = filtered.map((a) => {
         const statusInfo = getAttendanceStatus(a);
-        return [
-          a.name || "-",
-          a.department || "-",
-          a.jabatan || "-",
-          a.shift?.name || "-",
-          formatDate(a.date) || "-",
-          a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
-          a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
-          formatWorkHours(getWorkHours(a)) || "-",
-          statusInfo.label,
-          users[a.uid]?.bankName || "-",
-          users[a.uid]?.bankAccountNumber || "-",
-          users[a.uid]?.bankAccountName || "-",
-        ];
-      }) as any,
-      headStyles: { fillColor: [5, 150, 105] },
-      startY: 20,
-    });
-    
-    doc.save(`attendance_detail_${new Date().toISOString().split("T")[0]}.pdf`);
-  } catch (err) {
-    console.error("Export error:", err);
-    alert("Gagal mengexport data");
-  } finally {
-    setExporting(null);
-  }
-};
+        return {
+          Nama: a.name || "-",
+          Department: a.department || "-",
+          Jabatan: a.jabatan || "-",
+          Shift: a.shift?.name || "-",
+          Tanggal: formatDate(a.date) || "-",
+          Jam_Masuk: a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
+          Jam_Pulang: a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
+          Jam_Kerja: formatWorkHours(getWorkHours(a)) || "-",
+          Status: statusInfo.label,
+          Bank: users[a.uid]?.bankName || "-",
+          No_Rekening: users[a.uid]?.bankAccountNumber || "-",
+          Nama_Rekening: users[a.uid]?.bankAccountName || "-",
+          Status_Koreksi: a.isCorrected ? "Sudah Dikoreksi" : "Normal",
+        };
+      });
+      
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Detail Attendance");
+      
+      ws['!cols'] = [
+        { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 10 },
+        { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+        { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 15 }
+      ];
+      
+      XLSX.writeFile(wb, `attendance_detail_${new Date().toISOString().split("T")[0]}.xlsx`);
+    } catch (err) {
+      console.error("Export error:", err);
+      alert("Gagal mengexport data");
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const exportDetailPDF = async () => {
+    setExporting("detail-pdf");
+    try {
+      const doc = new jsPDF({ orientation: "landscape" });
+      
+      autoTable(doc, {
+        head: [["Nama", "Dept", "Jabatan", "Shift", "Tanggal", "Masuk", "Pulang", "Jam Kerja", "Status", "Bank", "No Rekening", "Nama Rekening"]],
+        body: filtered.map((a) => {
+          const statusInfo = getAttendanceStatus(a);
+          return [
+            a.name || "-",
+            a.department || "-",
+            a.jabatan || "-",
+            a.shift?.name || "-",
+            formatDate(a.date) || "-",
+            a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
+            a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
+            formatWorkHours(getWorkHours(a)) || "-",
+            statusInfo.label,
+            users[a.uid]?.bankName || "-",
+            users[a.uid]?.bankAccountNumber || "-",
+            users[a.uid]?.bankAccountName || "-",
+          ];
+        }) as any,
+        headStyles: { fillColor: [5, 150, 105] },
+        startY: 20,
+      });
+      
+      doc.save(`attendance_detail_${new Date().toISOString().split("T")[0]}.pdf`);
+    } catch (err) {
+      console.error("Export error:", err);
+      alert("Gagal mengexport data");
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const exportRecapExcel = async () => {
     setExporting("recap-excel");
@@ -789,91 +809,118 @@ const exportDetailPDF = async () => {
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "employee"]}>
-      <div className="space-y-6">
+      <div className="space-y-6 p-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-              Manajemen Absensi
-            </h1>
-            <p className="text-gray-500 mt-1">Kelola dan monitor data kehadiran karyawan</p>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-gray-400 bg-gray-100 px-3 py-1.5 rounded-lg">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            <span>Data real-time</span>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-green-600 to-green-700 p-6 text-white shadow-xl">
+          <div className="relative z-10">
+            <h1 className="text-2xl font-bold">Manajemen Absensi</h1>
+            <p className="text-green-100 mt-1">
+              Kelola dan monitor data kehadiran karyawan
+              {isSPV && userDepartment && ` - Department: ${userDepartment}`}
+            </p>
           </div>
         </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
-            <div className="flex justify-between items-center">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-blue-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
                 <p className="text-sm text-blue-600">Total Records</p>
-                <p className="text-2xl font-bold text-blue-800">{stats.total}</p>
+                <p className="text-3xl font-bold text-gray-800">{stats.total}</p>
               </div>
-              <span className="text-3xl">📊</span>
+              <div className="rounded-xl bg-blue-100 p-3">
+                <span className="text-2xl">📊</span>
+              </div>
             </div>
           </div>
-          <div className="bg-green-50 rounded-xl p-4 border border-green-200">
-            <div className="flex justify-between items-center">
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-green-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
                 <p className="text-sm text-green-600">✅ Hadir</p>
-                <p className="text-2xl font-bold text-green-800">{stats.hadir}</p>
+                <p className="text-3xl font-bold text-gray-800">{stats.hadir}</p>
               </div>
-              <span className="text-3xl">✅</span>
+              <div className="rounded-xl bg-green-100 p-3">
+                <span className="text-2xl">✅</span>
+              </div>
             </div>
           </div>
-          <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200">
-            <div className="flex justify-between items-center">
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-yellow-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
                 <p className="text-sm text-yellow-600">⏰ Terlambat</p>
-                <p className="text-2xl font-bold text-yellow-800">{stats.terlambat}</p>
+                <p className="text-3xl font-bold text-gray-800">{stats.terlambat}</p>
               </div>
-              <span className="text-3xl">⏰</span>
+              <div className="rounded-xl bg-yellow-100 p-3">
+                <span className="text-2xl">⏰</span>
+              </div>
             </div>
           </div>
-          <div className="bg-red-50 rounded-xl p-4 border border-red-200">
-            <div className="flex justify-between items-center">
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-red-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
                 <p className="text-sm text-red-600">❌ Tidak Hadir</p>
-                <p className="text-2xl font-bold text-red-800">{stats.alpha}</p>
+                <p className="text-3xl font-bold text-gray-800">{stats.alpha}</p>
               </div>
-              <span className="text-3xl">❌</span>
+              <div className="rounded-xl bg-red-100 p-3">
+                <span className="text-2xl">❌</span>
+              </div>
             </div>
           </div>
-          <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
-            <div className="flex justify-between items-center">
+        </div>
+
+        {/* Second Row Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-orange-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
                 <p className="text-sm text-orange-600">⚠️ NSP</p>
-                <p className="text-2xl font-bold text-orange-800">{stats.nsp}</p>
+                <p className="text-3xl font-bold text-gray-800">{stats.nsp}</p>
               </div>
-              <span className="text-3xl">⚠️</span>
+              <div className="rounded-xl bg-orange-100 p-3">
+                <span className="text-2xl">⚠️</span>
+              </div>
             </div>
           </div>
-          <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
-            <div className="flex justify-between items-center">
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-purple-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
                 <p className="text-sm text-purple-600">📅 Libur</p>
-                <p className="text-2xl font-bold text-purple-800">{stats.libur}</p>
+                <p className="text-3xl font-bold text-gray-800">{stats.libur}</p>
               </div>
-              <span className="text-3xl">📅</span>
+              <div className="rounded-xl bg-purple-100 p-3">
+                <span className="text-2xl">📅</span>
+              </div>
             </div>
           </div>
-          <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-200">
-            <div className="flex justify-between items-center">
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-indigo-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
                 <p className="text-sm text-indigo-600">✏️ Dikoreksi</p>
-                <p className="text-2xl font-bold text-indigo-800">{stats.corrected}</p>
+                <p className="text-3xl font-bold text-gray-800">{stats.corrected}</p>
               </div>
-              <span className="text-3xl">✏️</span>
+              <div className="rounded-xl bg-indigo-100 p-3">
+                <span className="text-2xl">✏️</span>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Filter Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+        <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
+          <h2 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
             </svg>
@@ -964,8 +1011,8 @@ const exportDetailPDF = async () => {
         </div>
 
         {/* Export Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+        <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
+          <h2 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
@@ -1024,28 +1071,30 @@ const exportDetailPDF = async () => {
         </div>
 
         {/* DETAIL TABLE */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <span>📋</span>
-              Detail Absensi
-            </h2>
-            <span className="text-sm text-gray-500">{filtered.length} record ditemukan</span>
+        <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+            <div className="flex justify-between items-center">
+              <h2 className="text-md font-semibold text-gray-800 flex items-center gap-2">
+                <span>📋</span>
+                Detail Absensi
+              </h2>
+              <span className="text-sm text-gray-500">{filtered.length} record ditemukan</span>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-100">
+              <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left">Nama</th>
-                  <th className="px-4 py-3 text-left">Dept</th>
-                  <th className="px-4 py-3 text-left">Jabatan</th>
-                  <th className="px-4 py-3 text-left">Shift</th>
-                  <th className="px-4 py-3 text-left">Tanggal</th>
-                  <th className="px-4 py-3 text-left">Masuk</th>
-                  <th className="px-4 py-3 text-left">Pulang</th>
-                  <th className="px-4 py-3 text-left">Jam Kerja</th>
-                  <th className="px-4 py-3 text-left">Foto</th>
-                  <th className="px-4 py-3 text-left">Status</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Nama</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Dept</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Jabatan</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Shift</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Tanggal</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Masuk</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Pulang</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Jam Kerja</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Foto</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -1067,53 +1116,53 @@ const exportDetailPDF = async () => {
                       onClick={() => openDetailModal(a)}
                       className={`border-b cursor-pointer transition-all duration-150 ${
                         idx % 2 === 0 ? "bg-white" : "bg-gray-50"
-                      } hover:bg-blue-50 hover:shadow-inner`}
+                      } hover:bg-green-50 hover:shadow-inner`}
                     >
-                      <td className="px-4 py-3 font-medium">{a.name}</td>
-                      <td className="px-4 py-3">{a.department}</td>
-                      <td className="px-4 py-3">{a.jabatan}</td>
+                      <td className="px-4 py-3 font-medium text-gray-800">{a.name}</td>
+                      <td className="px-4 py-3 text-gray-600">{a.department}</td>
+                      <td className="px-4 py-3 text-gray-600">{a.jabatan}</td>
                       <td className="px-4 py-3">
                         {a.shift ? (
                           <div className="flex items-center gap-2">
                             <div className="w-2 h-2 rounded-full" style={{ backgroundColor: a.shift.color }} />
-                            <span className="text-xs">{a.shift.name}</span>
+                            <span className="text-xs text-gray-700">{a.shift.name}</span>
                           </div>
                         ) : "-"}
                       </td>
-                      <td className="px-4 py-3">{formatDate(a.date)}</td>
+                      <td className="px-4 py-3 text-gray-600">{formatDate(a.date)}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs ${a.checkIn ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${a.checkIn ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                           {masukDisplay || "--:--"}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs ${a.checkOut ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${a.checkOut ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
                           {pulangDisplay || "--:--"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 font-mono">
+                      <td className="px-4 py-3 font-mono text-gray-600">
                         {workHours > 0 ? formatWorkHours(workHours) : "-"}
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-2">
                           {hasCheckInPhoto && (
                             <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
-                              <span className="text-xs text-green-600">IN</span>
+                              <span className="text-xs text-green-600 font-medium">IN</span>
                             </div>
                           )}
                           {hasCheckOutPhoto && (
                             <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                              <span className="text-xs text-blue-600">OUT</span>
+                              <span className="text-xs text-blue-600 font-medium">OUT</span>
                             </div>
                           )}
                           {!hasCheckInPhoto && !hasCheckOutPhoto && <span className="text-gray-400 text-xs">-</span>}
                         </div>
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusInfo.color}`}>
                           {statusInfo.label}
                         </span>
-                      </td>
+                       </td>
                     </tr>
                   );
                 })}
@@ -1136,33 +1185,33 @@ const exportDetailPDF = async () => {
 
         {/* Recap Table */}
         {recapList.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+          <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+              <h2 className="text-md font-semibold text-gray-800 flex items-center gap-2">
                 <span>💰</span>
                 Rekap Gaji (Harian / Borongan)
               </h2>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-100">
+                <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left">Nama</th>
-                    <th className="px-4 py-3 text-left">Dept</th>
-                    <th className="px-4 py-3 text-left">Jabatan</th>
-                    <th className="px-4 py-3 text-left">Hari Kerja</th>
-                    <th className="px-4 py-3 text-left">Total Jam</th>
-                    <th className="px-4 py-3 text-left">Rata-rata Jam</th>
-                    <th className="px-4 py-3 text-left">Rate</th>
-                    <th className="px-4 py-3 text-left">Total Gaji</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Nama</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Dept</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Jabatan</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Hari Kerja</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Total Jam</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Rata-rata Jam</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Rate</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Total Gaji</th>
                   </tr>
                 </thead>
                 <tbody>
                   {recapList.map((r, idx) => (
-                    <tr key={r.uid} className={`border-b ${idx % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
-                      <td className="px-4 py-3 font-medium">{r.name}</td>
-                      <td className="px-4 py-3">{r.department}</td>
-                      <td className="px-4 py-3">{r.jabatan}</td>
+                    <tr key={r.uid} className={`border-b ${idx % 2 === 0 ? "bg-white" : "bg-gray-50"} hover:bg-gray-50`}>
+                      <td className="px-4 py-3 font-medium text-gray-800">{r.name}</td>
+                      <td className="px-4 py-3 text-gray-600">{r.department}</td>
+                      <td className="px-4 py-3 text-gray-600">{r.jabatan}</td>
                       <td className="px-4 py-3">
                         <span className="font-bold text-blue-600">{r.totalHari}</span> hari
                       </td>
@@ -1189,7 +1238,6 @@ const exportDetailPDF = async () => {
       {showDetailModal && selectedAttendance && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden animate-scale-in">
-            {/* Header */}
             <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-4 flex justify-between items-center">
               <div className="flex items-center gap-3">
                 {selectedUserDetail?.photoUrl ? (
@@ -1220,14 +1268,10 @@ const exportDetailPDF = async () => {
               </button>
             </div>
 
-            {/* Content */}
             <div className="p-6 overflow-y-auto max-h-[70vh]">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Informasi Absensi */}
                 <div className="bg-gray-50 rounded-xl p-4">
-                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                    <span>📋</span> Informasi Absensi
-                  </h3>
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">📋 Informasi Absensi</h3>
                   <div className="space-y-3">
                     <div className="flex justify-between py-2 border-b border-gray-200">
                       <span className="text-gray-500">Tanggal</span>
@@ -1238,14 +1282,8 @@ const exportDetailPDF = async () => {
                       <div className="flex items-center gap-2">
                         {selectedAttendance.shift && (
                           <>
-                            <div 
-                              className="w-3 h-3 rounded-full" 
-                              style={{ backgroundColor: selectedAttendance.shift.color }}
-                            />
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedAttendance.shift.color }} />
                             <span className="font-medium">{selectedAttendance.shift.name}</span>
-                            <span className="text-xs text-gray-500">
-                              ({selectedAttendance.shift.startTime} - {selectedAttendance.shift.endTime})
-                            </span>
                           </>
                         )}
                         {!selectedAttendance.shift && <span className="text-gray-400">-</span>}
@@ -1257,54 +1295,23 @@ const exportDetailPDF = async () => {
                         {getAttendanceStatus(selectedAttendance).label}
                       </span>
                     </div>
-                    {selectedAttendance.isCorrected && (
-                      <div className="flex justify-between py-2 border-b border-gray-200">
-                        <span className="text-gray-500">Koreksi</span>
-                        <span className="text-purple-600 text-sm">✓ Sudah Dikoreksi</span>
-                      </div>
-                    )}
                   </div>
                 </div>
 
-                {/* Check-in & Check-out */}
                 <div className="bg-gray-50 rounded-xl p-4">
-                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                    <span>⏰</span> Waktu Absensi
-                  </h3>
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">⏰ Waktu Absensi</h3>
                   <div className="space-y-3">
                     <div className="flex justify-between py-2 border-b border-gray-200">
-                      <div>
-                        <span className="text-gray-500">Check-in</span>
-                        <div className="text-xs text-gray-400 mt-1">
-                          {selectedAttendance.checkIn?.lat && selectedAttendance.checkIn?.lng && (
-                            <span>
-                              📍 {selectedAttendance.checkIn.lat.toFixed(6)}, {selectedAttendance.checkIn.lng.toFixed(6)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-medium text-green-600">
-                          {formatDateTime(selectedAttendance.checkIn?.time) || "--:--"}
-                        </span>
-                      </div>
+                      <span className="text-gray-500">Check-in</span>
+                      <span className="font-medium text-green-600">
+                        {formatDateTime(selectedAttendance.checkIn?.time) || "--:--"}
+                      </span>
                     </div>
                     <div className="flex justify-between py-2 border-b border-gray-200">
-                      <div>
-                        <span className="text-gray-500">Check-out</span>
-                        <div className="text-xs text-gray-400 mt-1">
-                          {selectedAttendance.checkOut?.lat && selectedAttendance.checkOut?.lng && (
-                            <span>
-                              📍 {selectedAttendance.checkOut.lat.toFixed(6)}, {selectedAttendance.checkOut.lng.toFixed(6)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-medium text-blue-600">
-                          {formatDateTime(selectedAttendance.checkOut?.time) || "--:--"}
-                        </span>
-                      </div>
+                      <span className="text-gray-500">Check-out</span>
+                      <span className="font-medium text-blue-600">
+                        {formatDateTime(selectedAttendance.checkOut?.time) || "--:--"}
+                      </span>
                     </div>
                     <div className="flex justify-between py-2 border-b border-gray-200">
                       <span className="text-gray-500">Jam Kerja</span>
@@ -1315,42 +1322,8 @@ const exportDetailPDF = async () => {
                   </div>
                 </div>
 
-                {/* Lokasi Kantor */}
-                {selectedAttendance.officeLocation && (
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                      <span>📍</span> Lokasi Kantor
-                    </h3>
-                    <div className="space-y-3">
-                      <div className="flex justify-between py-2 border-b border-gray-200">
-                        <span className="text-gray-500">Nama Kantor</span>
-                        <span className="font-medium">{selectedAttendance.officeLocation.name}</span>
-                      </div>
-                      <div className="flex justify-between py-2 border-b border-gray-200">
-                        <span className="text-gray-500">Radius</span>
-                        <span>{selectedAttendance.officeLocation.radius} meter</span>
-                      </div>
-                      <div className="flex justify-between py-2 border-b border-gray-200">
-                        <span className="text-gray-500">Jarak Anda</span>
-                        <span className={selectedAttendance.isWithinRadius ? "text-green-600" : "text-red-600"}>
-                          {selectedAttendance.distance?.toFixed(0) || 0} meter
-                        </span>
-                      </div>
-                      <div className="flex justify-between py-2">
-                        <span className="text-gray-500">Status Radius</span>
-                        <span className={selectedAttendance.isWithinRadius ? "text-green-600" : "text-red-600"}>
-                          {selectedAttendance.isWithinRadius ? "✅ Dalam Radius" : "❌ Di Luar Radius"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Foto Absensi */}
                 <div className="bg-gray-50 rounded-xl p-4">
-                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                    <span>📸</span> Foto Absensi
-                  </h3>
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">📸 Foto Absensi</h3>
                   <div className="grid grid-cols-2 gap-3">
                     {selectedAttendance.checkIn?.photo && (
                       <div>
@@ -1358,10 +1331,9 @@ const exportDetailPDF = async () => {
                         <img 
                           src={selectedAttendance.checkIn.photo} 
                           alt="Check-in"
-                          className="w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                          className="w-full rounded-lg cursor-pointer hover:opacity-90"
                           onClick={() => window.open(selectedAttendance.checkIn?.photo, '_blank')}
                         />
-                        <p className="text-xs text-gray-400 mt-1">{formatTime(selectedAttendance.checkIn?.time)}</p>
                       </div>
                     )}
                     {selectedAttendance.checkOut?.photo && (
@@ -1370,15 +1342,9 @@ const exportDetailPDF = async () => {
                         <img 
                           src={selectedAttendance.checkOut.photo} 
                           alt="Check-out"
-                          className="w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                          className="w-full rounded-lg cursor-pointer hover:opacity-90"
                           onClick={() => window.open(selectedAttendance.checkOut?.photo, '_blank')}
                         />
-                        <p className="text-xs text-gray-400 mt-1">{formatTime(selectedAttendance.checkOut?.time)}</p>
-                      </div>
-                    )}
-                    {!selectedAttendance.checkIn?.photo && !selectedAttendance.checkOut?.photo && (
-                      <div className="col-span-2 text-center py-4 text-gray-400">
-                        Tidak ada foto absensi
                       </div>
                     )}
                   </div>
@@ -1386,7 +1352,6 @@ const exportDetailPDF = async () => {
               </div>
             </div>
 
-            {/* Footer */}
             <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end">
               <button
                 onClick={() => setShowDetailModal(false)}
