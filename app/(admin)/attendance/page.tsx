@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot, query, orderBy, doc, getDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, doc, getDoc, updateDoc, Timestamp, getDocs, where } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -289,6 +289,21 @@ export default function AttendancePage() {
   const [selectedUserDetail, setSelectedUserDetail] = useState<User | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
+  // 🔥 STATE UNTUK EDIT JAM (SUPER ADMIN ONLY)
+  const [isEditingTime, setIsEditingTime] = useState(false);
+  const [editCheckInHour, setEditCheckInHour] = useState("");
+  const [editCheckInMinute, setEditCheckInMinute] = useState("");
+  const [editCheckOutHour, setEditCheckOutHour] = useState("");
+  const [editCheckOutMinute, setEditCheckOutMinute] = useState("");
+  
+  // 🔥 STATE UNTUK EDIT SHIFT (SUPER ADMIN ONLY)
+  const [isEditingShift, setIsEditingShift] = useState(false);
+  const [editShiftId, setEditShiftId] = useState("");
+  const [shiftsList, setShiftsList] = useState<any[]>([]);
+  const [isLoadingShifts, setIsLoadingShifts] = useState(false);
+  
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
   const [tempDept, setTempDept] = useState("ALL");
   const [tempJabatan, setTempJabatan] = useState("ALL");
   const [tempEmployee, setTempEmployee] = useState("ALL");
@@ -473,8 +488,51 @@ export default function AttendancePage() {
     return () => unsub();
   }, [users, usersLoading, corrections, correctionsLoading]);
 
+  // 🔥 FUNGSI UNTUK LOAD DAFTAR SHIFT
+  const loadShiftsList = async () => {
+    setIsLoadingShifts(true);
+    try {
+      const shiftsQuery = query(collection(db, "shifts"), where("isActive", "==", true));
+      const snapshot = await getDocs(shiftsQuery);
+      const shifts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setShiftsList(shifts);
+    } catch (error) {
+      console.error("Error loading shifts:", error);
+    } finally {
+      setIsLoadingShifts(false);
+    }
+  };
+
   const openDetailModal = async (attendance: Attendance) => {
     setSelectedAttendance(attendance);
+    setIsEditingTime(false);
+    setIsEditingShift(false);
+    
+    // Load shifts list untuk dropdown
+    await loadShiftsList();
+    
+    // Set nilai awal edit jam
+    const checkInDate = toDate(attendance.checkIn?.time);
+    const checkOutDate = toDate(attendance.checkOut?.time);
+    
+    if (checkInDate) {
+      setEditCheckInHour(checkInDate.getHours().toString().padStart(2, '0'));
+      setEditCheckInMinute(checkInDate.getMinutes().toString().padStart(2, '0'));
+    }
+    if (checkOutDate) {
+      setEditCheckOutHour(checkOutDate.getHours().toString().padStart(2, '0'));
+      setEditCheckOutMinute(checkOutDate.getMinutes().toString().padStart(2, '0'));
+    }
+    
+    // Set shift ID untuk edit
+    if (attendance.shift?.id) {
+      setEditShiftId(attendance.shift.id);
+    } else {
+      setEditShiftId("");
+    }
     
     try {
       const userDoc = await getDoc(doc(db, "users", attendance.uid));
@@ -491,11 +549,119 @@ export default function AttendancePage() {
     setShowDetailModal(true);
   };
 
+  // 🔥 FUNGSI UNTUK MENYIMPAN EDIT JAM (SUPER ADMIN ONLY)
+  const saveEditedTime = async () => {
+    if (!selectedAttendance || !isSuperAdmin) return;
+    
+    setIsSavingEdit(true);
+    
+    try {
+      const attendanceRef = doc(db, "attendance", selectedAttendance.id);
+      const updates: any = {};
+      
+      // Update check-in time jika diubah
+      if (editCheckInHour && editCheckInMinute) {
+        const checkInDate = toDate(selectedAttendance.checkIn?.time);
+        if (checkInDate) {
+          const newCheckInTime = new Date(checkInDate);
+          newCheckInTime.setHours(parseInt(editCheckInHour), parseInt(editCheckInMinute), 0);
+          updates['checkIn.time'] = Timestamp.fromDate(newCheckInTime);
+        }
+      }
+      
+      // Update check-out time jika diubah
+      if (editCheckOutHour && editCheckOutMinute) {
+        const checkOutDate = toDate(selectedAttendance.checkOut?.time);
+        if (checkOutDate) {
+          const newCheckOutTime = new Date(checkOutDate);
+          newCheckOutTime.setHours(parseInt(editCheckOutHour), parseInt(editCheckOutMinute), 0);
+          updates['checkOut.time'] = Timestamp.fromDate(newCheckOutTime);
+        }
+      }
+      
+      updates['updatedAt'] = Timestamp.now();
+      updates['editedBy'] = currentUser?.uid;
+      updates['editedByName'] = currentUser?.name;
+      updates['editedAt'] = Timestamp.now();
+      
+      await updateDoc(attendanceRef, updates);
+      
+      alert("✅ Jam absensi berhasil diupdate!");
+      setIsEditingTime(false);
+      
+      // Refresh data lokal
+      setSelectedAttendance({
+        ...selectedAttendance,
+        checkIn: updates['checkIn.time'] 
+          ? { ...selectedAttendance.checkIn, time: updates['checkIn.time'] } 
+          : selectedAttendance.checkIn,
+        checkOut: updates['checkOut.time'] 
+          ? { ...selectedAttendance.checkOut, time: updates['checkOut.time'] } 
+          : selectedAttendance.checkOut,
+      });
+      
+    } catch (error) {
+      console.error("Error saving edit:", error);
+      alert("❌ Gagal menyimpan perubahan");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // 🔥 FUNGSI UNTUK MENYIMPAN EDIT SHIFT (SUPER ADMIN ONLY)
+  const saveEditedShift = async () => {
+    if (!selectedAttendance || !isSuperAdmin) return;
+    
+    setIsSavingEdit(true);
+    
+    try {
+      const attendanceRef = doc(db, "attendance", selectedAttendance.id);
+      const selectedShift = shiftsList.find(s => s.id === editShiftId);
+      
+      if (!selectedShift) {
+        alert("Shift tidak ditemukan");
+        return;
+      }
+      
+      const updates: any = {
+        'shift': {
+          id: selectedShift.id,
+          name: selectedShift.name,
+          code: selectedShift.code,
+          startTime: selectedShift.startTime,
+          endTime: selectedShift.endTime,
+          color: selectedShift.color,
+          lateTolerance: selectedShift.lateTolerance || 15,
+        },
+        'updatedAt': Timestamp.now(),
+        'editedBy': currentUser?.uid,
+        'editedByName': currentUser?.name,
+        'editedAt': Timestamp.now(),
+      };
+      
+      await updateDoc(attendanceRef, updates);
+      
+      alert("✅ Shift absensi berhasil diupdate!");
+      setIsEditingShift(false);
+      
+      // Refresh data lokal
+      setSelectedAttendance({
+        ...selectedAttendance,
+        shift: updates['shift'],
+      });
+      
+    } catch (error) {
+      console.error("Error saving shift edit:", error);
+      alert("❌ Gagal menyimpan perubahan shift");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   // Filter untuk SPV
   const filtered = useMemo(() => {
     let filteredData = data;
     
-    // Filter untuk SPV hanya melihat departmentnya sendiri
     if (isSPV && userDepartment) {
       filteredData = filteredData.filter(a => a.department === userDepartment);
     }
@@ -1350,6 +1516,149 @@ export default function AttendancePage() {
                   </div>
                 </div>
               </div>
+
+              {/* 🔥 TOMBOL EDIT SHIFT UNTUK SUPER ADMIN */}
+              {isSuperAdmin && !isEditingShift && !isEditingTime && (
+                <div className="mt-6 flex justify-end gap-3">
+                  <button
+                    onClick={() => setIsEditingShift(true)}
+                    className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <span>🔄</span> Edit Shift
+                  </button>
+                  <button
+                    onClick={() => setIsEditingTime(true)}
+                    className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <span>✏️</span> Edit Jam Kerja
+                  </button>
+                </div>
+              )}
+
+              {/* 🔥 FORM EDIT SHIFT UNTUK SUPER ADMIN */}
+              {isEditingShift && (
+                <div className="bg-blue-50 rounded-xl p-4 border border-blue-200 mt-4">
+                  <h4 className="font-semibold text-blue-800 mb-3">🔄 Edit Shift</h4>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Shift Baru</label>
+                    {isLoadingShifts ? (
+                      <div className="flex justify-center py-4">
+                        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    ) : (
+                      <select
+                        value={editShiftId}
+                        onChange={(e) => setEditShiftId(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Pilih Shift</option>
+                        {shiftsList.map((shift) => (
+                          <option key={shift.id} value={shift.id}>
+                            {shift.name} ({shift.startTime} - {shift.endTime})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  <div className="flex gap-3 mt-4">
+                    <button
+                      onClick={saveEditedShift}
+                      disabled={isSavingEdit || !editShiftId}
+                      className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {isSavingEdit ? "Menyimpan..." : "💾 Simpan Perubahan Shift"}
+                    </button>
+                    <button
+                      onClick={() => setIsEditingShift(false)}
+                      className="flex-1 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                    >
+                      Batal
+                    </button>
+                  </div>
+                  <p className="text-xs text-blue-600 mt-2">
+                    ⚠️ Perubahan shift akan mempengaruhi perhitungan keterlambatan dan jam kerja
+                  </p>
+                </div>
+              )}
+
+              {/* 🔥 FORM EDIT JAM UNTUK SUPER ADMIN */}
+              {isEditingTime && (
+                <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-4">
+                  <h4 className="font-semibold text-yellow-800 mb-3">✏️ Edit Jam Kerja</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Check-in Baru</label>
+                      <div className="flex gap-2">
+                        <select
+                          value={editCheckInHour}
+                          onChange={(e) => setEditCheckInHour(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                        >
+                          <option value="">Jam</option>
+                          {Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')).map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                        <span className="text-gray-500">:</span>
+                        <select
+                          value={editCheckInMinute}
+                          onChange={(e) => setEditCheckInMinute(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                        >
+                          <option value="">Menit</option>
+                          {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Check-out Baru</label>
+                      <div className="flex gap-2">
+                        <select
+                          value={editCheckOutHour}
+                          onChange={(e) => setEditCheckOutHour(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                        >
+                          <option value="">Jam</option>
+                          {Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')).map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                        <span className="text-gray-500">:</span>
+                        <select
+                          value={editCheckOutMinute}
+                          onChange={(e) => setEditCheckOutMinute(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                        >
+                          <option value="">Menit</option>
+                          {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-4">
+                    <button
+                      onClick={saveEditedTime}
+                      disabled={isSavingEdit}
+                      className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {isSavingEdit ? "Menyimpan..." : "💾 Simpan Perubahan"}
+                    </button>
+                    <button
+                      onClick={() => setIsEditingTime(false)}
+                      className="flex-1 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                    >
+                      Batal
+                    </button>
+                  </div>
+                  <p className="text-xs text-yellow-600 mt-2">
+                    ⚠️ Perubahan ini akan tercatat di log (editedBy, editedAt)
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end">
