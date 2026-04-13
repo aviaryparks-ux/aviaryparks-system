@@ -243,84 +243,82 @@ export default function PayrollPage() {
   };
 
   const exportToExcel = () => {
-  const excelData = filteredSummary.map((item, index) => ({
-    No: index + 1,  // ← number, bukan string
-    "Nama Karyawan": item.name,
-    Email: item.email,
-    Departemen: item.department,
-    Jabatan: item.jabatan,
-    "Rate Harian": `Rp ${item.dailyRate.toLocaleString()}`,
-    Bank: item.bankName,
-    "Nomor Rekening": item.bankAccountNumber,
-    "Nama Pemilik": item.bankAccountName,
-    "Total Hari Kerja": item.totalDays,
-    "Total Jam Kerja": item.totalHours.toFixed(1),
-    "Total Gaji": `Rp ${item.totalSalary.toLocaleString()}`,
-  }));
+    const excelData = filteredSummary.map((item, index) => ({
+      No: index + 1,
+      "Nama Karyawan": item.name,
+      Email: item.email,
+      Departemen: item.department,
+      Jabatan: item.jabatan,
+      "Rate Harian": `Rp ${item.dailyRate.toLocaleString()}`,
+      Bank: item.bankName,
+      "Nomor Rekening": item.bankAccountNumber,
+      "Nama Pemilik": item.bankAccountName,
+      "Total Hari Kerja": item.totalDays,
+      "Total Jam Kerja": item.totalHours.toFixed(1),
+      "Total Gaji": `Rp ${item.totalSalary.toLocaleString()}`,
+    }));
 
-  const totalSalary = filteredSummary.reduce(
-    (sum, item) => sum + item.totalSalary,
-    0
-  );
-  const totalDays = filteredSummary.reduce(
-    (sum, item) => sum + item.totalDays,
-    0
-  );
-  const totalHours = filteredSummary.reduce(
-    (sum, item) => sum + item.totalHours,
-    0
-  );
+    const totalSalary = filteredSummary.reduce(
+      (sum, item) => sum + item.totalSalary,
+      0
+    );
+    const totalDays = filteredSummary.reduce(
+      (sum, item) => sum + item.totalDays,
+      0
+    );
+    const totalHours = filteredSummary.reduce(
+      (sum, item) => sum + item.totalHours,
+      0
+    );
 
-  // 🔥 PERBAIKAN: Gunakan angka untuk No, bukan string kosong
-  excelData.push({
-    No: excelData.length + 1,  // ← number, bukan string kosong
-    "Nama Karyawan": "TOTAL",
-    Email: "",
-    Departemen: "",
-    Jabatan: "",
-    "Rate Harian": "",
-    Bank: "",
-    "Nomor Rekening": "",
-    "Nama Pemilik": "",
-    "Total Hari Kerja": totalDays,
-    "Total Jam Kerja": totalHours.toFixed(1),
-    "Total Gaji": `Rp ${totalSalary.toLocaleString()}`,
-  });
+    excelData.push({
+      No: excelData.length + 1,
+      "Nama Karyawan": "TOTAL",
+      Email: "",
+      Departemen: "",
+      Jabatan: "",
+      "Rate Harian": "",
+      Bank: "",
+      "Nomor Rekening": "",
+      "Nama Pemilik": "",
+      "Total Hari Kerja": totalDays,
+      "Total Jam Kerja": totalHours.toFixed(1),
+      "Total Gaji": `Rp ${totalSalary.toLocaleString()}`,
+    });
 
-  const ws = XLSX.utils.json_to_sheet(excelData);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Rekap Gaji");
-  
-  const fileName = selectedDepartment === "ALL" 
-    ? `rekap_gaji_${dateRange.startDate}_${dateRange.endDate}.xlsx`
-    : `rekap_gaji_${selectedDepartment}_${dateRange.startDate}_${dateRange.endDate}.xlsx`;
-  
-  XLSX.writeFile(wb, fileName);
-};
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Rekap Gaji");
+    
+    const fileName = selectedDepartment === "ALL" 
+      ? `rekap_gaji_${dateRange.startDate}_${dateRange.endDate}.xlsx`
+      : `rekap_gaji_${selectedDepartment}_${dateRange.startDate}_${dateRange.endDate}.xlsx`;
+    
+    XLSX.writeFile(wb, fileName);
+  };
 
   const exportDetailToExcel = (employee: PayrollSummary) => {
-  const detailData = employee.attendanceDetails.map((item, index) => ({
-    No: index + 1,  // ← number
-    Tanggal: item.date,
-    "Jam Masuk": item.checkIn,
-    "Jam Pulang": item.checkOut,
-    "Jam Kerja": item.workHours.toFixed(1),
-  }));
+    const detailData = employee.attendanceDetails.map((item, index) => ({
+      No: index + 1,
+      Tanggal: item.date,
+      "Jam Masuk": item.checkIn,
+      "Jam Pulang": item.checkOut,
+      "Jam Kerja": item.workHours.toFixed(1),
+    }));
 
-  // 🔥 PERBAIKAN: Gunakan angka untuk No
-  detailData.push({
-    No: detailData.length + 1,  // ← number
-    Tanggal: "TOTAL",
-    "Jam Masuk": "",
-    "Jam Pulang": "",
-    "Jam Kerja": employee.totalHours.toFixed(1),
-  });
+    detailData.push({
+      No: detailData.length + 1,
+      Tanggal: "TOTAL",
+      "Jam Masuk": "",
+      "Jam Pulang": "",
+      "Jam Kerja": employee.totalHours.toFixed(1),
+    });
 
-  const ws = XLSX.utils.json_to_sheet(detailData);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, `Detail_${employee.name}`);
-  XLSX.writeFile(wb, `detail_absensi_${employee.name}.xlsx`);
-};
+    const ws = XLSX.utils.json_to_sheet(detailData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `Detail_${employee.name}`);
+    XLSX.writeFile(wb, `detail_absensi_${employee.name}.xlsx`);
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("id-ID", {
@@ -344,264 +342,295 @@ export default function PayrollPage() {
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "hr", "finance"]}>
-      <div className="min-h-screen bg-gray-100 p-6">
-        <div className="max-w-7xl mx-auto">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-6 text-white mb-6">
-            <h1 className="text-2xl font-bold">💰 Rekap Gaji Karyawan</h1>
-            <p className="text-blue-100 mt-1">
-              Rekap gaji berdasarkan data absensi dan rate harian masing-masing karyawan
-            </p>
-          </div>
-
-          {/* Filter */}
-          <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Tanggal Mulai
-                </label>
-                <input
-                  type="date"
-                  value={dateRange.startDate}
-                  onChange={(e) =>
-                    setDateRange({ ...dateRange, startDate: e.target.value })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                />
+      <div className="space-y-6 p-6">
+        {/* Header - Sama seperti Attendance Page */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 p-6 text-white shadow-xl">
+          <div className="relative z-10">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
+                <span className="text-2xl">💰</span>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Tanggal Akhir
-                </label>
-                <input
-                  type="date"
-                  value={dateRange.endDate}
-                  onChange={(e) =>
-                    setDateRange({ ...dateRange, endDate: e.target.value })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  📁 Filter Departemen
-                </label>
-                <select
-                  value={selectedDepartment}
-                  onChange={(e) => setSelectedDepartment(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="ALL">📋 Semua Departemen</option>
-                  {departments.map((dept) => (
-                    <option key={dept} value={dept}>
-                      🏢 {dept}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex items-end gap-2">
-                <button
-                  onClick={() => {
-                    loadUsers();
-                    loadAttendanceData();
-                  }}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  🔍 Tampilkan
-                </button>
-                <button
-                  onClick={exportToExcel}
-                  disabled={filteredSummary.length === 0}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  📊 Export Excel
-                </button>
-              </div>
-            </div>
-            
-            {selectedDepartment !== "ALL" && (
-              <div className="mt-3 text-sm text-blue-600 bg-blue-50 p-2 rounded-lg">
-                📁 Menampilkan data untuk departemen: <strong>{selectedDepartment}</strong>
-              </div>
-            )}
-          </div>
-
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <div className="text-3xl mb-2">👥</div>
-              <div className="text-2xl font-bold">{totalFilteredEmployees} orang</div>
-              <div className="text-sm text-gray-500">
-                {selectedDepartment === "ALL" ? "Total Karyawan" : `Karyawan ${selectedDepartment}`}
-              </div>
-            </div>
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <div className="text-3xl mb-2">📆</div>
-              <div className="text-2xl font-bold">{totalFilteredDays} hari</div>
-              <div className="text-sm text-gray-500">Total Hari Kerja</div>
-            </div>
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <div className="text-3xl mb-2">⏰</div>
-              <div className="text-2xl font-bold">{formatTime(totalFilteredHours)}</div>
-              <div className="text-sm text-gray-500">Total Jam Kerja</div>
-            </div>
-            <div className="bg-green-50 rounded-xl shadow-md p-6 border border-green-200">
-              <div className="text-3xl mb-2">💰</div>
-              <div className="text-2xl font-bold text-green-700">
-                {formatCurrency(totalFilteredSalary)}
-              </div>
-              <div className="text-sm text-green-600">Total Gaji</div>
-            </div>
-          </div>
-
-          {/* Tabel Rekap Gaji */}
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
-            <div className="px-6 py-4 border-b bg-gray-50">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="font-semibold text-gray-800">
-                    Detail Rekap Gaji
-                    {selectedDepartment !== "ALL" && (
-                      <span className="ml-2 text-sm font-normal text-blue-600">
-                        - Departemen {selectedDepartment}
-                      </span>
-                    )}
-                  </h2>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Klik pada baris untuk melihat detail absensi harian
-                  </p>
-                </div>
-                <div className="text-sm text-gray-500">
-                  Menampilkan {filteredSummary.length} dari {payrollSummary.length} karyawan
-                </div>
-              </div>
-            </div>
-
-            {isLoading ? (
-              <div className="p-12 text-center">
-                <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                <p className="mt-2 text-gray-500">Memuat data...</p>
-              </div>
-            ) : filteredSummary.length === 0 ? (
-              <div className="p-12 text-center text-gray-500">
-                <div className="text-5xl mb-2">📭</div>
-                <p>
-                  {selectedDepartment !== "ALL"
-                    ? `Tidak ada data absensi untuk departemen ${selectedDepartment} dalam periode ini`
-                    : "Tidak ada data absensi dalam periode ini"}
+                <h1 className="text-2xl font-bold">Rekap Gaji Karyawan</h1>
+                <p className="text-blue-100 mt-1">
+                  Rekap gaji berdasarkan data absensi dan rate harian masing-masing karyawan
                 </p>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left">No</th>
-                      <th className="px-4 py-3 text-left">Nama Karyawan</th>
-                      <th className="px-4 py-3 text-left">Departemen</th>
-                      <th className="px-4 py-3 text-left">Jabatan</th>
-                      <th className="px-4 py-3 text-right">Rate Harian</th>
-                      <th className="px-4 py-3 text-left">Bank</th>
-                      <th className="px-4 py-3 text-left">No. Rekening</th>
-                      <th className="px-4 py-3 text-center">Hari</th>
-                      <th className="px-4 py-3 text-center">Jam Kerja</th>
-                      <th className="px-4 py-3 text-right bg-green-50">Total Gaji</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {filteredSummary.map((item, index) => (
-                      <tr
-                        key={item.uid}
-                        className="hover:bg-blue-50 cursor-pointer transition-colors"
-                        onClick={() => {
-                          setSelectedEmployee(item);
-                          setShowDetailModal(true);
-                        }}
-                      >
-                        <td className="px-4 py-3">{index + 1}</td>
-                        <td className="px-4 py-3 font-medium">{item.name}</td>
-                        <td className="px-4 py-3">
-                          <span className="px-2 py-1 bg-gray-100 rounded-full text-xs">
-                            {item.department || "-"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">{item.jabatan}</td>
-                        <td className="px-4 py-3 text-right">
-                          {formatCurrency(item.dailyRate)}
-                        </td>
-                        <td className="px-4 py-3">{item.bankName}</td>
-                        <td className="px-4 py-3 font-mono text-xs">
-                          {item.bankAccountNumber}
-                        </td>
-                        <td className="px-4 py-3 text-center font-medium">
-                          {item.totalDays} hari
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {formatTime(item.totalHours)}
-                        </td>
-                        <td className="px-4 py-3 text-right font-bold text-green-700 bg-green-50">
-                          {formatCurrency(item.totalSalary)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-gray-100 font-semibold">
-                    <tr>
-                      <td colSpan={7} className="px-4 py-3 text-right">TOTAL</td>
-                      <td className="px-4 py-3 text-center">{totalFilteredDays} hari</td>
-                      <td className="px-4 py-3 text-center">{formatTime(totalFilteredHours)}</td>
-                      <td className="px-4 py-3 text-right bg-green-100">
-                        {formatCurrency(totalFilteredSalary)}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
+            </div>
           </div>
+        </div>
 
-          {/* Karyawan Tanpa Rate */}
-          {filteredSummary.filter((item) => item.dailyRate === 0).length > 0 && (
-            <div className="mt-6 bg-red-50 border border-red-200 rounded-xl p-4">
-              <div className="flex gap-3">
-                <span className="text-2xl">⚠️</span>
-                <div>
-                  <p className="font-medium text-red-800">
-                    Perhatian: Ada karyawan dengan Rate Harian 0
-                  </p>
-                  <p className="text-sm text-red-700 mt-1">
-                    Karyawan berikut belum diisi rate hariannya:
-                  </p>
-                  <ul className="text-sm text-red-700 mt-2 list-disc list-inside">
-                    {filteredSummary
-                      .filter((item) => item.dailyRate === 0)
-                      .map((item) => (
-                        <li key={item.uid}>
-                          {item.name} ({item.department || "No Dept"}) - Silakan edit di menu Users
-                        </li>
-                      ))}
-                  </ul>
-                </div>
+        {/* Stats Cards - Sama seperti Attendance Page */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-blue-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
+              <div>
+                <p className="text-sm text-blue-600 font-medium">Total Karyawan</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{totalFilteredEmployees} orang</p>
+              </div>
+              <div className="rounded-xl bg-blue-100 p-3">
+                <span className="text-2xl">👥</span>
               </div>
             </div>
-          )}
-
-          {/* Catatan untuk Finance */}
-          <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-            <div className="flex gap-3">
-              <span className="text-2xl">📝</span>
+          </div>
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-green-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
               <div>
-                <p className="font-medium text-yellow-800">Catatan untuk Bagian Keuangan</p>
-                <ul className="text-sm text-yellow-700 mt-1 space-y-1">
-                  <li>• Rate harian diambil dari data masing-masing karyawan (menu Users)</li>
-                  <li>• Perhitungan gaji = Rate Harian × Total Hari Kerja</li>
-                  <li>• Jam kerja dihitung berdasarkan data check-in dan check-out yang valid</li>
-                  <li>• Gunakan filter departemen untuk melihat rekap per divisi</li>
-                  <li>• Nomor rekening di atas adalah data yang diinput oleh karyawan/admin</li>
-                  <li>• Harap melakukan verifikasi ulang sebelum transfer gaji</li>
+                <p className="text-sm text-green-600 font-medium">Total Hari Kerja</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{totalFilteredDays} hari</p>
+              </div>
+              <div className="rounded-xl bg-green-100 p-3">
+                <span className="text-2xl">📆</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-yellow-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
+              <div>
+                <p className="text-sm text-yellow-600 font-medium">Total Jam Kerja</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{formatTime(totalFilteredHours)}</p>
+              </div>
+              <div className="rounded-xl bg-yellow-100 p-3">
+                <span className="text-2xl">⏰</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-purple-100/50 blur-2xl"></div>
+            <div className="relative flex items-center justify-between">
+              <div>
+                <p className="text-sm text-purple-600 font-medium">Total Gaji</p>
+                <p className="text-3xl font-bold text-gray-800 mt-1">{formatCurrency(totalFilteredSalary)}</p>
+              </div>
+              <div className="rounded-xl bg-purple-100 p-3">
+                <span className="text-2xl">💰</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filter Section - Sama seperti Attendance Page */}
+        <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
+          <h2 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            Filter Data
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Tanggal Mulai</label>
+              <input
+                type="date"
+                value={dateRange.startDate}
+                onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Tanggal Akhir</label>
+              <input
+                type="date"
+                value={dateRange.endDate}
+                onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">📁 Filter Departemen</label>
+              <select
+                value={selectedDepartment}
+                onChange={(e) => setSelectedDepartment(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="ALL">📋 Semua Departemen</option>
+                {departments.map((dept) => (
+                  <option key={dept} value={dept}>
+                    🏢 {dept}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end gap-2">
+              <button
+                onClick={() => {
+                  loadUsers();
+                  loadAttendanceData();
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                🔍 Tampilkan
+              </button>
+              <button
+                onClick={exportToExcel}
+                disabled={filteredSummary.length === 0}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                📊 Export Excel
+              </button>
+            </div>
+          </div>
+          
+          {selectedDepartment !== "ALL" && (
+            <div className="mt-3 text-sm text-blue-600 bg-blue-50 p-2 rounded-lg">
+              📁 Menampilkan data untuk departemen: <strong>{selectedDepartment}</strong>
+            </div>
+          )}
+        </div>
+
+        {/* Tabel Rekap Gaji - Sama seperti Attendance Page */}
+        <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-md font-semibold text-gray-800 flex items-center gap-2">
+                  <span>💰</span>
+                  Detail Rekap Gaji
+                  {selectedDepartment !== "ALL" && (
+                    <span className="ml-2 text-sm font-normal text-blue-600">
+                      - Departemen {selectedDepartment}
+                    </span>
+                  )}
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  Klik pada baris untuk melihat detail absensi harian
+                </p>
+              </div>
+              <div className="text-sm text-gray-500">
+                Menampilkan {filteredSummary.length} dari {payrollSummary.length} karyawan
+              </div>
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div className="p-12 text-center">
+              <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="mt-2 text-gray-500">Memuat data...</p>
+            </div>
+          ) : filteredSummary.length === 0 ? (
+            <div className="p-12 text-center text-gray-500">
+              <div className="text-5xl mb-2">📭</div>
+              <p>
+                {selectedDepartment !== "ALL"
+                  ? `Tidak ada data absensi untuk departemen ${selectedDepartment} dalam periode ini`
+                  : "Tidak ada data absensi dalam periode ini"}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left">No</th>
+                    <th className="px-4 py-3 text-left">Nama Karyawan</th>
+                    <th className="px-4 py-3 text-left">Departemen</th>
+                    <th className="px-4 py-3 text-left">Jabatan</th>
+                    <th className="px-4 py-3 text-right">Rate Harian</th>
+                    <th className="px-4 py-3 text-left">Bank</th>
+                    <th className="px-4 py-3 text-left">No. Rekening</th>
+                    <th className="px-4 py-3 text-center">Hari</th>
+                    <th className="px-4 py-3 text-center">Jam Kerja</th>
+                    <th className="px-4 py-3 text-right bg-green-50">Total Gaji</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filteredSummary.map((item, index) => (
+                    <tr
+                      key={item.uid}
+                      className="hover:bg-blue-50 cursor-pointer transition-colors"
+                      onClick={() => {
+                        setSelectedEmployee(item);
+                        setShowDetailModal(true);
+                      }}
+                    >
+                      <td className="px-4 py-3">{index + 1}</td>
+                      <td className="px-4 py-3 font-medium">{item.name}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-1 bg-gray-100 rounded-full text-xs">
+                          {item.department || "-"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">{item.jabatan}</td>
+                      <td className="px-4 py-3 text-right">
+                        {formatCurrency(item.dailyRate)}
+                      </td>
+                      <td className="px-4 py-3">{item.bankName}</td>
+                      <td className="px-4 py-3 font-mono text-xs">
+                        {item.bankAccountNumber}
+                      </td>
+                      <td className="px-4 py-3 text-center font-medium">
+                        {item.totalDays} hari
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {formatTime(item.totalHours)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-green-700 bg-green-50">
+                        {formatCurrency(item.totalSalary)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-100 font-semibold">
+                  <tr>
+                    <td colSpan={7} className="px-4 py-3 text-right">TOTAL</td>
+                    <td className="px-4 py-3 text-center">{totalFilteredDays} hari</td>
+                    <td className="px-4 py-3 text-center">{formatTime(totalFilteredHours)}</td>
+                    <td className="px-4 py-3 text-right bg-green-100">
+                      {formatCurrency(totalFilteredSalary)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Karyawan Tanpa Rate */}
+        {filteredSummary.filter((item) => item.dailyRate === 0).length > 0 && (
+          <div className="mt-6 bg-red-50 border border-red-200 rounded-xl p-4">
+            <div className="flex gap-3">
+              <span className="text-2xl">⚠️</span>
+              <div>
+                <p className="font-medium text-red-800">
+                  Perhatian: Ada karyawan dengan Rate Harian 0
+                </p>
+                <p className="text-sm text-red-700 mt-1">
+                  Karyawan berikut belum diisi rate hariannya:
+                </p>
+                <ul className="text-sm text-red-700 mt-2 list-disc list-inside">
+                  {filteredSummary
+                    .filter((item) => item.dailyRate === 0)
+                    .map((item) => (
+                      <li key={item.uid}>
+                        {item.name} ({item.department || "No Dept"}) - Silakan edit di menu Users
+                      </li>
+                    ))}
                 </ul>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Catatan untuk Finance */}
+        <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+          <div className="flex gap-3">
+            <span className="text-2xl">📝</span>
+            <div>
+              <p className="font-medium text-yellow-800">Catatan untuk Bagian Keuangan</p>
+              <ul className="text-sm text-yellow-700 mt-1 space-y-1">
+                <li>• Rate harian diambil dari data masing-masing karyawan (menu Users)</li>
+                <li>• Perhitungan gaji = Rate Harian × Total Hari Kerja</li>
+                <li>• Jam kerja dihitung berdasarkan data check-in dan check-out yang valid</li>
+                <li>• Gunakan filter departemen untuk melihat rekap per divisi</li>
+                <li>• Nomor rekening di atas adalah data yang diinput oleh karyawan/admin</li>
+                <li>• Harap melakukan verifikasi ulang sebelum transfer gaji</li>
+              </ul>
             </div>
           </div>
         </div>
@@ -610,7 +639,7 @@ export default function PayrollPage() {
       {/* MODAL DETAIL ABSENSI */}
       {showDetailModal && selectedEmployee && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden animate-scale-in">
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex justify-between items-center">
               <div>
                 <h2 className="text-xl font-bold text-white">Detail Absensi {selectedEmployee.name}</h2>
@@ -682,6 +711,19 @@ export default function PayrollPage() {
           </div>
         </div>
       )}
+
+      <style jsx>{`
+        @keyframes fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes scale-in {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        .animate-fade-in { animation: fade-in 0.2s ease-out; }
+        .animate-scale-in { animation: scale-in 0.2s ease-out; }
+      `}</style>
     </ProtectedRoute>
   );
 }
