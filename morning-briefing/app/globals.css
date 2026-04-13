@@ -3,19 +3,26 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --card-bg: #ffffff;
+  --card-border: #e5e7eb;
+  --gray-bg: #f9fafb;
+  --gray-text: #6b7280;
+  --table-header: #f9fafb;
+  --table-border: #e5e7eb;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* Theme variables are already defined in :root */
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --card-bg: #1a1a1a;
+    --card-border: #333333;
+    --gray-bg: #111111;
+    --gray-text: #9ca3af;
+    --table-header: #1f1f1f;
+    --table-border: #333333;
   }
 }
 
@@ -23,4 +30,95 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ==================== MODE GELAP UNTUK SEMUA ELEMEN ==================== */
+
+/* Card & Container */
+.bg-white, .bg-gray-50 {
+  background-color: var(--card-bg) !important;
+}
+
+.border, .border-gray-100, .border-gray-200 {
+  border-color: var(--card-border) !important;
+}
+
+/* Text Colors */
+.text-gray-500, .text-gray-600, .text-gray-700, .text-gray-800 {
+  color: var(--foreground) !important;
+}
+
+.text-gray-400, .text-gray-300 {
+  color: var(--gray-text) !important;
+}
+
+/* Table Styles */
+table thead tr {
+  background-color: var(--table-header) !important;
+}
+
+table tbody tr {
+  border-bottom-color: var(--table-border) !important;
+}
+
+/* Modal Styles */
+.bg-white.rounded-xl, .bg-white.rounded-2xl {
+  background-color: var(--card-bg) !important;
+}
+
+/* Dropdown & Select */
+select, .border-gray-300 {
+  background-color: var(--card-bg) !important;
+  border-color: var(--card-border) !important;
+  color: var(--foreground) !important;
+}
+
+/* Input Fields */
+input, textarea {
+  background-color: var(--card-bg) !important;
+  border-color: var(--card-border) !important;
+  color: var(--foreground) !important;
+}
+
+/* Button Hover */
+.hover\:bg-gray-50:hover {
+  background-color: var(--gray-bg) !important;
+}
+
+/* Stat Cards */
+.group .text-gray-800 {
+  color: var(--foreground) !important;
+}
+
+/* Badge Styles */
+.bg-gray-100 {
+  background-color: var(--gray-bg) !important;
+}
+
+.bg-gray-50 {
+  background-color: var(--gray-bg) !important;
+}
+
+/* Shadow in dark mode */
+.shadow-lg, .shadow-md, .shadow-sm {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Scrollbar di dark mode */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--gray-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
 }
