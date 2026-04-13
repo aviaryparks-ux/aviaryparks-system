@@ -511,7 +511,7 @@ export default function MorningBriefingPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "employee"]}>
+    <ProtectedRoute allowedRoles={["super_admin", "hr"]}>
       <div className="space-y-6 p-6">
         {/* Header - Sama seperti Attendance Page */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 p-6 text-white shadow-xl">
