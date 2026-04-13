@@ -72,7 +72,7 @@ export default function TopNavigation() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       ),
-      allowedRoles: ["super_admin", "admin", "hr"],
+      allowedRoles: ["super_admin", "hr"], // 🔥 Hanya Super Admin dan HR
     },
     {
       name: "Shift Audit",
@@ -82,7 +82,7 @@ export default function TopNavigation() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       ),
-      allowedRoles: ["super_admin", "admin", "hr"],
+      allowedRoles: ["super_admin", "hr"], // 🔥 Hanya Super Admin dan HR
     },
     {
       name: "Users",
@@ -103,7 +103,7 @@ export default function TopNavigation() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
       ),
-      allowedRoles: ["super_admin", "admin", "hr"],
+      allowedRoles: ["super_admin", "hr"], // 🔥 Hanya Super Admin dan HR
     },
     {
       name: "Payroll",
@@ -116,7 +116,6 @@ export default function TopNavigation() {
       allowedRoles: ["super_admin", "hr", "finance"],
     },
     {
-      // 🔥 MENU BARU: MORNING BRIEFING
       name: "Morning Briefing",
       path: "/morning-briefing",
       icon: (
@@ -125,7 +124,7 @@ export default function TopNavigation() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 1v4M9 1v4M15 1v4" />
         </svg>
       ),
-      allowedRoles: ["super_admin", "admin", "hr", "manager", "spv"],
+      allowedRoles: ["super_admin", "hr"], // 🔥 Hanya Super Admin dan HR
     },
     {
       name: "Settings",
