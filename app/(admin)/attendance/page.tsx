@@ -22,6 +22,7 @@ type User = {
   bankName?: string;
   bankAccountNumber?: string;
   bankAccountName?: string;
+  isActive?: boolean;
 };
 
 type Attendance = {
@@ -405,6 +406,7 @@ export default function AttendancePage() {
     return () => unsub();
   }, [usersLoading]);
 
+  // 🔥 LOAD ATTENDANCE DENGAN FILTER USER NON-AKTIF
   useEffect(() => {
     if (usersLoading || correctionsLoading) return;
     
@@ -418,6 +420,11 @@ export default function AttendancePage() {
         snap.forEach((doc) => {
           const d = doc.data();
           const user = users[d.uid] || {};
+          
+          // 🔥 SKIP USER NON-AKTIF
+          if (user.isActive === false) {
+            return; // Lewati attendance dari user yang tidak aktif
+          }
           
           let dateStr = "";
           if (d.date?.toDate) {

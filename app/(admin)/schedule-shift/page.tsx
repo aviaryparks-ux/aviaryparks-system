@@ -272,6 +272,7 @@ export default function ScheduleShiftPage() {
     }
   }, [selectedDate, selectedDepartment, userDepartment, currentMonth, selectedEmployee]);
 
+  // 🔥 LOAD DATA DENGAN FILTER USER NON-AKTIF
   const loadData = async () => {
     setLoading(true);
     try {
@@ -280,6 +281,12 @@ export default function ScheduleShiftPage() {
       
       usersSnap.forEach(doc => {
         const data = doc.data();
+        
+        // 🔥 SKIP USER YANG TIDAK AKTIF (NON-AKTIF)
+        if (data.isActive === false) {
+          return; // Lewati user yang tidak aktif
+        }
+        
         let shouldInclude = false;
         
         if (isSuperAdmin || isHR) {
@@ -1140,7 +1147,7 @@ export default function ScheduleShiftPage() {
                                 isLibur={isLibur}
                                 allowHolidayAssign={allowHolidayAssign}
                               />
-                             </td>
+                            </td>
                           );
                         })}
                       </tr>
@@ -1422,6 +1429,7 @@ export default function ScheduleShiftPage() {
             <span>🔄 Perubahan shift akan otomatis mengupdate data attendance</span>
             <span>🔍 Fitur search otomatis - ketik "AM" maka akan muncul shift yang mengandung "AM"</span>
             <span>📅 Gunakan fitur "Assign Rentang" untuk periode dan karyawan tertentu</span>
+            <span>✅ User non-aktif tidak akan muncul di daftar karyawan</span>
           </div>
         </div>
       </div>
