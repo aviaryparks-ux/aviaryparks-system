@@ -1,5 +1,4 @@
-// app/mobile/attendance/page.tsx - VERSI FINAL
-
+// app/mobile/attendance/page.tsx
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -63,18 +62,15 @@ export default function Page() {
   const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  // STATE UNTUK SHIFT (OPSIONAL)
   const [scheduledShift, setScheduledShift] = useState<any>(null);
   const [isLoadingShift, setIsLoadingShift] = useState(true);
 
-  // STATE UNTUK REKENING BANK
   const [bankAccount, setBankAccount] = useState({
     bankName: "",
     bankAccountNumber: "",
     bankAccountName: ""
   });
   
-  // STATE UNTUK MODAL INPUT REKENING
   const [showBankModal, setShowBankModal] = useState(false);
   const [tempBankAccount, setTempBankAccount] = useState({
     bankName: "",
@@ -99,7 +95,6 @@ export default function Page() {
     }
   }, [user]);
 
-  // 🔥 BACA DATA REKENING DARI DATABASE
   const loadUserBankAccount = async () => {
     if (!user) return;
     
@@ -118,7 +113,6 @@ export default function Page() {
     }
   };
 
-  // 🔥 KARYAWAN INPUT REKENING SENDIRI
   const saveOwnBankAccount = async () => {
     if (!user) return;
     
@@ -154,7 +148,6 @@ export default function Page() {
     }
   };
 
-  // 🔥 LOAD SHIFT (OPSIONAL - TIDAK MEMAKSA)
   const loadScheduledShift = async () => {
     if (!user) return;
     
@@ -325,7 +318,6 @@ export default function Page() {
     }
   };
 
-  // 🔥 MULAI KAMERA - TANPA VALIDASI APAPUN
   const startCamera = async () => {
     if (stream) stream.getTracks().forEach(t => t.stop());
 
@@ -422,7 +414,6 @@ export default function Page() {
     getLocation();
   };
 
-  // 🔥 SAVE ATTENDANCE - TANPA VALIDASI REKENING
   const saveAttendance = async () => {
     if (!user) {
       alert("User tidak ditemukan, silakan login ulang");
@@ -456,7 +447,6 @@ export default function Page() {
       const snap = await getDoc(ref);
 
       if (!snap.exists()) {
-        // SHIFT BISA NULL
         const shiftData = scheduledShift ? {
           id: scheduledShift.id,
           name: scheduledShift.name,
@@ -467,7 +457,6 @@ export default function Page() {
           lateTolerance: scheduledShift.lateTolerance || 15,
         } : null;
         
-        // REKENING BISA NULL (opsional)
         const bankData = bankAccount.bankAccountNumber ? {
           bankName: bankAccount.bankName,
           accountNumber: bankAccount.bankAccountNumber,
@@ -479,8 +468,8 @@ export default function Page() {
           name: user.name,
           email: user.email,
           date: Timestamp.fromDate(today),
-          bankAccount: bankData, // BISA NULL
-          shift: shiftData, // BISA NULL
+          bankAccount: bankData,
+          shift: shiftData,
           checkIn: {
             time: Timestamp.now(),
             photo: photoUrl,
@@ -532,154 +521,19 @@ export default function Page() {
   const formattedDate = today.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-900 to-green-800 p-4">
-      {/* Main Card */}
-      <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 max-w-md mx-auto border border-white/20 mb-4">
-        <div className="text-center mb-6">
-          <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
-            <span className="text-3xl">📸</span>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-800">Absensi Lokasi</h1>
-          <p className="text-gray-500 text-sm mt-1">{formattedDate}</p>
-        </div>
-
-        {/* Status Absensi */}
-        <div className="space-y-3 mb-6">
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isCheckedIn ? "bg-green-100" : "bg-gray-200"}`}>
-                <span className="text-xl">📥</span>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Check-in</p>
-                <p className="font-semibold text-gray-800">
-                  {isCheckedIn ? formatTime(isCheckedIn.time) : "Belum absen"}
-                </p>
-              </div>
-            </div>
-            {isCheckedIn?.photo && (
-              <img src={isCheckedIn.photo} className="w-10 h-10 rounded-full object-cover ring-2 ring-green-300" />
-            )}
-          </div>
-
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isCheckedOut ? "bg-blue-100" : "bg-gray-200"}`}>
-                <span className="text-xl">📤</span>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Check-out</p>
-                <p className="font-semibold text-gray-800">
-                  {isCheckedOut ? formatTime(isCheckedOut.time) : "Belum absen"}
-                </p>
-              </div>
-            </div>
-            {isCheckedOut?.photo && (
-              <img src={isCheckedOut.photo} className="w-10 h-10 rounded-full object-cover ring-2 ring-blue-300" />
-            )}
-          </div>
-        </div>
-
-        {/* 🔥 TAMPILAN REKENING DENGAN TOMBOL INPUT */}
-        <div className="mb-4">
-          {bankAccount.bankAccountNumber ? (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">🏦</span>
-                  <div>
-                    <p className="text-xs text-green-600 font-medium">Data Rekening</p>
-                    <p className="text-sm font-semibold text-gray-800">
-                      {bankAccount.bankName} - {bankAccount.bankAccountNumber}
-                    </p>
-                    {bankAccount.bankAccountName && (
-                      <p className="text-xs text-gray-500">a.n. {bankAccount.bankAccountName}</p>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setTempBankAccount({
-                      bankName: bankAccount.bankName,
-                      bankAccountNumber: bankAccount.bankAccountNumber,
-                      bankAccountName: bankAccount.bankAccountName
-                    });
-                    setShowBankModal(true);
-                  }}
-                  className="text-blue-600 text-xs bg-blue-100 px-2 py-1 rounded-full hover:bg-blue-200"
-                >
-                  Update
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">⚠️</span>
-                  <div>
-                    <p className="text-xs text-yellow-700 font-medium">Rekening Belum Diisi</p>
-                    <p className="text-xs text-gray-600">Isi rekening untuk memudahkan pembayaran gaji</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowBankModal(true)}
-                  className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700"
-                >
-                  + Isi Rekening
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 🔥 TAMPILAN SHIFT (OPSIONAL) */}
-        <div className="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-200">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm">📋</span>
-            <span className="text-sm font-medium text-blue-700">
-              {scheduledShift ? "Shift Hari Ini" : "Informasi Shift"}
-            </span>
-          </div>
-          {isLoadingShift ? (
-            <div className="flex justify-center py-2">
-              <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : scheduledShift ? (
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-bold text-gray-800">{scheduledShift.name}</p>
-                <p className="text-xs text-gray-600">
-                  {scheduledShift.startTime} - {scheduledShift.endTime}
-                </p>
-              </div>
-              <div 
-                className="w-8 h-8 rounded-full" 
-                style={{ backgroundColor: scheduledShift.color }}
-              />
-            </div>
-          ) : (
-            <div className="text-center">
-              <p className="text-sm text-yellow-600">
-                Tidak ada jadwal shift untuk hari ini
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Anda tetap bisa absen
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Tombol Absen - SELALU AKTIF */}
-        {!isCheckedOut ? (
+    <div className="min-h-screen bg-gradient-to-br from-green-900 to-green-800">
+      {/* 🔥 FLOATING BUTTON UNTUK ABSEN (DI BAWAH, TETAP TERLIHAT) */}
+      {!isCheckedOut && (
+        <div className="fixed bottom-6 left-4 right-4 z-30">
           <button
             onClick={startCamera}
             disabled={isLoadingShift}
-            className="w-full py-4 font-bold rounded-2xl shadow-lg transition-all bg-gradient-to-r from-green-600 to-green-700 text-white hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-5 font-bold rounded-2xl shadow-xl transition-all bg-gradient-to-r from-green-500 to-green-600 text-white text-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ boxShadow: "0 4px 20px rgba(34, 197, 94, 0.4)" }}
           >
             {isLoadingShift ? (
               <div className="flex items-center justify-center gap-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 <span>Memuat...</span>
               </div>
             ) : isCheckedIn ? (
@@ -688,78 +542,217 @@ export default function Page() {
               "📸 Ambil Foto Check-in"
             )}
           </button>
-        ) : (
-          <div className="text-center p-4 bg-green-100 rounded-2xl">
-            <p className="text-green-700 font-medium">✅ Absensi selesai hari ini</p>
-          </div>
-        )}
-
-        <p className="text-xs text-gray-400 text-center mt-4">
-          Pastikan GPS aktif dan berada di lokasi kantor
-        </p>
-      </div>
-
-      {/* HISTORY SECTION */}
-      <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 max-w-md mx-auto border border-white/20">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-            <span className="text-xl">📋</span>
-            Riwayat Absensi
-          </h2>
-          <button onClick={loadHistory} className="text-green-600 text-sm hover:text-green-700">
-            Refresh
-          </button>
+          <p className="text-center text-white/50 text-[10px] mt-2">
+            Pastikan GPS aktif dan berada di lokasi kantor
+          </p>
         </div>
+      )}
 
-        {isLoadingHistory ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="animate-pulse bg-gray-100 rounded-xl p-4">
-                <div className="h-12 bg-gray-200 rounded-lg"></div>
+      {/* KONTEN UTAMA (SCROLLABLE) */}
+      <div className="pb-32">
+        {/* Header Card */}
+        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 mx-4 mt-4 border border-white/20">
+          <div className="text-center mb-4">
+            <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
+              <span className="text-3xl">📸</span>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-800">Absensi Lokasi</h1>
+            <p className="text-gray-500 text-sm mt-1">{formattedDate}</p>
+          </div>
+
+          {/* Status Absensi */}
+          <div className="space-y-3 mb-4">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isCheckedIn ? "bg-green-100" : "bg-gray-200"}`}>
+                  <span className="text-xl">📥</span>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Check-in</p>
+                  <p className="font-semibold text-gray-800">
+                    {isCheckedIn ? formatTime(isCheckedIn.time) : "Belum absen"}
+                  </p>
+                </div>
               </div>
-            ))}
+              {isCheckedIn?.photo && (
+                <img src={isCheckedIn.photo} className="w-10 h-10 rounded-full object-cover ring-2 ring-green-300" />
+              )}
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isCheckedOut ? "bg-blue-100" : "bg-gray-200"}`}>
+                  <span className="text-xl">📤</span>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Check-out</p>
+                  <p className="font-semibold text-gray-800">
+                    {isCheckedOut ? formatTime(isCheckedOut.time) : "Belum absen"}
+                  </p>
+                </div>
+              </div>
+              {isCheckedOut?.photo && (
+                <img src={isCheckedOut.photo} className="w-10 h-10 rounded-full object-cover ring-2 ring-blue-300" />
+              )}
+            </div>
           </div>
-        ) : history.length === 0 ? (
-          <div className="text-center py-8">
-            <div className="text-5xl mb-3">📭</div>
-            <p className="text-gray-500">Belum ada riwayat absensi</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {history.map((item, index) => {
-              const date = item.date?.toDate();
-              const checkIn = item.checkIn;
-              const checkOut = item.checkOut;
-              const workHours = calculateWorkHours(checkIn, checkOut);
-              const isComplete = checkIn && checkOut;
-              const shift = item.shift;
-              
-              return (
-                <div key={item.id || index} className={`p-3 rounded-xl ${isComplete ? "bg-green-50 border border-green-200" : "bg-gray-50 border border-gray-200"}`}>
-                  <div className="flex items-center justify-between mb-2">
+
+          {/* Rekening Card */}
+          <div className="mb-4">
+            {bankAccount.bankAccountNumber ? (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🏦</span>
                     <div>
-                      <p className="font-medium text-gray-800 text-sm">
-                        {date?.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
+                      <p className="text-xs text-green-600 font-medium">Data Rekening</p>
+                      <p className="text-sm font-semibold text-gray-800">
+                        {bankAccount.bankName} - {bankAccount.bankAccountNumber}
                       </p>
-                      {shift && (
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: shift.color }} />
-                          <span className="text-xs text-gray-500">Shift: {shift.name}</span>
-                        </div>
+                      {bankAccount.bankAccountName && (
+                        <p className="text-xs text-gray-500">a.n. {bankAccount.bankAccountName}</p>
                       )}
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs font-mono">
-                        {checkIn ? formatTime(checkIn.time) : "--:--"} - {checkOut ? formatTime(checkOut.time) : "--:--"}
-                      </p>
-                      {workHours !== "-" && <p className="text-xs text-gray-500">{workHours}</p>}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setTempBankAccount({
+                        bankName: bankAccount.bankName,
+                        bankAccountNumber: bankAccount.bankAccountNumber,
+                        bankAccountName: bankAccount.bankAccountName
+                      });
+                      setShowBankModal(true);
+                    }}
+                    className="text-blue-600 text-xs bg-blue-100 px-2 py-1 rounded-full hover:bg-blue-200"
+                  >
+                    Update
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">⚠️</span>
+                    <div>
+                      <p className="text-xs text-yellow-700 font-medium">Rekening Belum Diisi</p>
+                      <p className="text-xs text-gray-600">Isi rekening untuk memudahkan pembayaran gaji</p>
                     </div>
                   </div>
+                  <button
+                    onClick={() => setShowBankModal(true)}
+                    className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700"
+                  >
+                    + Isi Rekening
+                  </button>
                 </div>
-              );
-            })}
+              </div>
+            )}
           </div>
-        )}
+
+          {/* Shift Card */}
+          <div className="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-200">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sm">📋</span>
+              <span className="text-sm font-medium text-blue-700">
+                {scheduledShift ? "Shift Hari Ini" : "Informasi Shift"}
+              </span>
+            </div>
+            {isLoadingShift ? (
+              <div className="flex justify-center py-2">
+                <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : scheduledShift ? (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-gray-800">{scheduledShift.name}</p>
+                  <p className="text-xs text-gray-600">
+                    {scheduledShift.startTime} - {scheduledShift.endTime}
+                  </p>
+                </div>
+                <div 
+                  className="w-8 h-8 rounded-full" 
+                  style={{ backgroundColor: scheduledShift.color }}
+                />
+              </div>
+            ) : (
+              <div className="text-center">
+                <p className="text-sm text-yellow-600">
+                  Tidak ada jadwal shift untuk hari ini
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Anda tetap bisa absen
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* HISTORY SECTION */}
+        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 mx-4 mt-4 border border-white/20">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+              <span className="text-xl">📋</span>
+              Riwayat Absensi
+            </h2>
+            <button onClick={loadHistory} className="text-green-600 text-sm hover:text-green-700">
+              Refresh
+            </button>
+          </div>
+
+          {isLoadingHistory ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="animate-pulse bg-gray-100 rounded-xl p-4">
+                  <div className="h-12 bg-gray-200 rounded-lg"></div>
+                </div>
+              ))}
+            </div>
+          ) : history.length === 0 ? (
+            <div className="text-center py-8">
+              <div className="text-5xl mb-3">📭</div>
+              <p className="text-gray-500">Belum ada riwayat absensi</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {history.map((item, index) => {
+                const date = item.date?.toDate();
+                const checkIn = item.checkIn;
+                const checkOut = item.checkOut;
+                const workHours = calculateWorkHours(checkIn, checkOut);
+                const isComplete = checkIn && checkOut;
+                const shift = item.shift;
+                
+                return (
+                  <div key={item.id || index} className={`p-3 rounded-xl ${isComplete ? "bg-green-50 border border-green-200" : "bg-gray-50 border border-gray-200"}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <p className="font-medium text-gray-800 text-sm">
+                          {date?.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
+                        </p>
+                        {shift && (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: shift.color }} />
+                            <span className="text-xs text-gray-500">Shift: {shift.name}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs font-mono">
+                          {checkIn ? formatTime(checkIn.time) : "--:--"} - {checkOut ? formatTime(checkOut.time) : "--:--"}
+                        </p>
+                        {workHours !== "-" && <p className="text-xs text-gray-500">{workHours}</p>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Spacer untuk floating button */}
+        <div className="h-24" />
       </div>
 
       {/* Camera Modal */}
@@ -785,7 +778,7 @@ export default function Page() {
         </div>
       )}
 
-      {/* Bank Account Modal - Karyawan Input Sendiri */}
+      {/* Bank Account Modal */}
       {showBankModal && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
