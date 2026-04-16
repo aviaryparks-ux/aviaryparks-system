@@ -521,19 +521,154 @@ export default function Page() {
   const formattedDate = today.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-900 to-green-800">
-      {/* 🔥 FLOATING BUTTON UNTUK ABSEN (DI BAWAH, TETAP TERLIHAT) */}
-      {!isCheckedOut && (
-        <div className="fixed bottom-6 left-4 right-4 z-30">
+    <div className="min-h-screen bg-gradient-to-br from-green-900 to-green-800 p-4">
+      {/* Main Card */}
+      <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 max-w-md mx-auto border border-white/20 mb-4">
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
+            <span className="text-3xl">📸</span>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800">Absensi Lokasi</h1>
+          <p className="text-gray-500 text-sm mt-1">{formattedDate}</p>
+        </div>
+
+        {/* Status Absensi */}
+        <div className="space-y-3 mb-6">
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isCheckedIn ? "bg-green-100" : "bg-gray-200"}`}>
+                <span className="text-xl">📥</span>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Check-in</p>
+                <p className="font-semibold text-gray-800">
+                  {isCheckedIn ? formatTime(isCheckedIn.time) : "Belum absen"}
+                </p>
+              </div>
+            </div>
+            {isCheckedIn?.photo && (
+              <img src={isCheckedIn.photo} className="w-10 h-10 rounded-full object-cover ring-2 ring-green-300" />
+            )}
+          </div>
+
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isCheckedOut ? "bg-blue-100" : "bg-gray-200"}`}>
+                <span className="text-xl">📤</span>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Check-out</p>
+                <p className="font-semibold text-gray-800">
+                  {isCheckedOut ? formatTime(isCheckedOut.time) : "Belum absen"}
+                </p>
+              </div>
+            </div>
+            {isCheckedOut?.photo && (
+              <img src={isCheckedOut.photo} className="w-10 h-10 rounded-full object-cover ring-2 ring-blue-300" />
+            )}
+          </div>
+        </div>
+
+        {/* TAMPILAN REKENING */}
+        <div className="mb-4">
+          {bankAccount.bankAccountNumber ? (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🏦</span>
+                  <div>
+                    <p className="text-xs text-green-600 font-medium">Data Rekening</p>
+                    <p className="text-sm font-semibold text-gray-800">
+                      {bankAccount.bankName} - {bankAccount.bankAccountNumber}
+                    </p>
+                    {bankAccount.bankAccountName && (
+                      <p className="text-xs text-gray-500">a.n. {bankAccount.bankAccountName}</p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setTempBankAccount({
+                      bankName: bankAccount.bankName,
+                      bankAccountNumber: bankAccount.bankAccountNumber,
+                      bankAccountName: bankAccount.bankAccountName
+                    });
+                    setShowBankModal(true);
+                  }}
+                  className="text-blue-600 text-xs bg-blue-100 px-2 py-1 rounded-full hover:bg-blue-200"
+                >
+                  Update
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">⚠️</span>
+                  <div>
+                    <p className="text-xs text-yellow-700 font-medium">Rekening Belum Diisi</p>
+                    <p className="text-xs text-gray-600">Isi rekening untuk memudahkan pembayaran gaji</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowBankModal(true)}
+                  className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700"
+                >
+                  + Isi Rekening
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* TAMPILAN SHIFT */}
+        <div className="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-200">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm">📋</span>
+            <span className="text-sm font-medium text-blue-700">
+              {scheduledShift ? "Shift Hari Ini" : "Informasi Shift"}
+            </span>
+          </div>
+          {isLoadingShift ? (
+            <div className="flex justify-center py-2">
+              <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : scheduledShift ? (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-bold text-gray-800">{scheduledShift.name}</p>
+                <p className="text-xs text-gray-600">
+                  {scheduledShift.startTime} - {scheduledShift.endTime}
+                </p>
+              </div>
+              <div 
+                className="w-8 h-8 rounded-full" 
+                style={{ backgroundColor: scheduledShift.color }}
+              />
+            </div>
+          ) : (
+            <div className="text-center">
+              <p className="text-sm text-yellow-600">
+                Tidak ada jadwal shift untuk hari ini
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Anda tetap bisa absen
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Tombol Absen - SELALU AKTIF */}
+        {!isCheckedOut ? (
           <button
             onClick={startCamera}
             disabled={isLoadingShift}
-            className="w-full py-5 font-bold rounded-2xl shadow-xl transition-all bg-gradient-to-r from-green-500 to-green-600 text-white text-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ boxShadow: "0 4px 20px rgba(34, 197, 94, 0.4)" }}
+            className="w-full py-4 font-bold rounded-2xl shadow-lg transition-all bg-gradient-to-r from-green-600 to-green-700 text-white hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoadingShift ? (
               <div className="flex items-center justify-center gap-2">
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 <span>Memuat...</span>
               </div>
             ) : isCheckedIn ? (
@@ -542,217 +677,78 @@ export default function Page() {
               "📸 Ambil Foto Check-in"
             )}
           </button>
-          <p className="text-center text-white/50 text-[10px] mt-2">
-            Pastikan GPS aktif dan berada di lokasi kantor
-          </p>
+        ) : (
+          <div className="text-center p-4 bg-green-100 rounded-2xl">
+            <p className="text-green-700 font-medium">✅ Absensi selesai hari ini</p>
+          </div>
+        )}
+
+        <p className="text-xs text-gray-400 text-center mt-4">
+          Pastikan GPS aktif dan berada di lokasi kantor
+        </p>
+      </div>
+
+      {/* HISTORY SECTION */}
+      <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 max-w-md mx-auto border border-white/20">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+            <span className="text-xl">📋</span>
+            Riwayat Absensi
+          </h2>
+          <button onClick={loadHistory} className="text-green-600 text-sm hover:text-green-700">
+            Refresh
+          </button>
         </div>
-      )}
 
-      {/* KONTEN UTAMA (SCROLLABLE) */}
-      <div className="pb-32">
-        {/* Header Card */}
-        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 mx-4 mt-4 border border-white/20">
-          <div className="text-center mb-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
-              <span className="text-3xl">📸</span>
-            </div>
-            <h1 className="text-2xl font-bold text-gray-800">Absensi Lokasi</h1>
-            <p className="text-gray-500 text-sm mt-1">{formattedDate}</p>
-          </div>
-
-          {/* Status Absensi */}
-          <div className="space-y-3 mb-4">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isCheckedIn ? "bg-green-100" : "bg-gray-200"}`}>
-                  <span className="text-xl">📥</span>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Check-in</p>
-                  <p className="font-semibold text-gray-800">
-                    {isCheckedIn ? formatTime(isCheckedIn.time) : "Belum absen"}
-                  </p>
-                </div>
+        {isLoadingHistory ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="animate-pulse bg-gray-100 rounded-xl p-4">
+                <div className="h-12 bg-gray-200 rounded-lg"></div>
               </div>
-              {isCheckedIn?.photo && (
-                <img src={isCheckedIn.photo} className="w-10 h-10 rounded-full object-cover ring-2 ring-green-300" />
-              )}
-            </div>
-
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isCheckedOut ? "bg-blue-100" : "bg-gray-200"}`}>
-                  <span className="text-xl">📤</span>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Check-out</p>
-                  <p className="font-semibold text-gray-800">
-                    {isCheckedOut ? formatTime(isCheckedOut.time) : "Belum absen"}
-                  </p>
-                </div>
-              </div>
-              {isCheckedOut?.photo && (
-                <img src={isCheckedOut.photo} className="w-10 h-10 rounded-full object-cover ring-2 ring-blue-300" />
-              )}
-            </div>
+            ))}
           </div>
-
-          {/* Rekening Card */}
-          <div className="mb-4">
-            {bankAccount.bankAccountNumber ? (
-              <div className="bg-green-50 border border-green-200 rounded-xl p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">🏦</span>
+        ) : history.length === 0 ? (
+          <div className="text-center py-8">
+            <div className="text-5xl mb-3">📭</div>
+            <p className="text-gray-500">Belum ada riwayat absensi</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {history.map((item, index) => {
+              const date = item.date?.toDate();
+              const checkIn = item.checkIn;
+              const checkOut = item.checkOut;
+              const workHours = calculateWorkHours(checkIn, checkOut);
+              const isComplete = checkIn && checkOut;
+              const shift = item.shift;
+              
+              return (
+                <div key={item.id || index} className={`p-3 rounded-xl ${isComplete ? "bg-green-50 border border-green-200" : "bg-gray-50 border border-gray-200"}`}>
+                  <div className="flex items-center justify-between mb-2">
                     <div>
-                      <p className="text-xs text-green-600 font-medium">Data Rekening</p>
-                      <p className="text-sm font-semibold text-gray-800">
-                        {bankAccount.bankName} - {bankAccount.bankAccountNumber}
+                      <p className="font-medium text-gray-800 text-sm">
+                        {date?.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
                       </p>
-                      {bankAccount.bankAccountName && (
-                        <p className="text-xs text-gray-500">a.n. {bankAccount.bankAccountName}</p>
+                      {shift && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: shift.color }} />
+                          <span className="text-xs text-gray-500">Shift: {shift.name}</span>
+                        </div>
                       )}
                     </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setTempBankAccount({
-                        bankName: bankAccount.bankName,
-                        bankAccountNumber: bankAccount.bankAccountNumber,
-                        bankAccountName: bankAccount.bankAccountName
-                      });
-                      setShowBankModal(true);
-                    }}
-                    className="text-blue-600 text-xs bg-blue-100 px-2 py-1 rounded-full hover:bg-blue-200"
-                  >
-                    Update
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">⚠️</span>
-                    <div>
-                      <p className="text-xs text-yellow-700 font-medium">Rekening Belum Diisi</p>
-                      <p className="text-xs text-gray-600">Isi rekening untuk memudahkan pembayaran gaji</p>
+                    <div className="text-right">
+                      <p className="text-xs font-mono">
+                        {checkIn ? formatTime(checkIn.time) : "--:--"} - {checkOut ? formatTime(checkOut.time) : "--:--"}
+                      </p>
+                      {workHours !== "-" && <p className="text-xs text-gray-500">{workHours}</p>}
                     </div>
                   </div>
-                  <button
-                    onClick={() => setShowBankModal(true)}
-                    className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700"
-                  >
-                    + Isi Rekening
-                  </button>
                 </div>
-              </div>
-            )}
+              );
+            })}
           </div>
-
-          {/* Shift Card */}
-          <div className="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-200">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-sm">📋</span>
-              <span className="text-sm font-medium text-blue-700">
-                {scheduledShift ? "Shift Hari Ini" : "Informasi Shift"}
-              </span>
-            </div>
-            {isLoadingShift ? (
-              <div className="flex justify-center py-2">
-                <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : scheduledShift ? (
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-gray-800">{scheduledShift.name}</p>
-                  <p className="text-xs text-gray-600">
-                    {scheduledShift.startTime} - {scheduledShift.endTime}
-                  </p>
-                </div>
-                <div 
-                  className="w-8 h-8 rounded-full" 
-                  style={{ backgroundColor: scheduledShift.color }}
-                />
-              </div>
-            ) : (
-              <div className="text-center">
-                <p className="text-sm text-yellow-600">
-                  Tidak ada jadwal shift untuk hari ini
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Anda tetap bisa absen
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* HISTORY SECTION */}
-        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 mx-4 mt-4 border border-white/20">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-              <span className="text-xl">📋</span>
-              Riwayat Absensi
-            </h2>
-            <button onClick={loadHistory} className="text-green-600 text-sm hover:text-green-700">
-              Refresh
-            </button>
-          </div>
-
-          {isLoadingHistory ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="animate-pulse bg-gray-100 rounded-xl p-4">
-                  <div className="h-12 bg-gray-200 rounded-lg"></div>
-                </div>
-              ))}
-            </div>
-          ) : history.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="text-5xl mb-3">📭</div>
-              <p className="text-gray-500">Belum ada riwayat absensi</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {history.map((item, index) => {
-                const date = item.date?.toDate();
-                const checkIn = item.checkIn;
-                const checkOut = item.checkOut;
-                const workHours = calculateWorkHours(checkIn, checkOut);
-                const isComplete = checkIn && checkOut;
-                const shift = item.shift;
-                
-                return (
-                  <div key={item.id || index} className={`p-3 rounded-xl ${isComplete ? "bg-green-50 border border-green-200" : "bg-gray-50 border border-gray-200"}`}>
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <p className="font-medium text-gray-800 text-sm">
-                          {date?.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
-                        </p>
-                        {shift && (
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: shift.color }} />
-                            <span className="text-xs text-gray-500">Shift: {shift.name}</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs font-mono">
-                          {checkIn ? formatTime(checkIn.time) : "--:--"} - {checkOut ? formatTime(checkOut.time) : "--:--"}
-                        </p>
-                        {workHours !== "-" && <p className="text-xs text-gray-500">{workHours}</p>}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Spacer untuk floating button */}
-        <div className="h-24" />
+        )}
       </div>
 
       {/* Camera Modal */}
@@ -862,11 +858,12 @@ export default function Page() {
         </div>
       )}
 
-      {/* Map Modal */}
+      {/* 🔥 MAP MODAL - DIPERBAIKI TOMBOLNYA */}
       {showMap && photoUri && location && matchedLocation && (
         <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="bg-gradient-to-r from-green-600 to-green-700 p-4 text-white flex justify-between items-center">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-green-600 to-green-700 p-4 text-white flex justify-between items-center shrink-0">
               <h2 className="text-lg font-bold text-center flex-1">{isCheckedIn ? "Check-out" : "Check-in"}</h2>
               <button onClick={refreshLocation} className="bg-white/20 rounded-full p-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -874,29 +871,56 @@ export default function Page() {
                 </svg>
               </button>
             </div>
-            <div className="p-4">
-              <img src={photoUri} alt="Preview" className="w-full rounded-xl" />
-            </div>
-            <div className="p-4">
-              <div className="h-64 rounded-xl overflow-hidden">
-                <MapContainer bounds={[[location.lat, location.lng], [matchedLocation.lat, matchedLocation.lng]]} style={{ height: "100%", width: "100%" }} zoomControl={false}>
-                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                  <Circle center={[matchedLocation.lat, matchedLocation.lng]} radius={matchedLocation.radius} pathOptions={{ color: "#22c55e", fillColor: "#22c55e", fillOpacity: 0.2 }} />
-                  <Marker position={[matchedLocation.lat, matchedLocation.lng]} icon={L.divIcon({ html: '<div style="background-color: #22c55e; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white;"></div>', iconSize: [16, 16] })} />
-                  <Marker position={[location.lat, location.lng]} icon={L.divIcon({ html: '<div style="background-color: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white;"></div>', iconSize: [16, 16] })} />
-                  <Polyline positions={[[location.lat, location.lng], [matchedLocation.lat, matchedLocation.lng]]} pathOptions={{ color: "#3b82f6", dashArray: "5, 5" }} />
-                </MapContainer>
+            
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto">
+              {/* Foto Preview */}
+              <div className="p-4">
+                <img src={photoUri} alt="Preview" className="w-full rounded-xl" />
+              </div>
+              
+              {/* Status Card */}
+              <div className="px-4 pb-2">
+                <div className={`p-3 rounded-xl text-center ${isWithinRadius ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                  <div className="font-bold">{isWithinRadius ? "✓ Dalam Radius Kantor" : "✗ Di Luar Radius Kantor"}</div>
+                  <div className="text-sm">Jarak: {distance.toFixed(0)}m (Maks: {matchedLocation.radius}m)</div>
+                </div>
+              </div>
+              
+              {/* Map */}
+              <div className="px-4 pb-2">
+                <div className="h-48 rounded-xl overflow-hidden">
+                  <MapContainer bounds={[[location.lat, location.lng], [matchedLocation.lat, matchedLocation.lng]]} style={{ height: "100%", width: "100%" }} zoomControl={false}>
+                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    <Circle center={[matchedLocation.lat, matchedLocation.lng]} radius={matchedLocation.radius} pathOptions={{ color: "#22c55e", fillColor: "#22c55e", fillOpacity: 0.2 }} />
+                    <Marker position={[matchedLocation.lat, matchedLocation.lng]} icon={L.divIcon({ html: '<div style="background-color: #22c55e; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white;"></div>', iconSize: [16, 16] })} />
+                    <Marker position={[location.lat, location.lng]} icon={L.divIcon({ html: '<div style="background-color: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white;"></div>', iconSize: [16, 16] })} />
+                    <Polyline positions={[[location.lat, location.lng], [matchedLocation.lat, matchedLocation.lng]]} pathOptions={{ color: "#3b82f6", dashArray: "5, 5" }} />
+                  </MapContainer>
+                </div>
               </div>
             </div>
-            <div className="p-4 pt-0 space-y-3">
-              <div className={`p-3 rounded-xl text-center ${isWithinRadius ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                <div className="font-bold">{isWithinRadius ? "✓ Dalam Radius Kantor" : "✗ Di Luar Radius Kantor"}</div>
-                <div className="text-sm">Jarak: {distance.toFixed(0)}m (Maks: {matchedLocation.radius}m)</div>
-              </div>
-              <button onClick={saveAttendance} disabled={!isWithinRadius || isSaving} className={`w-full py-4 rounded-2xl font-bold ${isWithinRadius && !isSaving ? "bg-green-600 text-white" : "bg-gray-300 text-gray-500 cursor-not-allowed"}`}>
-                {isSaving ? "Mengupload..." : (isCheckedIn ? "✅ Simpan Check-out" : "✅ Simpan Check-in")}
+            
+            {/* 🔥 TOMBOL - FIXED DI BAWAH (TIDAK PERLU SCROLL) */}
+            <div className="p-4 border-t border-gray-200 bg-white shrink-0">
+              <button 
+                onClick={saveAttendance} 
+                disabled={!isWithinRadius || isSaving} 
+                className={`w-full py-4 rounded-2xl font-bold text-white transition-all ${isWithinRadius && !isSaving ? "bg-green-600 hover:bg-green-700 active:scale-95" : "bg-gray-400 cursor-not-allowed"}`}
+              >
+                {isSaving ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Menyimpan...</span>
+                  </div>
+                ) : (
+                  <span>{isCheckedIn ? "✅ Simpan Check-out" : "✅ Simpan Check-in"}</span>
+                )}
               </button>
-              <button onClick={() => { setShowMap(false); setPhotoUri(null); setLocation(null); }} className="w-full py-3 bg-gray-200 text-gray-700 font-bold rounded-2xl">
+              <button 
+                onClick={() => { setShowMap(false); setPhotoUri(null); setLocation(null); }} 
+                className="w-full mt-2 py-3 bg-gray-200 text-gray-700 font-bold rounded-2xl hover:bg-gray-300 transition-colors"
+              >
                 Kembali
               </button>
             </div>
