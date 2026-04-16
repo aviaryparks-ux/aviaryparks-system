@@ -3,12 +3,11 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { db, storage } from "@/lib/firebase";
+import { db, storage, auth } from "@/lib/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useRouter } from "next/navigation";
-import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 
 export default function MobileProfilePage() {
   const { user } = useAuth();
@@ -19,6 +18,17 @@ export default function MobileProfilePage() {
   const [userData, setUserData] = useState<any>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  
+  // 🔥 STATE UNTUK GANTI PASSWORD
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
   // Form state
   const [name, setName] = useState("");
@@ -49,7 +59,6 @@ export default function MobileProfilePage() {
         setJabatan(data.jabatan || data.position || "-");
         setEmail(user.email || data.email || "-");
         
-        // Format join date
         if (data.joinDate) {
           setJoinDate(data.joinDate);
         } else if (data.createdAt?.toDate) {
@@ -114,6 +123,79 @@ export default function MobileProfilePage() {
     }
   };
 
+  // 🔥 FUNGSI GANTI PASSWORD
+  const handleChangePassword = async () => {
+    setPasswordError("");
+    
+    // Validasi
+    if (!currentPassword) {
+      setPasswordError("Password saat ini wajib diisi");
+      return;
+    }
+    
+    if (!newPassword) {
+      setPasswordError("Password baru wajib diisi");
+      return;
+    }
+    
+    if (newPassword.length < 6) {
+      setPasswordError("Password baru minimal 6 karakter");
+      return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Konfirmasi password tidak cocok");
+      return;
+    }
+    
+    setIsChangingPassword(true);
+    
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser || !currentUser.email) {
+        throw new Error("User tidak ditemukan");
+      }
+      
+      // Re-authenticate user sebelum ganti password
+      const credential = EmailAuthProvider.credential(
+        currentUser.email,
+        currentPassword
+      );
+      
+      await reauthenticateWithCredential(currentUser, credential);
+      
+      // Update password
+      await updatePassword(currentUser, newPassword);
+      
+      // Bersihkan form
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setShowPasswordModal(false);
+      
+      alert("✅ Password berhasil diubah! Silakan login kembali dengan password baru.");
+      
+      // Logout user setelah ganti password
+      await signOut(auth);
+      router.push("/login");
+      
+    } catch (error: any) {
+      console.error("Error changing password:", error);
+      
+      if (error.code === "auth/wrong-password") {
+        setPasswordError("Password saat ini salah");
+      } else if (error.code === "auth/weak-password") {
+        setPasswordError("Password terlalu lemah, minimal 6 karakter");
+      } else if (error.code === "auth/requires-recent-login") {
+        setPasswordError("Sesi sudah lama, silakan login ulang");
+      } else {
+        setPasswordError(error.message || "Gagal mengubah password");
+      }
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -171,6 +253,16 @@ export default function MobileProfilePage() {
           </button>
           <h1 className="text-xl font-bold text-white">Profil Saya</h1>
           <div className="flex-1"></div>
+          {/* Tombol Ganti Password */}
+          <button
+            onClick={() => setShowPasswordModal(true)}
+            className="text-yellow-400 p-2 hover:bg-yellow-500/20 rounded-full transition-colors"
+            title="Ganti Password"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </button>
           {/* Tombol Logout */}
           <button
             onClick={() => setShowLogoutConfirm(true)}
@@ -376,6 +468,152 @@ export default function MobileProfilePage() {
           </p>
         </div>
       </div>
+
+      {/* 🔥 MODAL GANTI PASSWORD */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                    <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-800">Ganti Password</h3>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowPasswordModal(false);
+                    setPasswordError("");
+                    setCurrentPassword("");
+                    setNewPassword("");
+                    setConfirmPassword("");
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                {/* Password Saat Ini */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Password Saat Ini
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showCurrentPassword ? "text" : "password"}
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2 pr-10 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                      placeholder="Masukkan password saat ini"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showCurrentPassword ? "🙈" : "👁️"}
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Password Baru */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Password Baru
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2 pr-10 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                      placeholder="Minimal 6 karakter"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showNewPassword ? "🙈" : "👁️"}
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Konfirmasi Password Baru */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Konfirmasi Password Baru
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2 pr-10 focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                      placeholder="Ulangi password baru"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showConfirmPassword ? "🙈" : "👁️"}
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Error Message */}
+                {passwordError && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <p className="text-red-600 text-sm">{passwordError}</p>
+                  </div>
+                )}
+                
+                {/* Info */}
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <p className="text-yellow-700 text-xs">
+                    ⚠️ Setelah mengganti password, Anda akan logout dan harus login kembali dengan password baru.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowPasswordModal(false);
+                    setPasswordError("");
+                    setCurrentPassword("");
+                    setNewPassword("");
+                    setConfirmPassword("");
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleChangePassword}
+                  disabled={isChangingPassword}
+                  className="flex-1 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50"
+                >
+                  {isChangingPassword ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Memproses...
+                    </div>
+                  ) : (
+                    "Ganti Password"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Logout Confirmation Modal */}
       {showLogoutConfirm && (
