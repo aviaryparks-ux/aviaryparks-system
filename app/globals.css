@@ -311,3 +311,352 @@ body {
 .animate-slide-in-right {
   animation: slide-in-right 0.3s ease-out;
 }
+
+/* ========================================
+   SIDEBAR & LAYOUT STYLES
+   ======================================== */
+
+/* Sidebar transitions */
+.sidebar-transition {
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Sidebar menu item hover effect */
+.sidebar-item {
+  position: relative;
+  overflow: hidden;
+}
+
+.sidebar-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--primary);
+  transform: scaleY(0);
+  transition: transform 0.2s ease;
+}
+
+.sidebar-item:hover::before {
+  transform: scaleY(1);
+}
+
+.sidebar-item-active {
+  background-color: rgba(5, 150, 105, 0.1);
+  color: var(--primary);
+}
+
+.sidebar-item-active::before {
+  transform: scaleY(1);
+}
+
+/* Tooltip untuk collapsed sidebar */
+.sidebar-tooltip {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: #1f2937;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.group:hover .sidebar-tooltip {
+  opacity: 1;
+}
+
+/* Dark mode tooltip */
+@media (prefers-color-scheme: dark) {
+  .sidebar-tooltip {
+    background: #374151;
+    color: #f3f4f6;
+  }
+}
+
+/* Mobile drawer overlay */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+  z-index: 40;
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Drawer animation */
+.drawer-enter {
+  transform: translateX(-100%);
+}
+
+.drawer-enter-active {
+  transform: translateX(0);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.drawer-exit {
+  transform: translateX(0);
+}
+
+.drawer-exit-active {
+  transform: translateX(-100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Collapsed sidebar style */
+.sidebar-collapsed .sidebar-item span:not(.icon) {
+  display: none;
+}
+
+.sidebar-collapsed .sidebar-group-title {
+  display: none;
+}
+
+.sidebar-collapsed .sidebar-group-divider {
+  margin: 8px 0;
+}
+
+/* Main content area */
+.main-content {
+  min-height: calc(100vh - 56px);
+  background: var(--background);
+}
+
+/* Content fade in animation */
+.content-enter {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.content-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* Custom scrollbar untuk sidebar */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #c1c1c1 #f1f1f1;
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+
+/* Dark mode sidebar scrollbar */
+@media (prefers-color-scheme: dark) {
+  .sidebar-scroll {
+    scrollbar-color: #4b5563 #1f2937;
+  }
+  
+  .sidebar-scroll::-webkit-scrollbar-track {
+    background: #1f2937;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-thumb {
+    background: #4b5563;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+  }
+}
+
+/* Menu group divider */
+.menu-group-divider {
+  margin: 16px 16px 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+@media (prefers-color-scheme: dark) {
+  .menu-group-divider {
+    border-top-color: rgba(255, 255, 255, 0.05);
+  }
+}
+
+/* Active menu indicator dot */
+.active-dot {
+  width: 4px;
+  height: 4px;
+  background: var(--primary);
+  border-radius: 50%;
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Badge in sidebar */
+.sidebar-badge {
+  background: #ef4444;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: auto;
+}
+
+/* Hover effect for menu items */
+.menu-item-hover {
+  transition: all 0.2s ease;
+}
+
+.menu-item-hover:hover {
+  background: rgba(5, 150, 105, 0.08);
+  padding-left: 20px;
+}
+
+/* Icon animation on hover */
+.menu-icon-hover {
+  transition: transform 0.2s ease;
+}
+
+.group:hover .menu-icon-hover {
+  transform: scale(1.05);
+}
+
+/* Submenu indicator */
+.submenu-indicator {
+  transition: transform 0.2s ease;
+}
+
+.submenu-indicator.open {
+  transform: rotate(180deg);
+}
+
+/* Nested menu styles */
+.nested-menu {
+  padding-left: 36px;
+}
+
+.nested-menu-item {
+  font-size: 13px;
+  padding: 8px 12px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .sidebar-desktop {
+    display: none;
+  }
+  
+  .main-content-padding {
+    padding: 16px;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .main-content-padding {
+    padding: 24px;
+  }
+}
+
+@media (min-width: 1025px) {
+  .main-content-padding {
+    padding: 32px;
+  }
+}
+
+/* Print styles untuk layout */
+@media print {
+  .sidebar,
+  .top-nav,
+  .no-print {
+    display: none !important;
+  }
+  
+  .main-content {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  .main-content-padding {
+    padding: 0 !important;
+  }
+}
+
+/* Loading skeleton untuk sidebar */
+.skeleton-sidebar-item {
+  height: 40px;
+  margin: 4px 12px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+  border-radius: 8px;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Dark mode skeleton */
+@media (prefers-color-scheme: dark) {
+  .skeleton-sidebar-item {
+    background: linear-gradient(90deg, #2a2a2a 25%, #3a3a3a 50%, #2a2a2a 75%);
+  }
+}
+
+/* Sidebar footer */
+.sidebar-footer {
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  padding: 16px;
+  font-size: 11px;
+  text-align: center;
+  color: #9ca3af;
+}
+
+@media (prefers-color-scheme: dark) {
+  .sidebar-footer {
+    border-top-color: rgba(255, 255, 255, 0.05);
+  }
+}
+
+/* Logo animation */
+.logo-animate {
+  transition: all 0.3s ease;
+}
+
+.logo-animate:hover {
+  transform: scale(1.02);
+}
+
+/* Glassmorphism effect untuk top nav (opsional) */
+.glass-nav {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+}
+
+@media (prefers-color-scheme: dark) {
+  .glass-nav {
+    background: rgba(17, 24, 39, 0.95);
+  }
+}

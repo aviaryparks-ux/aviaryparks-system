@@ -15,6 +15,7 @@ import {
 import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  signInWithEmailAndPassword,
 } from "firebase/auth";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -38,6 +39,18 @@ type User = {
   bankAccountName?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
+};
+
+// Helper function to normalize department to UPPERCASE
+const normalizeDepartment = (dept: string): string => {
+  if (!dept) return "";
+  return dept.trim().toUpperCase();
+};
+
+// Helper function to normalize all text fields that should be consistent
+const normalizeText = (text: string): string => {
+  if (!text) return "";
+  return text.trim().toUpperCase();
 };
 
 export default function UsersPage() {
@@ -69,6 +82,7 @@ export default function UsersPage() {
   const [bankName, setBankName] = useState("");
   const [bankAccountNumber, setBankAccountNumber] = useState("");
   const [bankAccountName, setBankAccountName] = useState("");
+  const [autoLoginAfterAdd, setAutoLoginAfterAdd] = useState(true); // New option
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState("ALL");
@@ -105,6 +119,18 @@ export default function UsersPage() {
     return await getDownloadURL(storageRef);
   };
 
+  // Auto login after adding user
+  const autoLogin = async (email: string, password: string) => {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      console.log("Auto login successful");
+      // Optional: redirect or show success message
+    } catch (error: any) {
+      console.error("Auto login failed:", error.message);
+      // Don't show alert to user, just log error
+    }
+  };
+
   const saveUser = async () => {
     if (!name || !email) {
       alert("Nama dan email wajib diisi");
@@ -113,12 +139,27 @@ export default function UsersPage() {
 
     setFormLoading(true);
     try {
+      // Normalize department to UPPERCASE
+      const normalizedDepartment = normalizeDepartment(department);
+      const normalizedCompany = normalizeText(company);
+      const normalizedLocation = normalizeText(location);
+      const normalizedBankName = normalizeText(bankName);
+      
       if (editingId) {
         const updateData: any = {
-          name, email, role, department, jabatan,
+          name, 
+          email, 
+          role, 
+          department: normalizedDepartment,
+          jabatan,
           dailyRate: dailyRate ? Number(dailyRate) : null,
-          company, location, joinDate, isActive,
-          bankName, bankAccountNumber, bankAccountName,
+          company: normalizedCompany,
+          location: normalizedLocation,
+          joinDate, 
+          isActive,
+          bankName: normalizedBankName,
+          bankAccountNumber,
+          bankAccountName,
           updatedAt: Timestamp.now(),
         };
         await updateDoc(doc(db, "users", editingId), updateData);
@@ -134,14 +175,28 @@ export default function UsersPage() {
         const photoUrl = await uploadPhoto(uid);
 
         await setDoc(doc(db, "users", uid), {
-          name, email, role, department, jabatan,
+          name, 
+          email, 
+          role, 
+          department: normalizedDepartment,
+          jabatan,
           dailyRate: dailyRate ? Number(dailyRate) : null,
-          company, location, joinDate, photoUrl,
+          company: normalizedCompany,
+          location: normalizedLocation,
+          joinDate, 
+          photoUrl,
           isActive: true,
-          bankName, bankAccountNumber, bankAccountName,
+          bankName: normalizedBankName,
+          bankAccountNumber,
+          bankAccountName,
           createdAt: Timestamp.now(),
         });
         alert("✅ User berhasil ditambahkan");
+        
+        // Auto login after successful user creation
+        if (autoLoginAfterAdd) {
+          await autoLogin(email, password);
+        }
       }
       resetForm();
       loadUsers();
@@ -295,8 +350,8 @@ export default function UsersPage() {
         Department: "IT",
         Jabatan: "Staff",
         DailyRate: 0,
-        Company: "AviaryParks",
-        Location: "Jakarta",
+        Company: "AVIARYPARKS",
+        Location: "JAKARTA",
         JoinDate: "2024-01-01",
         BankName: "BCA",
         BankAccountNumber: "1234567890",
@@ -326,13 +381,14 @@ export default function UsersPage() {
         const email = row.Email || row.email;
         const password = row.Password || row.password;
         const role = (row.Role || row.role || "employee").toLowerCase();
-        const department = row.Department || row.department || "";
+        // Normalize department to UPPERCASE during import
+        const department = normalizeDepartment(row.Department || row.department || "");
         const jabatan = row.Jabatan || row.jabatan || "";
         const dailyRate = row.DailyRate || row.dailyRate || 0;
-        const company = row.Company || row.company || "";
-        const location = row.Location || row.location || "";
+        const company = normalizeText(row.Company || row.company || "");
+        const location = normalizeText(row.Location || row.location || "");
         const joinDate = row.JoinDate || row.joinDate || "";
-        const bankName = row.BankName || row.bankName || "";
+        const bankName = normalizeText(row.BankName || row.bankName || "");
         const bankAccountNumber = row.BankAccountNumber || row.bankAccountNumber || "";
         const bankAccountName = row.BankAccountName || row.bankAccountName || "";
         
@@ -585,6 +641,25 @@ export default function UsersPage() {
           </button>
         </div>
 
+        {/* Auto Login Toggle in Form */}
+        {showForm && !editingId && (
+          <div className="rounded-xl bg-white shadow-lg border border-gray-100 overflow-hidden">
+            <div className="px-6 py-3 bg-gray-50 border-b border-gray-100">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoLoginAfterAdd}
+                  onChange={(e) => setAutoLoginAfterAdd(e.target.checked)}
+                  className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                />
+                <span className="text-sm text-gray-700">
+                  🔐 Auto login setelah menambahkan user (langsung login ke akun baru)
+                </span>
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* Import Modal */}
         {showImportModal && (
           <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center animate-fade-in">
@@ -630,6 +705,7 @@ export default function UsersPage() {
                       </p>
                       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
                         <strong>⚠️ Note:</strong> Email must be unique. Password will be used for initial login.
+                        Department akan otomatis diubah menjadi HURUF BESAR semua.
                       </div>
                     </div>
                     
@@ -640,7 +716,7 @@ export default function UsersPage() {
                             <th className="px-3 py-2 text-left">Name</th>
                             <th className="px-3 py-2 text-left">Email</th>
                             <th className="px-3 py-2 text-left">Role</th>
-                            <th className="px-3 py-2 text-left">Department</th>
+                            <th className="px-3 py-2 text-left">Department (auto UPPERCASE)</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -649,7 +725,9 @@ export default function UsersPage() {
                               <td className="px-3 py-2">{row.Nama || row.name || "-"}</td>
                               <td className="px-3 py-2">{row.Email || row.email || "-"}</td>
                               <td className="px-3 py-2">{row.Role || row.role || "employee"}</td>
-                              <td className="px-3 py-2">{row.Department || row.department || "-"}</td>
+                              <td className="px-3 py-2 font-mono text-green-700">
+                                {normalizeDepartment(row.Department || row.department || "-")}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -728,12 +806,19 @@ export default function UsersPage() {
                   <option value="training">Training</option>
                   <option value="intern">Intern / Magang</option>
                 </select>
-                <input
-                  placeholder="Department"
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                />
+                <div>
+                  <input
+                    placeholder="Department (akan otomatis HURUF BESAR)"
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                  />
+                  {department && (
+                    <p className="text-xs text-green-600 mt-1">
+                      → Akan disimpan sebagai: <span className="font-mono font-bold">{normalizeDepartment(department)}</span>
+                    </p>
+                  )}
+                </div>
                 <select
                   value={jabatan}
                   onChange={(e) => setJabatan(e.target.value)}
@@ -751,18 +836,28 @@ export default function UsersPage() {
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   />
                 )}
-                <input
-                  placeholder="Company"
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                />
-                <input
-                  placeholder="Work Location"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                />
+                <div>
+                  <input
+                    placeholder="Company (otomatis HURUF BESAR)"
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                  />
+                  {company && (
+                    <p className="text-xs text-green-600 mt-1">→ {normalizeText(company)}</p>
+                  )}
+                </div>
+                <div>
+                  <input
+                    placeholder="Work Location (otomatis HURUF BESAR)"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                  />
+                  {location && (
+                    <p className="text-xs text-green-600 mt-1">→ {normalizeText(location)}</p>
+                  )}
+                </div>
                 <input
                   type="date"
                   value={joinDate}
@@ -895,7 +990,9 @@ export default function UsersPage() {
                         {getRoleLabel(user.role)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{user.department || "-"}</td>
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-green-700 font-medium">{user.department || "-"}</span>
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{user.jabatan || "-"}</td>
                     <td className="px-4 py-3">
                       {user.jabatan === "Training" || user.jabatan === "Intern / Magang" ? (
@@ -1026,7 +1123,7 @@ export default function UsersPage() {
                   <div className="space-y-3">
                     <div className="flex justify-between py-2 border-b border-gray-200">
                       <span className="text-gray-500">Department</span>
-                      <span className="font-medium text-gray-800">{selectedUser.department || "-"}</span>
+                      <span className="font-mono font-bold text-green-700">{selectedUser.department || "-"}</span>
                     </div>
                     <div className="flex justify-between py-2 border-b border-gray-200">
                       <span className="text-gray-500">Jabatan</span>
@@ -1056,11 +1153,11 @@ export default function UsersPage() {
                   <div className="space-y-3">
                     <div className="flex justify-between py-2 border-b border-gray-200">
                       <span className="text-gray-500">Company</span>
-                      <span className="font-medium text-gray-800">{selectedUser.company || "-"}</span>
+                      <span className="font-mono font-bold text-green-700">{selectedUser.company || "-"}</span>
                     </div>
                     <div className="flex justify-between py-2 border-b border-gray-200">
                       <span className="text-gray-500">Work Location</span>
-                      <span className="font-medium text-gray-800">{selectedUser.location || "-"}</span>
+                      <span className="font-mono font-bold text-green-700">{selectedUser.location || "-"}</span>
                     </div>
                   </div>
                 </div>

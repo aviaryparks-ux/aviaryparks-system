@@ -1,19 +1,31 @@
 // app/(admin)/layout.tsx
 "use client";
 
-import TopNavigation from "@/components/TopNavigation";
-import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import TopNav from "@/components/layout/TopNav";
+import Sidebar from "@/components/layout/Sidebar";
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading } = useAuth();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState("");
   const [currentDate, setCurrentDate] = useState("");
 
+  // Load sidebar state from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("sidebarCollapsed");
+    if (saved !== null) {
+      setSidebarCollapsed(saved === "true");
+    }
+  }, []);
+
+  // Update date and time
   useEffect(() => {
     const updateDateTime = () => {
       const now = new Date();
@@ -37,6 +49,18 @@ export default function AdminLayout({
     return () => clearInterval(interval);
   }, []);
 
+  // Save sidebar state
+  const toggleSidebar = () => {
+    const newState = !sidebarCollapsed;
+    setSidebarCollapsed(newState);
+    localStorage.setItem("sidebarCollapsed", String(newState));
+  };
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, []);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
@@ -58,19 +82,47 @@ export default function AdminLayout({
       manager: "Manager",
       spv: "Supervisor",
       employee: "Employee",
+      finance: "Finance",
     };
     return labels[role] || role;
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* Top Navigation */}
-      <TopNavigation />
+      {/* Top Navigation Bar */}
+      <TopNav
+        onMenuClick={toggleSidebar}
+        onMobileMenuClick={() => setMobileMenuOpen(true)}
+      />
 
-      {/* Main Content */}
-      <main className="p-4 sm:p-6 lg:p-8">
-        <div className="max-w-full mx-auto">{children}</div>
-      </main>
+      <div className="flex">
+        {/* Desktop Sidebar */}
+        <div className="hidden md:block">
+          <Sidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
+        </div>
+
+        {/* Mobile Sidebar Drawer */}
+        {mobileMenuOpen && (
+          <div className="fixed inset-0 z-50 md:hidden">
+            <div
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
+              onClick={() => setMobileMenuOpen(false)}
+            />
+            <div className="relative w-64 h-full bg-white shadow-xl animate-slide-in-left">
+              <Sidebar collapsed={false} onClose={() => setMobileMenuOpen(false)} />
+            </div>
+          </div>
+        )}
+
+        {/* Main Content */}
+        <main className="flex-1 min-h-screen">
+          <div className="p-4 sm:p-6 lg:p-8">
+            <div className="max-w-full mx-auto">
+              {children}
+            </div>
+          </div>
+        </main>
+      </div>
 
       {/* Footer with Glassmorphism */}
       <footer className="relative mt-12 border-t border-gray-200/50 bg-white/80 backdrop-blur-sm py-5 px-6">
@@ -83,7 +135,7 @@ export default function AdminLayout({
               </svg>
             </div>
             <span className="text-gray-500">
-              © {new Date().getFullYear()} Attendance Management System
+              © {new Date().getFullYear()} AviaryParks Management System
             </span>
           </div>
           
