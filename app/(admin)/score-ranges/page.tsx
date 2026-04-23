@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, getDocs, addDoc, updateDoc, doc, Timestamp } from "firebase/firestore";
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 interface ScoreRange {
@@ -61,17 +61,62 @@ export default function ScoreRangesPage() {
           ...formData,
           updatedAt: Timestamp.now(),
         });
+        alert("✅ Skala penilaian berhasil diupdate");
       } else {
         await addDoc(collection(db, "scoreRanges"), {
           ...formData,
           createdAt: Timestamp.now(),
         });
+        alert("✅ Skala penilaian berhasil ditambahkan");
       }
       fetchScoreRanges();
       setShowModal(false);
+      resetForm();
     } catch (error) {
       console.error("Error saving score range:", error);
+      alert("❌ Gagal menyimpan skala penilaian");
     }
+  };
+
+  // 🔥 FUNGSI DELETE
+  const handleDelete = async (id: string, name: string) => {
+    if (confirm(`Yakin ingin menghapus skala "${name}"?`)) {
+      try {
+        await deleteDoc(doc(db, "scoreRanges", id));
+        alert("✅ Skala penilaian berhasil dihapus");
+        fetchScoreRanges();
+      } catch (error) {
+        console.error("Error deleting score range:", error);
+        alert("❌ Gagal menghapus skala penilaian");
+      }
+    }
+  };
+
+  // 🔥 FUNGSI EDIT - Buka modal dengan data yang dipilih
+  const handleEdit = (scoreRange: ScoreRange) => {
+    setEditing(scoreRange);
+    setFormData({
+      name: scoreRange.name,
+      isActive: scoreRange.isActive,
+      ranges: scoreRange.ranges,
+    });
+    setShowModal(true);
+  };
+
+  // 🔥 FUNGSI RESET FORM
+  const resetForm = () => {
+    setEditing(null);
+    setFormData({
+      name: "",
+      isActive: true,
+      ranges: [
+        { min: 90, max: 100, label: "Sangat Baik", color: "#4CAF50", point: 5 },
+        { min: 75, max: 89, label: "Baik", color: "#2196F3", point: 4 },
+        { min: 60, max: 74, label: "Cukup", color: "#FFC107", point: 3 },
+        { min: 50, max: 59, label: "Kurang", color: "#FF9800", point: 2 },
+        { min: 0, max: 49, label: "Sangat Kurang", color: "#F44336", point: 1 },
+      ],
+    });
   };
 
   const updateRange = (index: number, field: keyof Range, value: any) => {
@@ -88,14 +133,14 @@ export default function ScoreRangesPage() {
   };
 
   const removeRange = (index: number) => {
+    if (formData.ranges.length <= 2) {
+      alert("Minimal harus ada 2 rentang nilai");
+      return;
+    }
     setFormData({
       ...formData,
       ranges: formData.ranges.filter((_, i) => i !== index),
     });
-  };
-
-  const getActiveRange = (score: number, ranges: Range[]) => {
-    return ranges.find(r => score >= r.min && score <= r.max);
   };
 
   return (
@@ -107,7 +152,7 @@ export default function ScoreRangesPage() {
         </div>
         <button
           onClick={() => {
-            setEditing(null);
+            resetForm();
             setShowModal(true);
           }}
           className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
@@ -160,7 +205,14 @@ export default function ScoreRangesPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-1">
-                        {sr.ranges.map((r, i) => <div key={i} className="w-6 h-6 rounded-full" style={{ backgroundColor: r.color, border: `2px solid ${r.color}` }} title={`${r.label}: ${r.min}-${r.max}`} />)}
+                        {sr.ranges.map((r, i) => (
+                          <div 
+                            key={i} 
+                            className="w-6 h-6 rounded-full" 
+                            style={{ backgroundColor: r.color, border: `2px solid ${r.color}` }} 
+                            title={`${r.label}: ${r.min}-${r.max}`} 
+                          />
+                        ))}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -169,8 +221,20 @@ export default function ScoreRangesPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right text-sm">
-                      <button className="text-green-600 hover:text-green-800 mr-3">Edit</button>
-                      <button className="text-red-600 hover:text-red-800">Hapus</button>
+                      {/* 🔥 TOMBOL EDIT SEKARANG BERFUNGSI */}
+                      <button 
+                        onClick={() => handleEdit(sr)} 
+                        className="text-green-600 hover:text-green-800 mr-3"
+                      >
+                        Edit
+                      </button>
+                      {/* 🔥 TOMBOL HAPUS SEKARANG BERFUNGSI */}
+                      <button 
+                        onClick={() => handleDelete(sr.id, sr.name)} 
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        Hapus
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -187,43 +251,106 @@ export default function ScoreRangesPage() {
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-gray-800">{editing ? "Edit Skala Penilaian" : "Tambah Skala Penilaian"}</h2>
               <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nama Skala</label>
-                <input type="text" required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="contoh: Skala Penilaian Kinerja 2024" />
+                <input 
+                  type="text" 
+                  required 
+                  value={formData.name} 
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })} 
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg" 
+                  placeholder="contoh: Skala Penilaian Kinerja 2024" 
+                />
               </div>
 
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <label className="text-sm font-medium text-gray-700">Rentang Nilai</label>
-                  <button type="button" onClick={addRange} className="text-sm text-green-600 hover:text-green-700">+ Tambah Range</button>
+                  <button type="button" onClick={addRange} className="text-sm text-green-600 hover:text-green-700">
+                    + Tambah Range
+                  </button>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-96 overflow-y-auto">
                   {formData.ranges.map((range, idx) => (
-                    <div key={idx} className="flex gap-2 items-center p-3 bg-gray-50 rounded-lg">
-                      <input type="number" placeholder="Min" value={range.min} onChange={(e) => updateRange(idx, "min", parseInt(e.target.value))} className="w-20 px-2 py-1 border border-gray-300 rounded" />
+                    <div key={idx} className="flex gap-2 items-center p-3 bg-gray-50 rounded-lg flex-wrap">
+                      <input 
+                        type="number" 
+                        placeholder="Min" 
+                        value={range.min} 
+                        onChange={(e) => updateRange(idx, "min", parseInt(e.target.value) || 0)} 
+                        className="w-20 px-2 py-1 border border-gray-300 rounded" 
+                      />
                       <span>-</span>
-                      <input type="number" placeholder="Max" value={range.max} onChange={(e) => updateRange(idx, "max", parseInt(e.target.value))} className="w-20 px-2 py-1 border border-gray-300 rounded" />
-                      <input type="text" placeholder="Label" value={range.label} onChange={(e) => updateRange(idx, "label", e.target.value)} className="flex-1 px-2 py-1 border border-gray-300 rounded" />
-                      <input type="color" value={range.color} onChange={(e) => updateRange(idx, "color", e.target.value)} className="w-10 h-10 border border-gray-300 rounded cursor-pointer" />
-                      <input type="number" placeholder="Point" value={range.point} onChange={(e) => updateRange(idx, "point", parseInt(e.target.value))} className="w-16 px-2 py-1 border border-gray-300 rounded" />
-                      <button type="button" onClick={() => removeRange(idx)} className="text-red-500 hover:text-red-700">✕</button>
+                      <input 
+                        type="number" 
+                        placeholder="Max" 
+                        value={range.max} 
+                        onChange={(e) => updateRange(idx, "max", parseInt(e.target.value) || 0)} 
+                        className="w-20 px-2 py-1 border border-gray-300 rounded" 
+                      />
+                      <input 
+                        type="text" 
+                        placeholder="Label" 
+                        value={range.label} 
+                        onChange={(e) => updateRange(idx, "label", e.target.value)} 
+                        className="flex-1 min-w-[100px] px-2 py-1 border border-gray-300 rounded" 
+                      />
+                      <input 
+                        type="color" 
+                        value={range.color} 
+                        onChange={(e) => updateRange(idx, "color", e.target.value)} 
+                        className="w-10 h-10 border border-gray-300 rounded cursor-pointer" 
+                      />
+                      <input 
+                        type="number" 
+                        placeholder="Point" 
+                        value={range.point} 
+                        onChange={(e) => updateRange(idx, "point", parseInt(e.target.value) || 0)} 
+                        className="w-16 px-2 py-1 border border-gray-300 rounded" 
+                      />
+                      <button 
+                        type="button" 
+                        onClick={() => removeRange(idx)} 
+                        className="text-red-500 hover:text-red-700 px-2"
+                      >
+                        ✕
+                      </button>
                     </div>
                   ))}
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                <input type="checkbox" id="isActive" checked={formData.isActive} onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })} className="w-4 h-4 text-green-600 rounded" />
+                <input 
+                  type="checkbox" 
+                  id="isActive" 
+                  checked={formData.isActive} 
+                  onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })} 
+                  className="w-4 h-4 text-green-600 rounded" 
+                />
                 <label htmlFor="isActive" className="text-sm text-gray-700">Aktif</label>
               </div>
 
               <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Batal</button>
-                <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Simpan</button>
+                <button 
+                  type="button" 
+                  onClick={() => setShowModal(false)} 
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                >
+                  Batal
+                </button>
+                <button 
+                  type="submit" 
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                >
+                  Simpan
+                </button>
               </div>
             </form>
           </div>
