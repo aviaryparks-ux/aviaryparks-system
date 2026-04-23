@@ -1,7 +1,7 @@
 // app/admin/payroll/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import * as XLSX from "xlsx";
+import toast from "react-hot-toast";
 
 type User = {
   uid: string;
@@ -71,7 +72,6 @@ type PayrollSummary = {
 };
 
 export default function PayrollPage() {
-  const [attendances, setAttendances] = useState<AttendanceRecord[]>([]);
   const [users, setUsers] = useState<Map<string, User>>(new Map());
   const [payrollSummary, setPayrollSummary] = useState<PayrollSummary[]>([]);
   const [filteredSummary, setFilteredSummary] = useState<PayrollSummary[]>([]);
@@ -86,8 +86,49 @@ export default function PayrollPage() {
   const [departments, setDepartments] = useState<string[]>([]);
   const [selectedDepartment, setSelectedDepartment] = useState<string>("ALL");
   
+  // 🔥 STATE UNTUK SEARCHABLE DROPDOWN KARYAWAN
+  const [allEmployees, setAllEmployees] = useState<{ uid: string; name: string; department: string }[]>([]);
+  const [availableEmployees, setAvailableEmployees] = useState<{ uid: string; name: string; department: string }[]>([]);
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
+  const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
+  const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  
   const [selectedEmployee, setSelectedEmployee] = useState<PayrollSummary | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+
+  // 🔥 Update available employees berdasarkan department yang dipilih
+  useEffect(() => {
+    if (selectedDepartment === "ALL") {
+      setAvailableEmployees(allEmployees);
+    } else {
+      setAvailableEmployees(
+        allEmployees.filter((emp) => emp.department === selectedDepartment)
+      );
+    }
+    // Reset selected employees ketika department berubah
+    setSelectedEmployees([]);
+    setEmployeeSearchTerm("");
+  }, [selectedDepartment, allEmployees]);
+
+  // 🔥 Filter karyawan berdasarkan search term
+  const filteredEmployees = useMemo(() => {
+    if (!employeeSearchTerm.trim()) return availableEmployees;
+    return availableEmployees.filter((emp) =>
+      emp.name.toLowerCase().includes(employeeSearchTerm.toLowerCase())
+    );
+  }, [availableEmployees, employeeSearchTerm]);
+
+  // Click outside dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowEmployeeDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     loadUsers();
@@ -95,14 +136,15 @@ export default function PayrollPage() {
   }, [dateRange]);
 
   useEffect(() => {
-    applyDepartmentFilter();
-  }, [selectedDepartment, payrollSummary]);
+    applyFilters();
+  }, [selectedDepartment, selectedEmployees, payrollSummary]);
 
   const loadUsers = async () => {
     try {
       const usersSnap = await getDocs(collection(db, "users"));
       const usersMap = new Map<string, User>();
       const deptSet = new Set<string>();
+      const empList: { uid: string; name: string; department: string }[] = [];
       
       usersSnap.forEach((doc) => {
         const data = doc.data();
@@ -120,24 +162,54 @@ export default function PayrollPage() {
           jabatan: data.jabatan || "",
           department: department,
         });
+        
+        // 🔥 Tambahkan ke daftar karyawan untuk filter
+        if (data.isActive !== false) {
+          empList.push({
+            uid: doc.id,
+            name: data.name || "",
+            department: department,
+          });
+        }
       });
       
       setUsers(usersMap);
       setDepartments(Array.from(deptSet).sort());
+      setAllEmployees(empList.sort((a, b) => a.name.localeCompare(b.name)));
+      setAvailableEmployees(empList);
     } catch (error) {
       console.error("Error loading users:", error);
+      toast.error("Gagal memuat data karyawan");
     }
   };
 
-  const applyDepartmentFilter = () => {
-    if (selectedDepartment === "ALL") {
-      setFilteredSummary(payrollSummary);
-    } else {
-      const filtered = payrollSummary.filter(
-        (item) => item.department === selectedDepartment
-      );
-      setFilteredSummary(filtered);
+  const applyFilters = () => {
+    let filtered = [...payrollSummary];
+    
+    if (selectedDepartment !== "ALL") {
+      filtered = filtered.filter((item) => item.department === selectedDepartment);
     }
+    
+    if (selectedEmployees.length > 0) {
+      filtered = filtered.filter((item) => selectedEmployees.includes(item.uid));
+    }
+    
+    setFilteredSummary(filtered);
+  };
+
+  const toggleEmployeeSelection = (uid: string) => {
+    setSelectedEmployees((prev) =>
+      prev.includes(uid) ? prev.filter((id) => id !== uid) : [...prev, uid]
+    );
+  };
+
+  const selectAllEmployees = () => {
+    const allUids = availableEmployees.map((emp) => emp.uid);
+    setSelectedEmployees(allUids);
+  };
+
+  const clearEmployeeSelection = () => {
+    setSelectedEmployees([]);
   };
 
   const loadAttendanceData = async () => {
@@ -162,10 +234,10 @@ export default function PayrollPage() {
         ...doc.data(),
       })) as AttendanceRecord[];
 
-      setAttendances(data);
       calculatePayrollSummary(data);
     } catch (error) {
       console.error("Error loading attendance:", error);
+      toast.error("Gagal memuat data absensi");
     } finally {
       setIsLoading(false);
     }
@@ -207,8 +279,8 @@ export default function PayrollPage() {
       if (!summaryMap.has(uid)) {
         summaryMap.set(uid, {
           uid: uid,
-          name: att.name,
-          email: att.email,
+          name: att.name || user?.name || "-",
+          email: att.email || user?.email || "-",
           jabatan: user?.jabatan || "-",
           department: department,
           dailyRate: dailyRate,
@@ -243,6 +315,11 @@ export default function PayrollPage() {
   };
 
   const exportToExcel = () => {
+    if (filteredSummary.length === 0) {
+      toast.error("Tidak ada data untuk diexport");
+      return;
+    }
+
     const excelData = filteredSummary.map((item, index) => ({
       No: index + 1,
       "Nama Karyawan": item.name,
@@ -290,11 +367,14 @@ export default function PayrollPage() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Rekap Gaji");
     
-    const fileName = selectedDepartment === "ALL" 
-      ? `rekap_gaji_${dateRange.startDate}_${dateRange.endDate}.xlsx`
-      : `rekap_gaji_${selectedDepartment}_${dateRange.startDate}_${dateRange.endDate}.xlsx`;
+    const fileName = selectedEmployees.length === 1 
+      ? `rekap_gaji_${filteredSummary[0]?.name}_${dateRange.startDate}_${dateRange.endDate}.xlsx`
+      : selectedDepartment !== "ALL" 
+        ? `rekap_gaji_${selectedDepartment}_${dateRange.startDate}_${dateRange.endDate}.xlsx`
+        : `rekap_gaji_${dateRange.startDate}_${dateRange.endDate}.xlsx`;
     
     XLSX.writeFile(wb, fileName);
+    toast.success("Export Excel berhasil");
   };
 
   const exportDetailToExcel = (employee: PayrollSummary) => {
@@ -318,6 +398,7 @@ export default function PayrollPage() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, `Detail_${employee.name}`);
     XLSX.writeFile(wb, `detail_absensi_${employee.name}.xlsx`);
+    toast.success(`Export detail ${employee.name} berhasil`);
   };
 
   const formatCurrency = (amount: number) => {
@@ -335,6 +416,15 @@ export default function PayrollPage() {
     return `${h} jam ${m} menit`;
   };
 
+  const getSelectedEmployeeNames = () => {
+    if (selectedEmployees.length === 0) return "Semua Karyawan";
+    if (selectedEmployees.length === 1) {
+      const emp = allEmployees.find(e => e.uid === selectedEmployees[0]);
+      return emp ? emp.name : "1 karyawan";
+    }
+    return `${selectedEmployees.length} karyawan terpilih`;
+  };
+
   const totalFilteredSalary = filteredSummary.reduce((sum, item) => sum + item.totalSalary, 0);
   const totalFilteredDays = filteredSummary.reduce((sum, item) => sum + item.totalDays, 0);
   const totalFilteredHours = filteredSummary.reduce((sum, item) => sum + item.totalHours, 0);
@@ -343,7 +433,7 @@ export default function PayrollPage() {
   return (
     <ProtectedRoute allowedRoles={["super_admin", "hr", "finance"]}>
       <div className="space-y-6 p-6">
-        {/* Header - Sama seperti Attendance Page */}
+        {/* Header */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 p-6 text-white shadow-xl">
           <div className="relative z-10">
             <div className="flex items-center gap-3">
@@ -360,62 +450,42 @@ export default function PayrollPage() {
           </div>
         </div>
 
-        {/* Stats Cards - Sama seperti Attendance Page */}
+        {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
             <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-blue-100/50 blur-2xl"></div>
             <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-sm text-blue-600 font-medium">Total Karyawan</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{totalFilteredEmployees} orang</p>
-              </div>
-              <div className="rounded-xl bg-blue-100 p-3">
-                <span className="text-2xl">👥</span>
-              </div>
+              <div><p className="text-sm text-blue-600 font-medium">Total Karyawan</p><p className="text-3xl font-bold text-gray-800 mt-1">{totalFilteredEmployees} orang</p></div>
+              <div className="rounded-xl bg-blue-100 p-3"><span className="text-2xl">👥</span></div>
             </div>
           </div>
           
           <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
             <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-green-100/50 blur-2xl"></div>
             <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-sm text-green-600 font-medium">Total Hari Kerja</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{totalFilteredDays} hari</p>
-              </div>
-              <div className="rounded-xl bg-green-100 p-3">
-                <span className="text-2xl">📆</span>
-              </div>
+              <div><p className="text-sm text-green-600 font-medium">Total Hari Kerja</p><p className="text-3xl font-bold text-gray-800 mt-1">{totalFilteredDays} hari</p></div>
+              <div className="rounded-xl bg-green-100 p-3"><span className="text-2xl">📆</span></div>
             </div>
           </div>
           
           <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
             <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-yellow-100/50 blur-2xl"></div>
             <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-sm text-yellow-600 font-medium">Total Jam Kerja</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{formatTime(totalFilteredHours)}</p>
-              </div>
-              <div className="rounded-xl bg-yellow-100 p-3">
-                <span className="text-2xl">⏰</span>
-              </div>
+              <div><p className="text-sm text-yellow-600 font-medium">Total Jam Kerja</p><p className="text-3xl font-bold text-gray-800 mt-1">{formatTime(totalFilteredHours)}</p></div>
+              <div className="rounded-xl bg-yellow-100 p-3"><span className="text-2xl">⏰</span></div>
             </div>
           </div>
           
           <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
             <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-purple-100/50 blur-2xl"></div>
             <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-sm text-purple-600 font-medium">Total Gaji</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{formatCurrency(totalFilteredSalary)}</p>
-              </div>
-              <div className="rounded-xl bg-purple-100 p-3">
-                <span className="text-2xl">💰</span>
-              </div>
+              <div><p className="text-sm text-purple-600 font-medium">Total Gaji</p><p className="text-3xl font-bold text-gray-800 mt-1">{formatCurrency(totalFilteredSalary)}</p></div>
+              <div className="rounded-xl bg-purple-100 p-3"><span className="text-2xl">💰</span></div>
             </div>
           </div>
         </div>
 
-        {/* Filter Section - Sama seperti Attendance Page */}
+        {/* Filter Section */}
         <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
           <h2 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -423,37 +493,37 @@ export default function PayrollPage() {
             </svg>
             Filter Data
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Tanggal Mulai</label>
+              <label className="block text-xs text-gray-500 mb-1">📅 Tanggal Mulai</label>
               <input
                 type="date"
                 value={dateRange.startDate}
                 onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Tanggal Akhir</label>
+              <label className="block text-xs text-gray-500 mb-1">📅 Tanggal Akhir</label>
               <input
                 type="date"
                 value={dateRange.endDate}
                 onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">📁 Filter Departemen</label>
+              <label className="block text-xs text-gray-500 mb-1">🏢 Filter Departemen</label>
               <select
                 value={selectedDepartment}
-                onChange={(e) => setSelectedDepartment(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => {
+                  setSelectedDepartment(e.target.value);
+                }}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
               >
                 <option value="ALL">📋 Semua Departemen</option>
                 {departments.map((dept) => (
-                  <option key={dept} value={dept}>
-                    🏢 {dept}
-                  </option>
+                  <option key={dept} value={dept}>🏢 {dept}</option>
                 ))}
               </select>
             </div>
@@ -463,28 +533,135 @@ export default function PayrollPage() {
                   loadUsers();
                   loadAttendanceData();
                 }}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium"
               >
                 🔍 Tampilkan
               </button>
               <button
                 onClick={exportToExcel}
                 disabled={filteredSummary.length === 0}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium disabled:opacity-50"
               >
                 📊 Export Excel
               </button>
             </div>
           </div>
+
+          {/* 🔥 SEARCHABLE DROPDOWN KARYAWAN */}
+          <div className="mt-3" ref={dropdownRef}>
+            <label className="block text-xs text-gray-500 mb-1">👥 Pilih Karyawan</label>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowEmployeeDropdown(!showEmployeeDropdown)}
+                className="w-full px-3 py-2 text-left text-sm border border-gray-300 rounded-lg bg-white flex justify-between items-center"
+              >
+                <span className={selectedEmployees.length === 0 ? "text-gray-400" : "text-gray-700"}>
+                  {getSelectedEmployeeNames()}
+                </span>
+                <svg className={`w-4 h-4 text-gray-400 transition-transform ${showEmployeeDropdown ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              
+              {showEmployeeDropdown && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg">
+                  <div className="p-2 border-b border-gray-200">
+                    <input
+                      type="text"
+                      placeholder="🔍 Ketik nama karyawan..."
+                      value={employeeSearchTerm}
+                      onChange={(e) => setEmployeeSearchTerm(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="p-2 border-b border-gray-100 bg-gray-50 flex gap-2">
+                    <button
+                      onClick={selectAllEmployees}
+                      className="text-xs text-blue-600 hover:text-blue-800"
+                    >
+                      Pilih Semua ({availableEmployees.length})
+                    </button>
+                    <span className="text-gray-300">|</span>
+                    <button
+                      onClick={clearEmployeeSelection}
+                      className="text-xs text-red-600 hover:text-red-800"
+                    >
+                      Reset
+                    </button>
+                    <span className="text-gray-300 ml-auto text-xs text-gray-400">
+                      {filteredEmployees.length} karyawan
+                    </span>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {filteredEmployees.length === 0 ? (
+                      <div className="p-3 text-center text-gray-500 text-sm">
+                        {employeeSearchTerm ? "Karyawan tidak ditemukan" : "Tidak ada karyawan di departemen ini"}
+                      </div>
+                    ) : (
+                      filteredEmployees.map((emp) => (
+                        <label
+                          key={emp.uid}
+                          className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedEmployees.includes(emp.uid)}
+                            onChange={() => toggleEmployeeSelection(emp.uid)}
+                            className="w-4 h-4 text-blue-600 rounded"
+                          />
+                          <span className="text-sm text-gray-700">{emp.name}</span>
+                          {selectedDepartment === "ALL" && (
+                            <span className="text-xs text-gray-400 ml-auto">{emp.department}</span>
+                          )}
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Selected employees tags */}
+            {selectedEmployees.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {selectedEmployees.slice(0, 5).map((uid) => {
+                  const emp = allEmployees.find(e => e.uid === uid);
+                  return emp ? (
+                    <span key={uid} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+                      {emp.name}
+                      <button
+                        onClick={() => toggleEmployeeSelection(uid)}
+                        className="hover:text-blue-900"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ) : null;
+                })}
+                {selectedEmployees.length > 5 && (
+                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">
+                    +{selectedEmployees.length - 5} lainnya
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
           
-          {selectedDepartment !== "ALL" && (
+          {/* Informasi filter aktif */}
+          {(selectedDepartment !== "ALL" || selectedEmployees.length > 0) && (
             <div className="mt-3 text-sm text-blue-600 bg-blue-50 p-2 rounded-lg">
-              📁 Menampilkan data untuk departemen: <strong>{selectedDepartment}</strong>
+              🔍 Filter aktif: 
+              {selectedDepartment !== "ALL" && <span> Departemen: <strong>{selectedDepartment}</strong></span>}
+              {selectedEmployees.length > 0 && (
+                <span> {selectedEmployees.length} karyawan terpilih</span>
+              )}
             </div>
           )}
         </div>
 
-        {/* Tabel Rekap Gaji - Sama seperti Attendance Page */}
+        {/* Tabel Rekap Gaji */}
         <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
             <div className="flex justify-between items-center">
@@ -492,11 +669,6 @@ export default function PayrollPage() {
                 <h2 className="text-md font-semibold text-gray-800 flex items-center gap-2">
                   <span>💰</span>
                   Detail Rekap Gaji
-                  {selectedDepartment !== "ALL" && (
-                    <span className="ml-2 text-sm font-normal text-blue-600">
-                      - Departemen {selectedDepartment}
-                    </span>
-                  )}
                 </h2>
                 <p className="text-xs text-gray-500 mt-1">
                   Klik pada baris untuk melihat detail absensi harian
@@ -517,9 +689,11 @@ export default function PayrollPage() {
             <div className="p-12 text-center text-gray-500">
               <div className="text-5xl mb-2">📭</div>
               <p>
-                {selectedDepartment !== "ALL"
-                  ? `Tidak ada data absensi untuk departemen ${selectedDepartment} dalam periode ini`
-                  : "Tidak ada data absensi dalam periode ini"}
+                {selectedEmployees.length === 1
+                  ? `Tidak ada data absensi untuk karyawan yang dipilih dalam periode ini`
+                  : selectedDepartment !== "ALL"
+                    ? `Tidak ada data absensi untuk departemen ${selectedDepartment} dalam periode ini`
+                    : "Tidak ada data absensi dalam periode ini"}
               </p>
             </div>
           ) : (
@@ -557,19 +731,11 @@ export default function PayrollPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3">{item.jabatan}</td>
-                      <td className="px-4 py-3 text-right">
-                        {formatCurrency(item.dailyRate)}
-                      </td>
+                      <td className="px-4 py-3 text-right">{formatCurrency(item.dailyRate)}</td>
                       <td className="px-4 py-3">{item.bankName}</td>
-                      <td className="px-4 py-3 font-mono text-xs">
-                        {item.bankAccountNumber}
-                      </td>
-                      <td className="px-4 py-3 text-center font-medium">
-                        {item.totalDays} hari
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {formatTime(item.totalHours)}
-                      </td>
+                      <td className="px-4 py-3 font-mono text-xs">{item.bankAccountNumber}</td>
+                      <td className="px-4 py-3 text-center font-medium">{item.totalDays} hari</td>
+                      <td className="px-4 py-3 text-center">{formatTime(item.totalHours)}</td>
                       <td className="px-4 py-3 text-right font-bold text-green-700 bg-green-50">
                         {formatCurrency(item.totalSalary)}
                       </td>
@@ -581,9 +747,7 @@ export default function PayrollPage() {
                     <td colSpan={7} className="px-4 py-3 text-right">TOTAL</td>
                     <td className="px-4 py-3 text-center">{totalFilteredDays} hari</td>
                     <td className="px-4 py-3 text-center">{formatTime(totalFilteredHours)}</td>
-                    <td className="px-4 py-3 text-right bg-green-100">
-                      {formatCurrency(totalFilteredSalary)}
-                    </td>
+                    <td className="px-4 py-3 text-right bg-green-100">{formatCurrency(totalFilteredSalary)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -597,19 +761,13 @@ export default function PayrollPage() {
             <div className="flex gap-3">
               <span className="text-2xl">⚠️</span>
               <div>
-                <p className="font-medium text-red-800">
-                  Perhatian: Ada karyawan dengan Rate Harian 0
-                </p>
-                <p className="text-sm text-red-700 mt-1">
-                  Karyawan berikut belum diisi rate hariannya:
-                </p>
+                <p className="font-medium text-red-800">Perhatian: Ada karyawan dengan Rate Harian 0</p>
+                <p className="text-sm text-red-700 mt-1">Karyawan berikut belum diisi rate hariannya:</p>
                 <ul className="text-sm text-red-700 mt-2 list-disc list-inside">
                   {filteredSummary
                     .filter((item) => item.dailyRate === 0)
                     .map((item) => (
-                      <li key={item.uid}>
-                        {item.name} ({item.department || "No Dept"}) - Silakan edit di menu Users
-                      </li>
+                      <li key={item.uid}>{item.name} ({item.department || "No Dept"}) - Silakan edit di menu Users</li>
                     ))}
                 </ul>
               </div>
@@ -626,8 +784,8 @@ export default function PayrollPage() {
               <ul className="text-sm text-yellow-700 mt-1 space-y-1">
                 <li>• Rate harian diambil dari data masing-masing karyawan (menu Users)</li>
                 <li>• Perhitungan gaji = Rate Harian × Total Hari Kerja</li>
-                <li>• Jam kerja dihitung berdasarkan data check-in dan check-out yang valid</li>
-                <li>• Gunakan filter departemen untuk melihat rekap per divisi</li>
+                <li>• Gunakan filter karyawan untuk rekap spesifik (bisa ketik nama)</li>
+                <li>• Filter departemen akan otomatis membatasi pilihan karyawan</li>
                 <li>• Nomor rekening di atas adalah data yang diinput oleh karyawan/admin</li>
                 <li>• Harap melakukan verifikasi ulang sebelum transfer gaji</li>
               </ul>
@@ -636,7 +794,7 @@ export default function PayrollPage() {
         </div>
       </div>
 
-      {/* MODAL DETAIL ABSENSI */}
+      {/* MODAL DETAIL ABSENSI (sama) */}
       {showDetailModal && selectedEmployee && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden animate-scale-in">
@@ -650,22 +808,10 @@ export default function PayrollPage() {
 
             <div className="p-6 overflow-auto max-h-[60vh]">
               <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500">Total Hari Kerja</p>
-                  <p className="text-xl font-bold">{selectedEmployee.totalDays} hari</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500">Total Jam Kerja</p>
-                  <p className="text-xl font-bold">{formatTime(selectedEmployee.totalHours)}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500">Rate Harian</p>
-                  <p className="text-xl font-bold">{formatCurrency(selectedEmployee.dailyRate)}</p>
-                </div>
-                <div className="bg-green-50 rounded-lg p-3">
-                  <p className="text-xs text-green-600">Total Gaji</p>
-                  <p className="text-xl font-bold text-green-700">{formatCurrency(selectedEmployee.totalSalary)}</p>
-                </div>
+                <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500">Total Hari Kerja</p><p className="text-xl font-bold">{selectedEmployee.totalDays} hari</p></div>
+                <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500">Total Jam Kerja</p><p className="text-xl font-bold">{formatTime(selectedEmployee.totalHours)}</p></div>
+                <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500">Rate Harian</p><p className="text-xl font-bold">{formatCurrency(selectedEmployee.dailyRate)}</p></div>
+                <div className="bg-green-50 rounded-lg p-3"><p className="text-xs text-green-600">Total Gaji</p><p className="text-xl font-bold text-green-700">{formatCurrency(selectedEmployee.totalSalary)}</p></div>
               </div>
 
               <div className="border rounded-lg overflow-hidden">
@@ -701,26 +847,16 @@ export default function PayrollPage() {
             </div>
 
             <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
-              <button onClick={() => exportDetailToExcel(selectedEmployee)} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
-                📊 Export Detail Excel
-              </button>
-              <button onClick={() => setShowDetailModal(false)} className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600">
-                Tutup
-              </button>
+              <button onClick={() => exportDetailToExcel(selectedEmployee)} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">📊 Export Detail Excel</button>
+              <button onClick={() => setShowDetailModal(false)} className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600">Tutup</button>
             </div>
           </div>
         </div>
       )}
 
       <style jsx>{`
-        @keyframes fade-in {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes scale-in {
-          from { transform: scale(0.95); opacity: 0; }
-          to { transform: scale(1); opacity: 1; }
-        }
+        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes scale-in { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         .animate-fade-in { animation: fade-in 0.2s ease-out; }
         .animate-scale-in { animation: scale-in 0.2s ease-out; }
       `}</style>

@@ -15,8 +15,8 @@ import {
   setDoc,
 } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { useNotification } from "@/components/ToastNotification";
 import { useAuth } from "@/contexts/AuthContext";
+import toast from "react-hot-toast";
 
 type Request = {
   id: string;
@@ -53,7 +53,6 @@ export default function AttendanceCorrectionsPage() {
   const [filter, setFilter] = useState("ALL");
   const [pendingCount, setPendingCount] = useState(0);
   const [previousPendingCount, setPreviousPendingCount] = useState(0);
-  const { showNotification } = useNotification();
   const { user } = useAuth();
 
   const userRole = user?.role || "employee";
@@ -166,14 +165,14 @@ export default function AttendanceCorrectionsPage() {
       
       setAllData(arr);
       
+      // 🔥 GANTI: notifikasi menggunakan toast
       if (newPending > previousPendingCount && previousPendingCount !== 0) {
         const deptText = userRole === "spv" || userRole === "manager" 
           ? ` di departemen ${userDepartment}` 
           : "";
-        showNotification(
-          `📋 Ada ${newPending - previousPendingCount} request koreksi baru${deptText}!`,
-          "info"
-        );
+        toast.success(`📋 Ada ${newPending - previousPendingCount} request koreksi baru${deptText}!`, {
+          duration: 5000,
+        });
       }
       
       setPendingCount(newPending);
@@ -181,7 +180,7 @@ export default function AttendanceCorrectionsPage() {
     });
 
     return () => unsub();
-  }, [userRole, userDepartment, previousPendingCount, showNotification]);
+  }, [userRole, userDepartment, previousPendingCount]);
 
   const formatDate = (ts: any) => {
     if (!ts) return "-";
@@ -213,7 +212,7 @@ export default function AttendanceCorrectionsPage() {
 
   const approve = async (r: Request) => {
     if (!canApprove(r)) {
-      showNotification("❌ Anda tidak memiliki akses untuk approve request ini", "error");
+      toast.error("❌ Anda tidak memiliki akses untuk approve request ini");
       return;
     }
 
@@ -237,7 +236,7 @@ export default function AttendanceCorrectionsPage() {
           status: "pending",
         });
         
-        showNotification(`✅ Request dari ${r.name} telah disetujui oleh SPV, menunggu approval HR`, "success");
+        toast.success(`✅ Request dari ${r.name} telah disetujui oleh SPV, menunggu approval HR`);
         
       } else if (userRole === "hr") {
         updatedFlowSnapshot[1] = {
@@ -288,11 +287,11 @@ export default function AttendanceCorrectionsPage() {
           approvedAt: Timestamp.now(),
         });
         
-        showNotification(`✅ Request dari ${r.name} telah disetujui oleh HRD`, "success");
+        toast.success(`✅ Request dari ${r.name} telah disetujui oleh HRD`);
       }
       
     } catch (e) {
-      showNotification(`❌ Gagal approve request: ${e}`, "error");
+      toast.error(`❌ Gagal approve request: ${e}`);
     } finally {
       setLoading((prev) => ({ ...prev, [r.id]: false }));
     }
@@ -300,7 +299,7 @@ export default function AttendanceCorrectionsPage() {
 
   const reject = async (r: Request) => {
     if (!canApprove(r)) {
-      showNotification("❌ Anda tidak memiliki akses untuk reject request ini", "error");
+      toast.error("❌ Anda tidak memiliki akses untuk reject request ini");
       return;
     }
 
@@ -326,7 +325,7 @@ export default function AttendanceCorrectionsPage() {
           rejectedAt: Timestamp.now(),
         });
         
-        showNotification(`❌ Request dari ${r.name} ditolak oleh SPV`, "warning");
+        toast.error(`❌ Request dari ${r.name} ditolak oleh SPV`);
         
       } else if (userRole === "hr") {
         updatedFlowSnapshot[1] = {
@@ -345,11 +344,11 @@ export default function AttendanceCorrectionsPage() {
           rejectedAt: Timestamp.now(),
         });
         
-        showNotification(`❌ Request dari ${r.name} ditolak oleh HRD`, "warning");
+        toast.error(`❌ Request dari ${r.name} ditolak oleh HRD`);
       }
       
     } catch (e) {
-      showNotification(`❌ Gagal reject request: ${e}`, "error");
+      toast.error(`❌ Gagal reject request: ${e}`);
     } finally {
       setLoading((prev) => ({ ...prev, [r.id]: false }));
     }
@@ -521,11 +520,7 @@ export default function AttendanceCorrectionsPage() {
                     >
                       <td className="px-4 py-3 font-medium text-gray-800">{r.name}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          r.department?.toLowerCase() === "wildlife" 
-                            ? "bg-green-100 text-green-700" 
-                            : "bg-blue-100 text-blue-700"
-                        }`}>
+                        <span className="px-2 py-1 rounded-full text-xs font-medium">
                           {r.department || "-"}
                         </span>
                       </td>
@@ -533,12 +528,12 @@ export default function AttendanceCorrectionsPage() {
                       <td className="px-4 py-3 text-gray-600">{formatDate(r.date)}</td>
                       <td className="px-4 py-3">
                         <span className="font-mono text-gray-700">{r.checkIn ?? "--"} - {r.checkOut ?? "--"}</span>
-                      </td>
+                       </td>
                       <td className="px-4 py-3 max-w-xs">
                         <div className="truncate text-gray-600" title={r.reason}>
                           {r.reason.length > 60 ? `${r.reason.substring(0, 60)}...` : r.reason}
                         </div>
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">
                           <span className={`text-xs font-medium ${stepColor}`}>
@@ -561,7 +556,7 @@ export default function AttendanceCorrectionsPage() {
                             </span>
                           )}
                         </div>
-                      </td>
+                       </td>
                       <td className="px-4 py-3">
                         {r.status === "pending" && canAction ? (
                           <div className="flex gap-2">

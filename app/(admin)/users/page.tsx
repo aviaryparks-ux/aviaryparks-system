@@ -20,6 +20,7 @@ import {
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import * as XLSX from "xlsx";
+import toast from "react-hot-toast";
 
 type User = {
   id: string;
@@ -82,7 +83,7 @@ export default function UsersPage() {
   const [bankName, setBankName] = useState("");
   const [bankAccountNumber, setBankAccountNumber] = useState("");
   const [bankAccountName, setBankAccountName] = useState("");
-  const [autoLoginAfterAdd, setAutoLoginAfterAdd] = useState(true); // New option
+  const [autoLoginAfterAdd, setAutoLoginAfterAdd] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState("ALL");
@@ -107,6 +108,7 @@ export default function UsersPage() {
       setUsers(arr);
     } catch (error) {
       console.error("Error loading users:", error);
+      toast.error("Gagal memuat data users");
     } finally {
       setLoading(false);
     }
@@ -119,27 +121,23 @@ export default function UsersPage() {
     return await getDownloadURL(storageRef);
   };
 
-  // Auto login after adding user
   const autoLogin = async (email: string, password: string) => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
       console.log("Auto login successful");
-      // Optional: redirect or show success message
     } catch (error: any) {
       console.error("Auto login failed:", error.message);
-      // Don't show alert to user, just log error
     }
   };
 
   const saveUser = async () => {
     if (!name || !email) {
-      alert("Nama dan email wajib diisi");
+      toast.error("Nama dan email wajib diisi");
       return;
     }
 
     setFormLoading(true);
     try {
-      // Normalize department to UPPERCASE
       const normalizedDepartment = normalizeDepartment(department);
       const normalizedCompany = normalizeText(company);
       const normalizedLocation = normalizeText(location);
@@ -147,26 +145,23 @@ export default function UsersPage() {
       
       if (editingId) {
         const updateData: any = {
-          name, 
-          email, 
-          role, 
+          name, email, role, 
           department: normalizedDepartment,
           jabatan,
           dailyRate: dailyRate ? Number(dailyRate) : null,
           company: normalizedCompany,
           location: normalizedLocation,
-          joinDate, 
-          isActive,
+          joinDate, isActive,
           bankName: normalizedBankName,
           bankAccountNumber,
           bankAccountName,
           updatedAt: Timestamp.now(),
         };
         await updateDoc(doc(db, "users", editingId), updateData);
-        alert("✅ User berhasil diupdate");
+        toast.success("✅ User berhasil diupdate");
       } else {
         if (!password) {
-          alert("Password wajib diisi untuk user baru");
+          toast.error("Password wajib diisi untuk user baru");
           setFormLoading(false);
           return;
         }
@@ -175,46 +170,45 @@ export default function UsersPage() {
         const photoUrl = await uploadPhoto(uid);
 
         await setDoc(doc(db, "users", uid), {
-          name, 
-          email, 
-          role, 
+          name, email, role, 
           department: normalizedDepartment,
           jabatan,
           dailyRate: dailyRate ? Number(dailyRate) : null,
           company: normalizedCompany,
           location: normalizedLocation,
-          joinDate, 
-          photoUrl,
+          joinDate, photoUrl,
           isActive: true,
           bankName: normalizedBankName,
           bankAccountNumber,
           bankAccountName,
           createdAt: Timestamp.now(),
         });
-        alert("✅ User berhasil ditambahkan");
+        toast.success("✅ User berhasil ditambahkan");
         
-        // Auto login after successful user creation
         if (autoLoginAfterAdd) {
           await autoLogin(email, password);
+          toast.success("Auto login berhasil");
         }
       }
       resetForm();
       loadUsers();
       setShowForm(false);
     } catch (error: any) {
-      alert("❌ Error: " + error.message);
+      toast.error(error.message);
     } finally {
       setFormLoading(false);
     }
   };
 
   const resetPassword = async (email: string) => {
-    if (!confirm(`Kirim reset password ke ${email}?`)) return;
+    const confirmed = window.confirm(`Kirim reset password ke ${email}?`);
+    if (!confirmed) return;
+    
     try {
       await sendPasswordResetEmail(auth, email);
-      alert("✅ Email reset password terkirim");
+      toast.success("✅ Email reset password terkirim");
     } catch (error: any) {
-      alert("❌ Error: " + error.message);
+      toast.error(error.message);
     }
   };
 
@@ -224,20 +218,22 @@ export default function UsersPage() {
         isActive: !user.isActive,
       });
       loadUsers();
-      alert(`✅ Status user berhasil diubah menjadi ${!user.isActive ? "aktif" : "nonaktif"}`);
+      toast.success(`Status user berhasil diubah menjadi ${!user.isActive ? "aktif" : "nonaktif"}`);
     } catch (error: any) {
-      alert("❌ Error: " + error.message);
+      toast.error(error.message);
     }
   };
 
   const deleteUser = async (user: User) => {
-    if (!confirm(`Hapus user "${user.name}"? Data tidak bisa dikembalikan!`)) return;
+    const confirmed = window.confirm(`Hapus user "${user.name}"? Data tidak bisa dikembalikan!`);
+    if (!confirmed) return;
+    
     try {
       await deleteDoc(doc(db, "users", user.id));
       loadUsers();
-      alert("✅ User berhasil dihapus");
+      toast.success("✅ User berhasil dihapus");
     } catch (error: any) {
-      alert("❌ Error: " + error.message);
+      toast.error(error.message);
     }
   };
 
@@ -335,7 +331,7 @@ export default function UsersPage() {
         setShowImportModal(true);
       })
       .catch(error => {
-        alert("Failed to fetch Google Sheet. Make sure it's public or accessible.");
+        toast.error("Failed to fetch Google Sheet. Make sure it's public or accessible.");
         console.error(error);
       });
   };
@@ -363,6 +359,7 @@ export default function UsersPage() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Users Template");
     XLSX.writeFile(wb, "user_import_template.xlsx");
+    toast.success("Template downloaded");
   };
 
   const importUsers = async () => {
@@ -381,7 +378,6 @@ export default function UsersPage() {
         const email = row.Email || row.email;
         const password = row.Password || row.password;
         const role = (row.Role || row.role || "employee").toLowerCase();
-        // Normalize department to UPPERCASE during import
         const department = normalizeDepartment(row.Department || row.department || "");
         const jabatan = row.Jabatan || row.jabatan || "";
         const dailyRate = row.DailyRate || row.dailyRate || 0;
@@ -417,7 +413,7 @@ export default function UsersPage() {
     }
     
     setImportProgress({ current: importData.length, total: importData.length, success, failed });
-    alert(`✅ Import selesai!\nBerhasil: ${success}\nGagal: ${failed}`);
+    toast.success(`✅ Import selesai!\nBerhasil: ${success}\nGagal: ${failed}`);
     
     setImportData([]);
     setShowImportModal(false);
@@ -660,7 +656,7 @@ export default function UsersPage() {
           </div>
         )}
 
-        {/* Import Modal */}
+        {/* Import Modal - tetap sama karena sudah pakai toast untuk feedback */}
         {showImportModal && (
           <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center animate-fade-in">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden animate-scale-in">
@@ -758,7 +754,7 @@ export default function UsersPage() {
           </div>
         )}
 
-        {/* User Form */}
+        {/* User Form - kontennya sama, hanya alert yang sudah diganti */}
         {showForm && (
           <div className="rounded-xl bg-white shadow-lg border border-gray-100 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
@@ -1040,7 +1036,7 @@ export default function UsersPage() {
                         </button>
                       </div>
                     </td>
-                  </tr>
+                   </tr>
                 ))}
               </tbody>
             </table>
@@ -1054,7 +1050,7 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {/* MODAL DETAIL USER */}
+      {/* MODAL DETAIL USER - konten sama */}
       {showDetailModal && selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden animate-scale-in">
