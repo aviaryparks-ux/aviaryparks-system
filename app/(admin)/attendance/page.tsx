@@ -1,6 +1,4 @@
 // app/(admin)/attendance/page.tsx
-// MODIFIKASI PADA BAGIAN FILTER DAN DEFAULT DATE
-
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
@@ -13,7 +11,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/contexts/AuthContext";
 import toast from "react-hot-toast";
 
-// ================= TYPE DEFINITIONS (SAMA SEPERTI SEBELUMNYA) =================
+// ================= TYPE DEFINITIONS =================
 type User = {
   name: string;
   department?: string;
@@ -78,7 +76,7 @@ type RecapItem = {
 
 type StatusInfo = { status: string; label: string; color: string };
 
-// ================= HELPER FUNCTIONS (SAMA SEPERTI SEBELUMNYA) =================
+// ================= HELPER FUNCTIONS =================
 const toDate = (timestamp: any): Date | null => {
   if (!timestamp) return null;
   if (timestamp instanceof Date) return timestamp;
@@ -194,6 +192,7 @@ export default function AttendancePage() {
   const [selectedAttendance, setSelectedAttendance] = useState<Attendance | null>(null);
   const [selectedUserDetail, setSelectedUserDetail] = useState<User | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; type: "in" | "out" } | null>(null);
   const [isEditingTime, setIsEditingTime] = useState(false);
   const [editCheckInHour, setEditCheckInHour] = useState("");
   const [editCheckInMinute, setEditCheckInMinute] = useState("");
@@ -487,7 +486,7 @@ export default function AttendancePage() {
     setShowTodayOnly(false);
   }, []);
 
-  // CRUD FUNCTIONS (edit shift, edit time, open modal, dll sama seperti sebelumnya)
+  // CRUD FUNCTIONS
   const loadShiftsList = async () => {
     setIsLoadingShifts(true);
     try {
@@ -576,7 +575,136 @@ export default function AttendancePage() {
     } catch (error) { console.error("Error saving shift edit:", error); toast.error("❌ Gagal menyimpan perubahan shift"); } finally { setIsSavingEdit(false); }
   };
 
-  // EXPORT FUNCTIONS (sama seperti sebelumnya,省略 karena panjang)
+  // EXPORT FUNCTIONS
+  const exportDetailExcel = async () => {
+    setExporting("detail-excel");
+    try {
+      const rows = filtered.map((a) => {
+        const statusInfo = getAttendanceStatus(a);
+        return {
+          Nama: a.name || "-",
+          Department: a.department || "-",
+          Jabatan: a.jabatan || "-",
+          Shift: a.shift?.name || "-",
+          Tanggal: formatDate(a.date) || "-",
+          Jam_Masuk: a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
+          Jam_Pulang: a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
+          Jam_Kerja: formatWorkHours(getWorkHours(a)) || "-",
+          Status: statusInfo.label,
+          Bank: users[a.uid]?.bankName || "-",
+          No_Rekening: users[a.uid]?.bankAccountNumber || "-",
+          Nama_Rekening: users[a.uid]?.bankAccountName || "-",
+          Status_Koreksi: a.isCorrected ? "Sudah Dikoreksi" : "Normal",
+        };
+      });
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Detail Attendance");
+      ws['!cols'] = [
+        { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 10 },
+        { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+        { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 15 }
+      ];
+      XLSX.writeFile(wb, `attendance_detail_${new Date().toISOString().split("T")[0]}.xlsx`);
+      toast.success("Export Excel berhasil");
+    } catch (err) {
+      console.error("Export error:", err);
+      toast.error("Gagal mengexport data");
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const exportDetailPDF = async () => {
+    setExporting("detail-pdf");
+    try {
+      const doc = new jsPDF({ orientation: "landscape" });
+      autoTable(doc, {
+        head: [["Nama", "Dept", "Jabatan", "Shift", "Tanggal", "Masuk", "Pulang", "Jam Kerja", "Status", "Bank", "No Rekening", "Nama Rekening"]],
+        body: filtered.map((a) => {
+          const statusInfo = getAttendanceStatus(a);
+          return [
+            a.name || "-",
+            a.department || "-",
+            a.jabatan || "-",
+            a.shift?.name || "-",
+            formatDate(a.date) || "-",
+            a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : (formatTime(a.checkIn?.time) || "--:--"),
+            a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : (formatTime(a.checkOut?.time) || "--:--"),
+            formatWorkHours(getWorkHours(a)) || "-",
+            statusInfo.label,
+            users[a.uid]?.bankName || "-",
+            users[a.uid]?.bankAccountNumber || "-",
+            users[a.uid]?.bankAccountName || "-",
+          ];
+        }) as any,
+        headStyles: { fillColor: [5, 150, 105] },
+        startY: 20,
+      });
+      doc.save(`attendance_detail_${new Date().toISOString().split("T")[0]}.pdf`);
+      toast.success("Export PDF berhasil");
+    } catch (err) {
+      console.error("Export error:", err);
+      toast.error("Gagal mengexport data");
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const exportRecapExcel = async () => {
+    setExporting("recap-excel");
+    try {
+      const rows = recapList.map((r) => ({
+        Nama: r.name || "-",
+        Department: r.department || "-",
+        Jabatan: r.jabatan || "-",
+        Hari_Kerja: r.totalHari,
+        Total_Jam: `${r.totalJam.toFixed(2)} jam`,
+        Rata_Rata_Jam: r.totalHari > 0 ? `${(r.totalJam / r.totalHari).toFixed(2)} jam` : "-",
+        Rate: r.rate ? `Rp ${r.rate.toLocaleString()}` : "-",
+        Total_Gaji: r.totalGaji ? `Rp ${r.totalGaji.toLocaleString()}` : "-",
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Rekap Gaji");
+      XLSX.writeFile(wb, `attendance_rekap_${new Date().toISOString().split("T")[0]}.xlsx`);
+      toast.success("Export Excel berhasil");
+    } catch (err) {
+      console.error("Export error:", err);
+      toast.error("Gagal mengexport data");
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const exportRecapPDF = async () => {
+    setExporting("recap-pdf");
+    try {
+      const doc = new jsPDF({ orientation: "landscape" });
+      autoTable(doc, {
+        head: [["Nama", "Dept", "Jabatan", "Hari", "Total Jam", "Rata-rata", "Rate", "Total Gaji"]],
+        body: recapList.map((r) => [
+          r.name || "-",
+          r.department || "-",
+          r.jabatan || "-",
+          r.totalHari,
+          `${r.totalJam.toFixed(2)} jam`,
+          r.totalHari > 0 ? `${(r.totalJam / r.totalHari).toFixed(2)} jam` : "-",
+          r.rate ? `Rp ${r.rate.toLocaleString()}` : "-",
+          r.totalGaji ? `Rp ${r.totalGaji.toLocaleString()}` : "-",
+        ]) as any,
+        headStyles: { fillColor: [5, 150, 105] },
+        startY: 20,
+      });
+      doc.save(`attendance_rekap_${new Date().toISOString().split("T")[0]}.pdf`);
+      toast.success("Export PDF berhasil");
+    } catch (err) {
+      console.error("Export error:", err);
+      toast.error("Gagal mengexport data");
+    } finally {
+      setExporting(null);
+    }
+  };
 
   if (loading || usersLoading || correctionsLoading) {
     return (
@@ -604,6 +732,7 @@ export default function AttendancePage() {
   return (
     <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "employee"]}>
       <div className="space-y-6 p-6">
+        {/* Header */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-green-600 to-green-700 p-6 text-white shadow-xl">
           <div className="relative z-10">
             <h1 className="text-2xl font-bold">Manajemen Absensi</h1>
@@ -615,7 +744,7 @@ export default function AttendancePage() {
           </div>
         </div>
 
-        {/* 🔥 QUICK ACTION BUTTONS */}
+        {/* Quick Action Buttons */}
         <div className="flex flex-wrap gap-3">
           <button
             onClick={setTodayFilter}
@@ -637,7 +766,7 @@ export default function AttendancePage() {
           </button>
         </div>
 
-        {/* Stats Cards (sama seperti sebelumnya) */}
+        {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
             <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-blue-100/50 blur-2xl"></div>
@@ -726,7 +855,35 @@ export default function AttendancePage() {
           </div>
         </div>
 
-        {/* Detail Table (sama seperti sebelumnya, truncated for brevity) */}
+        {/* Export Section */}
+        <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
+          <h2 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Export Data
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={exportDetailExcel} disabled={exporting !== null} className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
+              {exporting === "detail-excel" ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <span>📊</span>}
+              Detail Excel
+            </button>
+            <button onClick={exportDetailPDF} disabled={exporting !== null} className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
+              {exporting === "detail-pdf" ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <span>📄</span>}
+              Detail PDF
+            </button>
+            <button onClick={exportRecapExcel} disabled={exporting !== null} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
+              {exporting === "recap-excel" ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <span>📊</span>}
+              Rekap Excel
+            </button>
+            <button onClick={exportRecapPDF} disabled={exporting !== null} className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
+              {exporting === "recap-pdf" ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <span>📄</span>}
+              Rekap PDF
+            </button>
+          </div>
+        </div>
+
+        {/* Detail Table */}
         <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
             <div className="flex justify-between items-center">
@@ -737,7 +894,18 @@ export default function AttendancePage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
-                <tr><th className="px-4 py-3 text-left font-semibold text-gray-700">Nama</th><th className="px-4 py-3 text-left font-semibold text-gray-700">Dept</th><th className="px-4 py-3 text-left font-semibold text-gray-700">Jabatan</th><th className="px-4 py-3 text-left font-semibold text-gray-700">Shift</th><th className="px-4 py-3 text-left font-semibold text-gray-700">Tanggal</th><th className="px-4 py-3 text-left font-semibold text-gray-700">Masuk</th><th className="px-4 py-3 text-left font-semibold text-gray-700">Pulang</th><th className="px-4 py-3 text-left font-semibold text-gray-700">Jam Kerja</th><th className="px-4 py-3 text-left font-semibold text-gray-700">Foto</th><th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th></tr>
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Nama</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Dept</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Jabatan</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Shift</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Tanggal</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Masuk</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Pulang</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Jam Kerja</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Foto</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
+                </tr>
               </thead>
               <tbody>
                 {filtered.slice(0, 100).map((a, idx) => {
@@ -766,36 +934,451 @@ export default function AttendancePage() {
             {filtered.length > 100 && <div className="p-4 text-center text-gray-500 text-sm border-t">Menampilkan 100 dari {filtered.length} record. Export untuk melihat semua data.</div>}
           </div>
         </div>
+
+        {/* Recap Table */}
+        {recapList.length > 0 && (
+          <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+              <h2 className="text-md font-semibold text-gray-800 flex items-center gap-2"><span>💰</span> Rekap Gaji (Harian / Borongan)</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Nama</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Dept</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Jabatan</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Hari Kerja</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Total Jam</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Rata-rata Jam</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Rate</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Total Gaji</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recapList.map((r, idx) => (
+                    <tr key={r.uid} className={`border-b ${idx % 2 === 0 ? "bg-white" : "bg-gray-50"} hover:bg-gray-50`}>
+                      <td className="px-4 py-3 font-medium text-gray-800">{r.name}</td>
+                      <td className="px-4 py-3 text-gray-600">{r.department}</td>
+                      <td className="px-4 py-3 text-gray-600">{r.jabatan}</td>
+                      <td className="px-4 py-3"><span className="font-bold text-blue-600">{r.totalHari}</span> hari</td>
+                      <td className="px-4 py-3"><span className="font-bold text-green-600">{r.totalJam.toFixed(2)}</span> jam</td>
+                      <td className="px-4 py-3">{r.totalHari > 0 ? `${(r.totalJam / r.totalHari).toFixed(2)} jam` : "-"}</td>
+                      <td className="px-4 py-3">Rp {r.rate?.toLocaleString() || 0}</td>
+                      <td className="px-4 py-3"><span className="font-bold text-green-600">Rp {r.totalGaji?.toLocaleString() || 0}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Detail Modal (sama seperti sebelumnya, truncated for brevity) */}
+      {/* MODAL DETAIL ABSENSI DENGAN FOTO LENGKAP */}
       {showDetailModal && selectedAttendance && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden animate-scale-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden animate-scale-in">
+            {/* Header Modal */}
             <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-4 flex justify-between items-center">
               <div className="flex items-center gap-3">
-                {selectedUserDetail?.photoUrl ? <img src={selectedUserDetail.photoUrl} alt={selectedAttendance.name} className="w-12 h-12 rounded-full object-cover border-2 border-white" /> : <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center"><span className="text-white text-lg font-bold">{getInitials(selectedAttendance.name)}</span></div>}
-                <div><h2 className="text-xl font-bold text-white">{selectedAttendance.name}</h2><p className="text-green-100 text-sm">{selectedAttendance.department} • {selectedAttendance.jabatan}</p></div>
+                <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+                  <span className="text-white text-lg font-bold">{getInitials(selectedAttendance.name)}</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">{selectedAttendance.name}</h2>
+                  <p className="text-green-100 text-sm">{selectedAttendance.department} • {selectedAttendance.jabatan}</p>
+                </div>
               </div>
-              <button onClick={() => setShowDetailModal(false)} className="text-white hover:text-gray-200"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+              <button onClick={() => setShowDetailModal(false)} className="text-white hover:text-gray-200 transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
+
+            {/* Body Modal */}
             <div className="p-6 overflow-y-auto max-h-[70vh]">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-gray-50 rounded-xl p-4"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">📋 Informasi Absensi</h3><div className="space-y-3"><div className="flex justify-between py-2 border-b border-gray-200"><span className="text-gray-500">Tanggal</span><span className="font-medium text-gray-800">{formatDate(selectedAttendance.date)}</span></div><div className="flex justify-between py-2 border-b border-gray-200"><span className="text-gray-500">Shift</span><div className="flex items-center gap-2">{selectedAttendance.shift && <><div className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedAttendance.shift.color }} /><span className="font-medium">{selectedAttendance.shift.name}</span></>}{!selectedAttendance.shift && <span className="text-gray-400">-</span>}</div></div><div className="flex justify-between py-2 border-b border-gray-200"><span className="text-gray-500">Status</span><span className={`px-2 py-1 rounded-full text-xs font-medium ${getAttendanceStatus(selectedAttendance).color}`}>{getAttendanceStatus(selectedAttendance).label}</span></div></div></div>
-                <div className="bg-gray-50 rounded-xl p-4"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">⏰ Waktu Absensi</h3><div className="space-y-3"><div className="flex justify-between py-2 border-b border-gray-200"><span className="text-gray-500">Check-in</span><span className="font-medium text-green-600">{formatDateTime(selectedAttendance.checkIn?.time) || "--:--"}</span></div><div className="flex justify-between py-2 border-b border-gray-200"><span className="text-gray-500">Check-out</span><span className="font-medium text-blue-600">{formatDateTime(selectedAttendance.checkOut?.time) || "--:--"}</span></div><div className="flex justify-between py-2 border-b border-gray-200"><span className="text-gray-500">Jam Kerja</span><span className="font-medium text-gray-800">{formatWorkHours(getWorkHours(selectedAttendance))}</span></div></div></div>
+                {/* Informasi Absensi */}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span>📋</span> Informasi Absensi
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Tanggal</span>
+                      <span className="font-medium text-gray-800">{formatDate(selectedAttendance.date)}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Shift</span>
+                      <div className="flex items-center gap-2">
+                        {selectedAttendance.shift && (
+                          <>
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedAttendance.shift.color }} />
+                            <span className="font-medium">{selectedAttendance.shift.name}</span>
+                            <span className="text-xs text-gray-400">({selectedAttendance.shift.startTime} - {selectedAttendance.shift.endTime})</span>
+                          </>
+                        )}
+                        {!selectedAttendance.shift && <span className="text-gray-400">-</span>}
+                      </div>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Status</span>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getAttendanceStatus(selectedAttendance).color}`}>
+                        {getAttendanceStatus(selectedAttendance).label}
+                      </span>
+                    </div>
+                    {selectedAttendance.isCorrected && (
+                      <div className="flex justify-between py-2 border-b border-gray-200">
+                        <span className="text-gray-500">Status Koreksi</span>
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
+                          ✏️ Sudah Dikoreksi
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Waktu Absensi */}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span>⏰</span> Waktu Absensi
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Check-in</span>
+                      <span className="font-medium text-green-600">
+                        {selectedAttendance.isCorrected && selectedAttendance.correctedCheckIn 
+                          ? `${selectedAttendance.correctedCheckIn} ✏️` 
+                          : formatDateTime(selectedAttendance.checkIn?.time) || "--:--"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Check-out</span>
+                      <span className="font-medium text-blue-600">
+                        {selectedAttendance.isCorrected && selectedAttendance.correctedCheckOut 
+                          ? `${selectedAttendance.correctedCheckOut} ✏️` 
+                          : formatDateTime(selectedAttendance.checkOut?.time) || "--:--"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-gray-200">
+                      <span className="text-gray-500">Jam Kerja</span>
+                      <span className="font-medium text-gray-800">{formatWorkHours(getWorkHours(selectedAttendance))}</span>
+                    </div>
+                    {selectedAttendance.distance && (
+                      <div className="flex justify-between py-2 border-b border-gray-200">
+                        <span className="text-gray-500">Jarak dari Kantor</span>
+                        <span className="font-medium text-gray-600">{selectedAttendance.distance.toFixed(0)} meter</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 🔥 FOTO ABSENSI - FULL SIZE */}
+                <div className="lg:col-span-2">
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                      <span>📸</span> Foto Absensi
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Foto Check-in */}
+                      <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
+                        <div className="bg-green-100 px-4 py-2 border-b">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-semibold text-green-700 flex items-center gap-2">
+                              <span>🟢</span> Foto Check-in
+                            </span>
+                            <span className="text-xs text-gray-500">{formatTime(selectedAttendance.checkIn?.time)}</span>
+                          </div>
+                        </div>
+                        <div className="p-3">
+                          {selectedAttendance.checkIn?.photo ? (
+                            <div 
+                              className="relative group cursor-pointer"
+                              onClick={() => window.open(selectedAttendance.checkIn?.photo, '_blank')}
+                            >
+                              <img 
+                                src={selectedAttendance.checkIn.photo} 
+                                alt="Check-in"
+                                className="w-full h-56 object-cover rounded-lg transition-all duration-200 group-hover:scale-105"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = 'https://placehold.co/600x400/e2e8f0/94a3b8?text=Foto+Tidak+Tersedia';
+                                }}
+                              />
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all rounded-lg flex items-center justify-center">
+                                <span className="opacity-0 group-hover:opacity-100 text-white text-sm bg-black/50 px-3 py-1 rounded-full transition-all">
+                                  🔍 Klik untuk perbesar
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="w-full h-56 bg-gray-100 rounded-lg flex flex-col items-center justify-center">
+                              <svg className="w-14 h-14 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
+                              <p className="text-gray-400 text-sm mt-2">Tidak ada foto check-in</p>
+                            </div>
+                          )}
+                        </div>
+                        {/* Info Lokasi Check-in */}
+                        {selectedAttendance.checkIn?.location && (
+                          <div className="px-3 pb-3">
+                            <div className="flex items-center gap-1 text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
+                              <span>📍</span>
+                              <span className="flex-1 truncate">{selectedAttendance.checkIn.location}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Foto Check-out */}
+                      <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
+                        <div className="bg-blue-100 px-4 py-2 border-b">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-semibold text-blue-700 flex items-center gap-2">
+                              <span>🔵</span> Foto Check-out
+                            </span>
+                            <span className="text-xs text-gray-500">{formatTime(selectedAttendance.checkOut?.time)}</span>
+                          </div>
+                        </div>
+                        <div className="p-3">
+                          {selectedAttendance.checkOut?.photo ? (
+                            <div 
+                              className="relative group cursor-pointer"
+                              onClick={() => window.open(selectedAttendance.checkOut?.photo, '_blank')}
+                            >
+                              <img 
+                                src={selectedAttendance.checkOut.photo} 
+                                alt="Check-out"
+                                className="w-full h-56 object-cover rounded-lg transition-all duration-200 group-hover:scale-105"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = 'https://placehold.co/600x400/e2e8f0/94a3b8?text=Foto+Tidak+Tersedia';
+                                }}
+                              />
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all rounded-lg flex items-center justify-center">
+                                <span className="opacity-0 group-hover:opacity-100 text-white text-sm bg-black/50 px-3 py-1 rounded-full transition-all">
+                                  🔍 Klik untuk perbesar
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="w-full h-56 bg-gray-100 rounded-lg flex flex-col items-center justify-center">
+                              <svg className="w-14 h-14 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
+                              <p className="text-gray-400 text-sm mt-2">Tidak ada foto check-out</p>
+                            </div>
+                          )}
+                        </div>
+                        {/* Info Lokasi Check-out */}
+                        {selectedAttendance.checkOut?.location && (
+                          <div className="px-3 pb-3">
+                            <div className="flex items-center gap-1 text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
+                              <span>📍</span>
+                              <span className="flex-1 truncate">{selectedAttendance.checkOut.location}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Catatan (jika ada) */}
+                {(selectedAttendance.checkIn?.note || selectedAttendance.checkOut?.note) && (
+                  <div className="lg:col-span-2">
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <span>📝</span> Catatan
+                      </h3>
+                      <div className="space-y-2">
+                        {selectedAttendance.checkIn?.note && (
+                          <div className="p-2 bg-white rounded-lg border-l-4 border-green-500">
+                            <p className="text-xs text-gray-500 mb-1">Catatan Check-in:</p>
+                            <p className="text-sm text-gray-700">{selectedAttendance.checkIn.note}</p>
+                          </div>
+                        )}
+                        {selectedAttendance.checkOut?.note && (
+                          <div className="p-2 bg-white rounded-lg border-l-4 border-blue-500">
+                            <p className="text-xs text-gray-500 mb-1">Catatan Check-out:</p>
+                            <p className="text-sm text-gray-700">{selectedAttendance.checkOut.note}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-              {isSuperAdmin && !isEditingShift && !isEditingTime && <div className="mt-6 flex justify-end gap-3"><button onClick={() => setIsEditingShift(true)} className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg flex items-center gap-2"><span>🔄</span> Edit Shift</button><button onClick={() => setIsEditingTime(true)} className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg flex items-center gap-2"><span>✏️</span> Edit Jam Kerja</button></div>}
-              {isEditingShift && <div className="bg-blue-50 rounded-xl p-4 border border-blue-200 mt-4"><h4 className="font-semibold text-blue-800 mb-3">🔄 Edit Shift</h4><div className="mb-4"><label className="block text-sm font-medium text-gray-700 mb-2">Pilih Shift Baru</label>{isLoadingShifts ? <div className="flex justify-center py-4"><div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div> : <select value={editShiftId} onChange={(e) => setEditShiftId(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg"><option value="">Pilih Shift</option>{shiftsList.map((shift) => <option key={shift.id} value={shift.id}>{shift.name} ({shift.startTime} - {shift.endTime})</option>)}</select>}</div><div className="flex gap-3"><button onClick={saveEditedShift} disabled={isSavingEdit || !editShiftId} className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50">{isSavingEdit ? "Menyimpan..." : "💾 Simpan Perubahan Shift"}</button><button onClick={() => setIsEditingShift(false)} className="flex-1 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg">Batal</button></div><p className="text-xs text-blue-600 mt-2">⚠️ Perubahan shift akan mempengaruhi perhitungan keterlambatan dan jam kerja</p></div>}
-              {isEditingTime && <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-4"><h4 className="font-semibold text-yellow-800 mb-3">✏️ Edit Jam Kerja</h4><div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-gray-700 mb-1">Check-in Baru</label><div className="flex gap-2"><select value={editCheckInHour} onChange={(e) => setEditCheckInHour(e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"><option value="">Jam</option>{Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')).map(h => <option key={h} value={h}>{h}</option>)}</select><span className="text-gray-500">:</span><select value={editCheckInMinute} onChange={(e) => setEditCheckInMinute(e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"><option value="">Menit</option>{Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => <option key={m} value={m}>{m}</option>)}</select></div></div><div><label className="block text-sm font-medium text-gray-700 mb-1">Check-out Baru</label><div className="flex gap-2"><select value={editCheckOutHour} onChange={(e) => setEditCheckOutHour(e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"><option value="">Jam</option>{Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')).map(h => <option key={h} value={h}>{h}</option>)}</select><span className="text-gray-500">:</span><select value={editCheckOutMinute} onChange={(e) => setEditCheckOutMinute(e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"><option value="">Menit</option>{Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => <option key={m} value={m}>{m}</option>)}</select></div></div></div><div className="flex gap-3 mt-4"><button onClick={saveEditedTime} disabled={isSavingEdit} className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50">{isSavingEdit ? "Menyimpan..." : "💾 Simpan Perubahan"}</button><button onClick={() => setIsEditingTime(false)} className="flex-1 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg">Batal</button></div><p className="text-xs text-yellow-600 mt-2">⚠️ Perubahan ini akan tercatat di log (editedBy, editedAt)</p></div>}
+
+              {/* Tombol Edit untuk Super Admin */}
+              {isSuperAdmin && !isEditingShift && !isEditingTime && (
+                <div className="mt-6 flex justify-end gap-3">
+                  <button
+                    onClick={() => setIsEditingShift(true)}
+                    className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <span>🔄</span> Edit Shift
+                  </button>
+                  <button
+                    onClick={() => setIsEditingTime(true)}
+                    className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <span>✏️</span> Edit Jam Kerja
+                  </button>
+                </div>
+              )}
+
+              {/* Form Edit Shift */}
+              {isEditingShift && (
+                <div className="bg-blue-50 rounded-xl p-4 border border-blue-200 mt-4">
+                  <h4 className="font-semibold text-blue-800 mb-3">🔄 Edit Shift</h4>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Shift Baru</label>
+                    {isLoadingShifts ? (
+                      <div className="flex justify-center py-4">
+                        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    ) : (
+                      <select
+                        value={editShiftId}
+                        onChange={(e) => setEditShiftId(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Pilih Shift</option>
+                        {shiftsList.map((shift) => (
+                          <option key={shift.id} value={shift.id}>
+                            {shift.name} ({shift.startTime} - {shift.endTime})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={saveEditedShift}
+                      disabled={isSavingEdit || !editShiftId}
+                      className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {isSavingEdit ? "Menyimpan..." : "💾 Simpan Perubahan Shift"}
+                    </button>
+                    <button
+                      onClick={() => setIsEditingShift(false)}
+                      className="flex-1 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                    >
+                      Batal
+                    </button>
+                  </div>
+                  <p className="text-xs text-blue-600 mt-2">
+                    ⚠️ Perubahan shift akan mempengaruhi perhitungan keterlambatan dan jam kerja
+                  </p>
+                </div>
+              )}
+
+              {/* Form Edit Jam */}
+              {isEditingTime && (
+                <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-4">
+                  <h4 className="font-semibold text-yellow-800 mb-3">✏️ Edit Jam Kerja</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Check-in Baru</label>
+                      <div className="flex gap-2">
+                        <select
+                          value={editCheckInHour}
+                          onChange={(e) => setEditCheckInHour(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                        >
+                          <option value="">Jam</option>
+                          {Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')).map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                        <span className="text-gray-500">:</span>
+                        <select
+                          value={editCheckInMinute}
+                          onChange={(e) => setEditCheckInMinute(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                        >
+                          <option value="">Menit</option>
+                          {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Check-out Baru</label>
+                      <div className="flex gap-2">
+                        <select
+                          value={editCheckOutHour}
+                          onChange={(e) => setEditCheckOutHour(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                        >
+                          <option value="">Jam</option>
+                          {Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')).map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                        <span className="text-gray-500">:</span>
+                        <select
+                          value={editCheckOutMinute}
+                          onChange={(e) => setEditCheckOutMinute(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                        >
+                          <option value="">Menit</option>
+                          {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-4">
+                    <button
+                      onClick={saveEditedTime}
+                      disabled={isSavingEdit}
+                      className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {isSavingEdit ? "Menyimpan..." : "💾 Simpan Perubahan"}
+                    </button>
+                    <button
+                      onClick={() => setIsEditingTime(false)}
+                      className="flex-1 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                    >
+                      Batal
+                    </button>
+                  </div>
+                  <p className="text-xs text-yellow-600 mt-2">
+                    ⚠️ Perubahan ini akan tercatat di log (editedBy, editedAt)
+                  </p>
+                </div>
+              )}
             </div>
-            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end"><button onClick={() => setShowDetailModal(false)} className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg">Tutup</button></div>
+
+            {/* Footer Modal */}
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end">
+              <button
+                onClick={() => setShowDetailModal(false)}
+                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       <style jsx>{`
-        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes scale-in { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes scale-in {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
         .animate-fade-in { animation: fade-in 0.2s ease-out; }
         .animate-scale-in { animation: scale-in 0.2s ease-out; }
       `}</style>
