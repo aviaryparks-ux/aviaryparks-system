@@ -8,7 +8,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { NotificationIcon } from "@/components/icons/MenuIcons";
 import Image from "next/image";
 
-export default function TopNav() {
+interface TopNavProps {
+  onMenuClick?: () => void;
+  onMobileMenuClick?: () => void;
+}
+
+export default function TopNav({ onMenuClick, onMobileMenuClick }: TopNavProps) {
   const router = useRouter();
   const { user, signOut } = useAuth();
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
