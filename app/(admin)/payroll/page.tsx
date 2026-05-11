@@ -1,7 +1,7 @@
 // app/admin/payroll/page.tsx
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -99,11 +99,9 @@ export default function PayrollPage() {
   const [selectedDepartment, setSelectedDepartment] = useState<string>("ALL");
 
   const [allEmployees, setAllEmployees] = useState<{ uid: string; name: string; department: string }[]>([]);
-  const [availableEmployees, setAvailableEmployees] = useState<{ uid: string; name: string; department: string }[]>([]);
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
   const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [selectedEmployee, setSelectedEmployee] = useState<PayrollSummary | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -115,17 +113,13 @@ export default function PayrollPage() {
     setMounted(true);
   }, []);
 
-  useEffect(() => {
+  // Compute available employees based on selected department
+  const availableEmployees = useMemo(() => {
     if (selectedDepartment === "ALL") {
-      setAvailableEmployees(allEmployees);
-    } else {
-      setAvailableEmployees(
-        allEmployees.filter((emp) => emp.department === selectedDepartment)
-      );
+      return allEmployees;
     }
-    setSelectedEmployees([]);
-    setEmployeeSearchTerm("");
-  }, [selectedDepartment, allEmployees]);
+    return allEmployees.filter((emp) => emp.department === selectedDepartment);
+  }, [allEmployees, selectedDepartment]);
 
   const filteredEmployees = useMemo(() => {
     if (!employeeSearchTerm.trim()) return availableEmployees;
@@ -134,18 +128,26 @@ export default function PayrollPage() {
     );
   }, [availableEmployees, employeeSearchTerm]);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowEmployeeDropdown(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  // Disabled click outside - let user close manually
+  // useEffect(() => {
+  //   const handleClickOutside = (event: MouseEvent) => {
+  //     const dropdown = document.getElementById('employee-dropdown-container');
+  //     if (dropdown && !dropdown.contains(event.target as Node)) {
+  //       setShowEmployeeDropdown(false);
+  //     }
+  //   };
+  //   document.addEventListener("mousedown", handleClickOutside);
+  //   return () => document.removeEventListener("mousedown", handleClickOutside);
+  // }, []);
 
+  // Load users and attendance data
   useEffect(() => {
     loadUsers();
+    loadAttendanceData();
+  }, []);
+
+  // Reload attendance when date range changes
+  useEffect(() => {
     loadAttendanceData();
   }, [dateRange]);
 
@@ -196,7 +198,6 @@ export default function PayrollPage() {
       setUsers(usersMap);
       setDepartments(Array.from(deptSet).sort());
       setAllEmployees(empList.sort((a, b) => a.name.localeCompare(b.name)));
-      setAvailableEmployees(empList);
     } catch (error) {
       console.error("Error loading users:", error);
       toast.error("Gagal memuat data karyawan");
@@ -1100,7 +1101,7 @@ export default function PayrollPage() {
         </div>
 
         {/* Filter Section */}
-        <div className={`glass-effect rounded-2xl p-6 mb-8 animate-slide-up`} style={{ animationDelay: '0.55s' }}>
+        <div className={`glass-effect rounded-2xl p-6 mb-8 animate-slide-up overflow-visible`} style={{ animationDelay: '0.55s' }}>
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center">
               <svg className="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1233,94 +1234,98 @@ export default function PayrollPage() {
               </button>
             </div>
           </div>
+        </div>
 
-          {/* Employee Dropdown */}
-          <div className="mt-5" ref={dropdownRef}>
-            <label className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2 block">Pilih Karyawan</label>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowEmployeeDropdown(!showEmployeeDropdown)}
-                className="w-full px-4 py-3 text-left bg-white border border-slate-200 rounded-xl flex justify-between items-center hover:border-sky-400 transition-all"
-              >
-                <span className={selectedEmployees.length === 0 ? "text-slate-400" : "text-slate-700 font-medium"}>
-                  {getSelectedEmployeeNames()}
-                </span>
-                <svg className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${showEmployeeDropdown ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
+        {/* Employee Dropdown Section - placed above table */}
+        <div className="mb-6 bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <label className="text-sm font-medium text-slate-700 mb-3 block">Pilih Karyawan</label>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowEmployeeDropdown(!showEmployeeDropdown)}
+              className="w-full px-4 py-3 text-left bg-white border border-slate-200 rounded-xl flex justify-between items-center hover:bg-slate-50 transition-all"
+            >
+              <span className={selectedEmployees.length === 0 ? "text-slate-400" : "text-slate-700 font-medium"}>
+                {getSelectedEmployeeNames()}
+              </span>
+              <svg className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${showEmployeeDropdown ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
 
-              {showEmployeeDropdown && (
-                <div className="absolute z-20 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
-                  <div className="p-3 border-b border-slate-100">
-                    <input
-                      type="text"
-                      placeholder="Cari nama karyawan..."
-                      value={employeeSearchTerm}
-                      onChange={(e) => setEmployeeSearchTerm(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                      autoFocus
-                    />
-                  </div>
-                  <div className="p-2 border-b border-slate-100 bg-slate-50 flex gap-3">
-                    <button onClick={selectAllEmployees} className="text-xs text-sky-600 hover:text-sky-800 font-medium">
-                      Pilih Semua ({availableEmployees.length})
-                    </button>
-                    <span className="text-slate-300">|</span>
-                    <button onClick={clearEmployeeSelection} className="text-xs text-red-500 hover:text-red-700 font-medium">
-                      Reset
-                    </button>
-                  </div>
-                  <div className="max-h-60 overflow-y-auto">
-                    {filteredEmployees.length === 0 ? (
-                      <div className="p-4 text-center text-slate-400 text-sm">
-                        {employeeSearchTerm ? "Karyawan tidak ditemukan" : "Tidak ada karyawan"}
-                      </div>
-                    ) : (
-                      filteredEmployees.map((emp) => (
-                        <label key={emp.uid} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors">
-                          <input
-                            type="checkbox"
-                            checked={selectedEmployees.includes(emp.uid)}
-                            onChange={() => toggleEmployeeSelection(emp.uid)}
-                            className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-                          />
-                          <span className="text-sm text-slate-700 flex-1">{emp.name}</span>
-                          {selectedDepartment === "ALL" && (
-                            <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{emp.department}</span>
-                          )}
-                          {paymentStatus.get(emp.uid)?.paidAt && (
-                            <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-medium">Paid</span>
-                          )}
-                        </label>
-                      ))
-                    )}
-                  </div>
+            {showEmployeeDropdown && (
+              <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[9999] w-96 max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden">
+                <div className="p-3 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-blue-50">
+                  <span className="font-semibold text-slate-700">Pilih Karyawan ({availableEmployees.length})</span>
+                  <button onClick={() => setShowEmployeeDropdown(false)} className="text-slate-400 hover:text-slate-600">✕</button>
                 </div>
-              )}
-            </div>
-
-            {/* Selected Tags */}
-            {selectedEmployees.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {selectedEmployees.slice(0, 5).map((uid) => {
-                  const emp = allEmployees.find((e) => e.uid === uid);
-                  return emp ? (
-                    <span key={uid} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-100 text-sky-700 text-xs rounded-lg font-medium">
-                      {emp.name}
-                      <button onClick={() => toggleEmployeeSelection(uid)} className="hover:text-sky-900 font-bold">×</button>
-                    </span>
-                  ) : null;
-                })}
-                {selectedEmployees.length > 5 && (
-                  <span className="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs rounded-lg font-medium">
-                    +{selectedEmployees.length - 5} lainnya
-                  </span>
-                )}
+                <div className="p-3 border-b border-slate-100">
+                  <input
+                    type="text"
+                    placeholder="Ketik untuk cari nama..."
+                    value={employeeSearchTerm}
+                    onChange={(e) => setEmployeeSearchTerm(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    autoFocus
+                  />
+                </div>
+                <div className="p-2 border-b border-slate-100 bg-slate-50 flex gap-3">
+                  <button onClick={selectAllEmployees} className="text-xs text-sky-600 hover:text-sky-800 font-medium">
+                    Pilih Semua
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button onClick={clearEmployeeSelection} className="text-xs text-red-500 hover:text-red-700 font-medium">
+                    Reset
+                  </button>
+                </div>
+                <div className="max-h-60 overflow-y-auto">
+                  {filteredEmployees.length === 0 ? (
+                    <div className="p-4 text-center text-slate-400 text-sm">
+                      {employeeSearchTerm ? "Karyawan tidak ditemukan" : "Tidak ada karyawan"}
+                    </div>
+                  ) : (
+                    filteredEmployees.map((emp) => (
+                      <label key={emp.uid} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={selectedEmployees.includes(emp.uid)}
+                          onChange={() => toggleEmployeeSelection(emp.uid)}
+                          className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                        />
+                        <span className="text-sm text-slate-700 flex-1">{emp.name}</span>
+                        {selectedDepartment === "ALL" && (
+                          <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{emp.department}</span>
+                        )}
+                        {paymentStatus.get(emp.uid)?.paidAt && (
+                          <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-medium">Paid</span>
+                        )}
+                      </label>
+                    ))
+                  )}
+                </div>
               </div>
             )}
           </div>
+
+          {/* Selected Tags */}
+          {selectedEmployees.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {selectedEmployees.slice(0, 5).map((uid) => {
+                const emp = allEmployees.find((e) => e.uid === uid);
+                return emp ? (
+                  <span key={uid} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-100 text-sky-700 text-xs rounded-lg font-medium">
+                    {emp.name}
+                    <button onClick={() => toggleEmployeeSelection(uid)} className="hover:text-sky-900 font-bold">×</button>
+                  </span>
+                ) : null;
+              })}
+              {selectedEmployees.length > 5 && (
+                <span className="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs rounded-lg font-medium">
+                  +{selectedEmployees.length - 5} lainnya
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Table Section */}
