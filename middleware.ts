@@ -1,6 +1,7 @@
 // middleware.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { decryptSession } from '@/lib/crypto';
 
 // ✅ HARUS DI SINI (atas)
 const publicRoutes = ['/login', '/profile'];
@@ -51,11 +52,13 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    const userData = JSON.parse(
-      Buffer.from(session, 'base64').toString('utf-8')
-    );
+    const userData = decryptSession(session);
 
-    const userRole = userData.role || 'employee';
+    if (!userData || typeof userData !== 'object') {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+
+    const userRole = (userData as any).role || 'employee';
 
     // ✅ MOBILE BEBAS
     if (mobileRoutes.some(route => pathname.startsWith(route))) {

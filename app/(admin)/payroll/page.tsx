@@ -10,6 +10,9 @@ import {
   getDocs,
   orderBy,
   Timestamp,
+  doc,
+  setDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import * as XLSX from "xlsx";
@@ -25,6 +28,8 @@ type User = {
   bankAccountName: string;
   jabatan: string;
   department: string;
+  isActive?: boolean;
+  photoUrl?: string;
 };
 
 type AttendanceRecord = {
@@ -63,6 +68,7 @@ type PayrollSummary = {
   totalDays: number;
   totalHours: number;
   totalSalary: number;
+  photoUrl?: string;
   attendanceDetails: {
     date: string;
     checkIn: string;
@@ -71,33 +77,44 @@ type PayrollSummary = {
   }[];
 };
 
+type PaymentStatus = {
+  paidAt: Timestamp | null;
+  paidBy: string | null;
+};
+
 export default function PayrollPage() {
   const [users, setUsers] = useState<Map<string, User>>(new Map());
   const [payrollSummary, setPayrollSummary] = useState<PayrollSummary[]>([]);
   const [filteredSummary, setFilteredSummary] = useState<PayrollSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const [dateRange, setDateRange] = useState({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
       .toISOString()
       .split("T")[0],
     endDate: new Date().toISOString().split("T")[0],
   });
-  
+
   const [departments, setDepartments] = useState<string[]>([]);
   const [selectedDepartment, setSelectedDepartment] = useState<string>("ALL");
-  
-  // 🔥 STATE UNTUK SEARCHABLE DROPDOWN KARYAWAN
+
   const [allEmployees, setAllEmployees] = useState<{ uid: string; name: string; department: string }[]>([]);
   const [availableEmployees, setAvailableEmployees] = useState<{ uid: string; name: string; department: string }[]>([]);
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
   const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  
+
   const [selectedEmployee, setSelectedEmployee] = useState<PayrollSummary | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
-  // 🔥 Update available employees berdasarkan department yang dipilih
+  const [paymentStatus, setPaymentStatus] = useState<Map<string, PaymentStatus>>(new Map());
+  const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     if (selectedDepartment === "ALL") {
       setAvailableEmployees(allEmployees);
@@ -106,12 +123,10 @@ export default function PayrollPage() {
         allEmployees.filter((emp) => emp.department === selectedDepartment)
       );
     }
-    // Reset selected employees ketika department berubah
     setSelectedEmployees([]);
     setEmployeeSearchTerm("");
   }, [selectedDepartment, allEmployees]);
 
-  // 🔥 Filter karyawan berdasarkan search term
   const filteredEmployees = useMemo(() => {
     if (!employeeSearchTerm.trim()) return availableEmployees;
     return availableEmployees.filter((emp) =>
@@ -119,7 +134,6 @@ export default function PayrollPage() {
     );
   }, [availableEmployees, employeeSearchTerm]);
 
-  // Click outside dropdown
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -139,18 +153,25 @@ export default function PayrollPage() {
     applyFilters();
   }, [selectedDepartment, selectedEmployees, payrollSummary]);
 
+  useEffect(() => {
+    loadPaymentStatus();
+  }, [filteredSummary, dateRange]);
+
   const loadUsers = async () => {
     try {
       const usersSnap = await getDocs(collection(db, "users"));
       const usersMap = new Map<string, User>();
       const deptSet = new Set<string>();
       const empList: { uid: string; name: string; department: string }[] = [];
-      
+
       usersSnap.forEach((doc) => {
         const data = doc.data();
         const department = data.department || "";
+
+        if (data.isActive === false) return;
+
         if (department) deptSet.add(department);
-        
+
         usersMap.set(doc.id, {
           uid: doc.id,
           name: data.name || "",
@@ -161,18 +182,17 @@ export default function PayrollPage() {
           bankAccountName: data.bankAccountName || "",
           jabatan: data.jabatan || "",
           department: department,
+          isActive: data.isActive !== false,
+          photoUrl: data.photoUrl || "",
         });
-        
-        // 🔥 Tambahkan ke daftar karyawan untuk filter
-        if (data.isActive !== false) {
-          empList.push({
-            uid: doc.id,
-            name: data.name || "",
-            department: department,
-          });
-        }
+
+        empList.push({
+          uid: doc.id,
+          name: data.name || "",
+          department: department,
+        });
       });
-      
+
       setUsers(usersMap);
       setDepartments(Array.from(deptSet).sort());
       setAllEmployees(empList.sort((a, b) => a.name.localeCompare(b.name)));
@@ -183,17 +203,45 @@ export default function PayrollPage() {
     }
   };
 
+  const loadPaymentStatus = async () => {
+    try {
+      const periodKey = `${dateRange.startDate}_${dateRange.endDate}`;
+
+      const paymentsSnap = await getDocs(
+        query(collection(db, "payroll_payments"), where("periodKey", "==", periodKey))
+      );
+
+      const statusMap = new Map<string, PaymentStatus>();
+
+      paymentsSnap.forEach((doc) => {
+        const data = doc.data();
+        if (data.employees) {
+          data.employees.forEach((emp: any) => {
+            statusMap.set(emp.uid, {
+              paidAt: emp.paidAt || null,
+              paidBy: emp.paidBy || null,
+            });
+          });
+        }
+      });
+
+      setPaymentStatus(statusMap);
+    } catch (error) {
+      console.error("Error loading payment status:", error);
+    }
+  };
+
   const applyFilters = () => {
     let filtered = [...payrollSummary];
-    
+
     if (selectedDepartment !== "ALL") {
       filtered = filtered.filter((item) => item.department === selectedDepartment);
     }
-    
+
     if (selectedEmployees.length > 0) {
       filtered = filtered.filter((item) => selectedEmployees.includes(item.uid));
     }
-    
+
     setFilteredSummary(filtered);
   };
 
@@ -251,15 +299,15 @@ export default function PayrollPage() {
 
       const uid = att.uid;
       const user = users.get(uid);
+      if (!user || user.isActive === false) return;
 
       const dailyRate = user?.dailyRate || 0;
       const department = user?.department || "";
 
       const checkInTime = att.checkIn.time.toDate();
       const checkOutTime = att.checkOut.time.toDate();
-      
-      const workHours =
-        (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+
+      const workHours = (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
 
       const dateStr = att.date.toDate().toLocaleDateString("id-ID", {
         day: "numeric",
@@ -285,13 +333,12 @@ export default function PayrollPage() {
           department: department,
           dailyRate: dailyRate,
           bankName: att.bankAccount?.bankName || user?.bankName || "-",
-          bankAccountNumber:
-            att.bankAccount?.accountNumber || user?.bankAccountNumber || "-",
-          bankAccountName:
-            att.bankAccount?.accountName || user?.bankAccountName || "-",
+          bankAccountNumber: att.bankAccount?.accountNumber || user?.bankAccountNumber || "-",
+          bankAccountName: att.bankAccount?.accountName || user?.bankAccountName || "-",
           totalDays: 0,
           totalHours: 0,
           totalSalary: 0,
+          photoUrl: user?.photoUrl,
           attendanceDetails: [],
         });
       }
@@ -314,42 +361,196 @@ export default function PayrollPage() {
     setPayrollSummary(result);
   };
 
+  const markAsPaid = async () => {
+    if (selectedEmployees.length === 0) {
+      toast.error("Pilih karyawan terlebih dahulu");
+      return;
+    }
+
+    setIsUpdatingPayment(true);
+    try {
+      const periodKey = `${dateRange.startDate}_${dateRange.endDate}`;
+      const docId = `payment_${periodKey.replace(/-/g, "")}`;
+
+      const existingSnap = await getDocs(
+        query(collection(db, "payroll_payments"), where("periodKey", "==", periodKey))
+      );
+
+      let employees = selectedEmployees.map((uid) => ({
+        uid,
+        paidAt: Timestamp.now(),
+        paidBy: "current_admin",
+      }));
+
+      if (!existingSnap.empty) {
+        const existingDoc = existingSnap.docs[0];
+        const existingData = existingDoc.data();
+        const existingEmployees = existingData.employees || [];
+
+        const mergedMap = new Map<string, any>();
+
+        existingEmployees.forEach((emp: any) => {
+          mergedMap.set(emp.uid, emp);
+        });
+
+        selectedEmployees.forEach((uid) => {
+          mergedMap.set(uid, {
+            uid,
+            paidAt: Timestamp.now(),
+            paidBy: "current_admin",
+          });
+        });
+
+        employees = Array.from(mergedMap.values());
+
+        await setDoc(doc(db, "payroll_payments", existingDoc.id), {
+          employees,
+          periodKey,
+          startDate: dateRange.startDate,
+          endDate: dateRange.endDate,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      } else {
+        await setDoc(doc(db, "payroll_payments", docId), {
+          employees,
+          periodKey,
+          startDate: dateRange.startDate,
+          endDate: dateRange.endDate,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      const newStatus = new Map(paymentStatus);
+      selectedEmployees.forEach((uid) => {
+        newStatus.set(uid, {
+          paidAt: Timestamp.now(),
+          paidBy: "current_admin",
+        });
+      });
+      setPaymentStatus(newStatus);
+
+      toast.success(`${selectedEmployees.length} karyawan berhasil ditandai Paid`);
+    } catch (error) {
+      console.error("Error marking as paid:", error);
+      toast.error("Gagal menandai Paid");
+    } finally {
+      setIsUpdatingPayment(false);
+    }
+  };
+
+  const markAsUnpaid = async () => {
+    if (selectedEmployees.length === 0) {
+      toast.error("Pilih karyawan terlebih dahulu");
+      return;
+    }
+
+    setIsUpdatingPayment(true);
+    try {
+      const periodKey = `${dateRange.startDate}_${dateRange.endDate}`;
+
+      const existingSnap = await getDocs(
+        query(collection(db, "payroll_payments"), where("periodKey", "==", periodKey))
+      );
+
+      if (!existingSnap.empty) {
+        const existingDoc = existingSnap.docs[0];
+        const existingData = existingDoc.data();
+        const existingEmployees = existingData.employees || [];
+
+        const mergedMap = new Map<string, any>();
+        existingEmployees.forEach((emp: any) => {
+          mergedMap.set(emp.uid, emp);
+        });
+
+        selectedEmployees.forEach((uid) => {
+          mergedMap.set(uid, {
+            uid,
+            paidAt: null,
+            paidBy: null,
+          });
+        });
+
+        const employees = Array.from(mergedMap.values());
+
+        await setDoc(doc(db, "payroll_payments", existingSnap.docs[0].id), {
+          employees,
+          periodKey,
+          startDate: dateRange.startDate,
+          endDate: dateRange.endDate,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+
+        const newStatus = new Map(paymentStatus);
+        selectedEmployees.forEach((uid) => {
+          newStatus.set(uid, {
+            paidAt: null,
+            paidBy: null,
+          });
+        });
+        setPaymentStatus(newStatus);
+
+        toast.success(`${selectedEmployees.length} karyawan berhasil ditandai Unpaid`);
+      } else {
+        toast.error("Tidak ada data pembayaran untuk periode ini");
+      }
+    } catch (error) {
+      console.error("Error marking as unpaid:", error);
+      toast.error("Gagal menandai Unpaid");
+    } finally {
+      setIsUpdatingPayment(false);
+    }
+  };
+
+  const toggleRowSelection = (uid: string) => {
+    setSelectedEmployees((prev) =>
+      prev.includes(uid) ? prev.filter((id) => id !== uid) : [...prev, uid]
+    );
+  };
+
+  const selectAllVisible = () => {
+    const visibleUids = filteredSummary.map((item) => item.uid);
+    setSelectedEmployees(visibleUids);
+  };
+
+  const clearAllSelection = () => {
+    setSelectedEmployees([]);
+  };
+
   const exportToExcel = () => {
     if (filteredSummary.length === 0) {
       toast.error("Tidak ada data untuk diexport");
       return;
     }
 
-    const excelData = filteredSummary.map((item, index) => ({
-      No: index + 1,
-      "Nama Karyawan": item.name,
-      Email: item.email,
-      Departemen: item.department,
-      Jabatan: item.jabatan,
-      "Rate Harian": `Rp ${item.dailyRate.toLocaleString()}`,
-      Bank: item.bankName,
-      "Nomor Rekening": item.bankAccountNumber,
-      "Nama Pemilik": item.bankAccountName,
-      "Total Hari Kerja": item.totalDays,
-      "Total Jam Kerja": item.totalHours.toFixed(1),
-      "Total Gaji": `Rp ${item.totalSalary.toLocaleString()}`,
-    }));
+    // Sheet 1: Summary data
+    const excelData = filteredSummary.map((item, index) => {
+      const status = paymentStatus.get(item.uid);
+      const paidStatus = status?.paidAt ? "Paid" : "Unpaid";
 
-    const totalSalary = filteredSummary.reduce(
-      (sum, item) => sum + item.totalSalary,
-      0
-    );
-    const totalDays = filteredSummary.reduce(
-      (sum, item) => sum + item.totalDays,
-      0
-    );
-    const totalHours = filteredSummary.reduce(
-      (sum, item) => sum + item.totalHours,
-      0
-    );
+      return {
+        No: index + 1,
+        "Nama Karyawan": item.name,
+        Email: item.email,
+        Departemen: item.department,
+        Jabatan: item.jabatan,
+        "Rate Harian": `Rp ${item.dailyRate.toLocaleString()}`,
+        Bank: item.bankName,
+        "Nomor Rekening": item.bankAccountNumber,
+        "Nama Pemilik": item.bankAccountName,
+        "Total Hari Kerja": `${item.totalDays}x`,
+        "Total Jam Kerja": `${item.totalHours.toFixed(1)} jam`,
+        "Total Gaji": `Rp ${item.totalSalary.toLocaleString()}`,
+        "Status Bayar": paidStatus,
+      };
+    });
 
-    excelData.push({
-      No: excelData.length + 1,
+    const totalSalary = filteredSummary.reduce((sum, item) => sum + item.totalSalary, 0);
+    const totalDays = filteredSummary.reduce((sum, item) => sum + item.totalDays, 0);
+    const totalHours = filteredSummary.reduce((sum, item) => sum + item.totalHours, 0);
+
+    const totalRow: any = {
+      No: "",
       "Nama Karyawan": "TOTAL",
       Email: "",
       Departemen: "",
@@ -358,46 +559,181 @@ export default function PayrollPage() {
       Bank: "",
       "Nomor Rekening": "",
       "Nama Pemilik": "",
-      "Total Hari Kerja": totalDays,
-      "Total Jam Kerja": totalHours.toFixed(1),
+      "Total Hari Kerja": `${totalDays}x masuk`,
+      "Total Jam Kerja": `${totalHours.toFixed(1)} jam`,
       "Total Gaji": `Rp ${totalSalary.toLocaleString()}`,
+      "Status Bayar": "",
+    };
+
+    excelData.push(totalRow);
+
+    // Sheet 2: Detail all attendance
+    const detailData: any[] = [];
+    filteredSummary.forEach((item, index) => {
+      // Add employee header
+      detailData.push({
+        "No": `Karyawan ${index + 1}`,
+        "Nama": item.name,
+        "Departemen": item.department,
+        "Total Masuk": `${item.totalDays}x`,
+        "": "",
+        "": "",
+        "": "",
+        "": "",
+      });
+
+      // Add attendance details
+      item.attendanceDetails.forEach((att, attIdx) => {
+        detailData.push({
+          "No": attIdx + 1,
+          "Nama": att.date,
+          "Departemen": att.checkIn,
+          "Jabatan": att.checkOut,
+          "Rate Harian": `${att.workHours.toFixed(1)} jam`,
+          "": "",
+          "": "",
+          "": "",
+          "": "",
+        });
+      });
+
+      // Empty row separator
+      detailData.push({
+        No: "",
+        "Nama Karyawan": "",
+        Email: "",
+        Departemen: "",
+        Jabatan: "",
+        "Rate Harian": "",
+        Bank: "",
+        "Nomor Rekening": "",
+        "Nama Pemilik": "",
+        "Total Hari Kerja": "",
+        "Total Jam Kerja": "",
+        "Total Gaji": "",
+        "Status Bayar": "",
+      });
     });
 
-    const ws = XLSX.utils.json_to_sheet(excelData);
+    // Create workbook
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Rekap Gaji");
-    
-    const fileName = selectedEmployees.length === 1 
-      ? `rekap_gaji_${filteredSummary[0]?.name}_${dateRange.startDate}_${dateRange.endDate}.xlsx`
-      : selectedDepartment !== "ALL" 
-        ? `rekap_gaji_${selectedDepartment}_${dateRange.startDate}_${dateRange.endDate}.xlsx`
-        : `rekap_gaji_${dateRange.startDate}_${dateRange.endDate}.xlsx`;
-    
+
+    // Sheet 1: Rekap Gaji
+    const summaryWs = XLSX.utils.json_to_sheet(excelData);
+    XLSX.utils.book_append_sheet(wb, summaryWs, "Rekap Gaji");
+
+    // Sheet 2: Detail Absensi (format lebih jelas)
+    const detailRows: any[] = [];
+
+    filteredSummary.forEach((item, index) => {
+      // Header employee
+      detailRows.push({
+        "No": `===== ${item.name} (${item.department || '-'}) =====`,
+        "Tanggal": `Rate: ${formatCurrency(item.dailyRate)} | Total: ${formatCurrency(item.totalSalary)}`,
+        "Jam Masuk": "",
+        "Jam Pulang": "",
+        "Durasi": "",
+      });
+
+      // Each attendance row
+      item.attendanceDetails.forEach((att, idx) => {
+        detailRows.push({
+          "No": idx + 1,
+          "Tanggal": att.date,
+          "Jam Masuk": att.checkIn,
+          "Jam Pulang": att.checkOut,
+          "Durasi": `${att.workHours.toFixed(1)} jam`,
+        });
+      });
+
+      // Total row
+      detailRows.push({
+        "No": "",
+        "Tanggal": "SUBTOTAL",
+        "Jam Masuk": `${item.totalDays}x masuk`,
+        "Jam Pulang": "",
+        "Durasi": `${item.totalHours.toFixed(1)} jam`,
+      });
+
+      // Empty separator
+      detailRows.push({
+        "No": "",
+        "Tanggal": "",
+        "Jam Masuk": "",
+        "Jam Pulang": "",
+        "Durasi": "",
+      });
+    });
+
+    const detailWs = XLSX.utils.json_to_sheet(detailRows);
+    XLSX.utils.book_append_sheet(wb, detailWs, "Detail Absensi");
+
+    const sanitizeFilename = (name: string) => {
+      return name.replace(/[<>:"/\\|?*]/g, "").trim() || "data";
+    };
+
+    const safeName = selectedEmployees.length === 1
+      ? sanitizeFilename(filteredSummary[0]?.name || "data")
+      : selectedDepartment !== "ALL"
+        ? sanitizeFilename(selectedDepartment)
+        : "all";
+
+    const fileName = `rekap_gaji_${safeName}_${dateRange.startDate}_${dateRange.endDate}.xlsx`;
+
     XLSX.writeFile(wb, fileName);
     toast.success("Export Excel berhasil");
   };
 
   const exportDetailToExcel = (employee: PayrollSummary) => {
-    const detailData = employee.attendanceDetails.map((item, index) => ({
-      No: index + 1,
-      Tanggal: item.date,
-      "Jam Masuk": item.checkIn,
-      "Jam Pulang": item.checkOut,
-      "Jam Kerja": item.workHours.toFixed(1),
-    }));
+    // Header info section
+    const headerInfo = [
+      { Label: "Nama Karyawan", Value: employee.name },
+      { Label: "Departemen", Value: employee.department || "-" },
+      { Label: "Jabatan", Value: employee.jabatan },
+      { Label: "Rate Harian", Value: formatCurrency(employee.dailyRate) },
+      { Label: "Periode", Value: `${dateRange.startDate} - ${dateRange.endDate}` },
+      { Label: "", Value: "" },
+      { Label: "Total Hari Kerja", Value: `${employee.totalDays} hari` },
+      { Label: "Total Jam Kerja", Value: formatTime(employee.totalHours) },
+      { Label: "Total Gaji", Value: formatCurrency(employee.totalSalary) },
+    ];
 
-    detailData.push({
-      No: detailData.length + 1,
-      Tanggal: "TOTAL",
-      "Jam Masuk": "",
-      "Jam Pulang": "",
-      "Jam Kerja": employee.totalHours.toFixed(1),
-    });
+    // Detail attendance section
+    const detailData = [
+      ...employee.attendanceDetails.map((item, index) => ({
+        "No": index + 1,
+        "Tanggal": item.date,
+        "Jam Masuk": item.checkIn,
+        "Jam Pulang": item.checkOut,
+        "Durasi (Jam)": item.workHours.toFixed(1),
+      })),
+      {
+        "No": "",
+        "Tanggal": "TOTAL",
+        "Jam Masuk": `${employee.totalDays}x masuk`,
+        "Jam Pulang": "",
+        "Durasi (Jam)": employee.totalHours.toFixed(1),
+      },
+    ];
 
-    const ws = XLSX.utils.json_to_sheet(detailData);
+    // Create workbook with header info and detail
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, `Detail_${employee.name}`);
-    XLSX.writeFile(wb, `detail_absensi_${employee.name}.xlsx`);
+
+    // Sheet 1: Info & Summary
+    const infoWs = XLSX.utils.json_to_sheet(headerInfo);
+    XLSX.utils.book_append_sheet(wb, infoWs, "Info Karyawan");
+
+    // Sheet 2: Detail Absensi
+    const detailWs = XLSX.utils.json_to_sheet(detailData);
+    XLSX.utils.book_append_sheet(wb, detailWs, "Detail Absensi");
+
+    // Sanitize filename
+    const sanitizeFilename = (name: string) => {
+      return name.replace(/[<>:"/\\|?*]/g, "").trim() || "data";
+    };
+
+    const fileName = `detail_absensi_${sanitizeFilename(employee.name)}_${dateRange.startDate}_${dateRange.endDate}.xlsx`;
+    XLSX.writeFile(wb, fileName);
     toast.success(`Export detail ${employee.name} berhasil`);
   };
 
@@ -416,10 +752,18 @@ export default function PayrollPage() {
     return `${h} jam ${m} menit`;
   };
 
+  const formatPaidDate = (timestamp: Timestamp | null) => {
+    if (!timestamp) return "";
+    return timestamp.toDate().toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+    });
+  };
+
   const getSelectedEmployeeNames = () => {
     if (selectedEmployees.length === 0) return "Semua Karyawan";
     if (selectedEmployees.length === 1) {
-      const emp = allEmployees.find(e => e.uid === selectedEmployees[0]);
+      const emp = allEmployees.find((e) => e.uid === selectedEmployees[0]);
       return emp ? emp.name : "1 karyawan";
     }
     return `${selectedEmployees.length} karyawan terpilih`;
@@ -430,190 +774,524 @@ export default function PayrollPage() {
   const totalFilteredHours = filteredSummary.reduce((sum, item) => sum + item.totalHours, 0);
   const totalFilteredEmployees = filteredSummary.length;
 
+  const paidCount = filteredSummary.filter((item) => paymentStatus.get(item.uid)?.paidAt).length;
+  const unpaidCount = filteredSummary.length - paidCount;
+
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "hr", "finance"]}>
-      <div className="space-y-6 p-6">
+    <ProtectedRoute allowedRoles={["super_admin", "hr", "admin"]}>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6 lg:p-8">
+        {/* CSS Variables & Animations */}
+        <style jsx global>{`
+          @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+          :root {
+            --primary: #0f172a;
+            --accent: #0ea5e9;
+            --accent-dark: #0284c7;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+          }
+
+          * {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+          }
+
+          @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+
+          @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+          }
+
+          @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.4); }
+            50% { box-shadow: 0 0 20px 5px rgba(14, 165, 233, 0.2); }
+          }
+
+          @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+          }
+
+          @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+          }
+
+          @keyframes countUp {
+            from { opacity: 0; transform: scale(0.5); }
+            to { opacity: 1; transform: scale(1); }
+          }
+
+          .animate-slide-up {
+            animation: slideUp 0.5s ease-out forwards;
+            opacity: 0;
+          }
+
+          .animate-slide-in {
+            animation: slideIn 0.4s ease-out forwards;
+            opacity: 0;
+          }
+
+          .card-hover {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+
+          .card-hover:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+          }
+
+          .glass-effect {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+          }
+
+          .gradient-border {
+            position: relative;
+          }
+
+          .gradient-border::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(14, 165, 233, 0.5), rgba(139, 92, 246, 0.5));
+            border-radius: inherit;
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask-composite: exclude;
+          }
+
+          .btn-primary {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+            transition: all 0.2s ease;
+          }
+
+          .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px -5px rgba(14, 165, 233, 0.4);
+          }
+
+          .btn-primary:active {
+            transform: translateY(0);
+          }
+
+          .table-row-hover {
+            transition: all 0.2s ease;
+          }
+
+          .table-row-hover:hover {
+            background: linear-gradient(90deg, rgba(14, 165, 233, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%);
+          }
+
+          .status-pulse {
+            animation: pulse-glow 2s infinite;
+          }
+
+          .shimmer-effect {
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+          }
+
+          .float-animation {
+            animation: float 3s ease-in-out infinite;
+          }
+
+          .stat-icon {
+            background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.6) 100%);
+          }
+
+          .table-container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+          }
+
+          .modal-backdrop {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(8px);
+          }
+
+          .modal-content {
+            animation: slideUp 0.3s ease-out forwards;
+          }
+
+          .checkbox-custom:checked {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+            border-color: var(--accent);
+          }
+        `}</style>
+
         {/* Header */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 p-6 text-white shadow-xl">
-          <div className="relative z-10">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
-                <span className="text-2xl">💰</span>
+        <div className={`relative overflow-hidden rounded-2xl mb-8 animate-slide-up`} style={{ animationDelay: '0.1s' }}>
+          {/* Background Pattern */}
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900" />
+          <div className="absolute inset-0 opacity-30">
+            <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <defs>
+                <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
+                  <path d="M 10 0 L 0 0 0 10" fill="none" stroke="white" strokeWidth="0.5" opacity="0.1"/>
+                </pattern>
+              </defs>
+              <rect width="100" height="100" fill="url(#grid)" />
+            </svg>
+          </div>
+          <div className="absolute -top-20 -right-20 w-60 h-60 bg-sky-500/20 rounded-full blur-3xl" />
+          <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-indigo-500/20 rounded-full blur-3xl" />
+
+          <div className="relative z-10 px-8 py-8">
+            <div className="flex items-center gap-5">
+              <div className="relative">
+                <div className="w-16 h-16 bg-gradient-to-br from-sky-400 to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-500/30 float-animation">
+                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="absolute -inset-1 bg-gradient-to-r from-sky-400 to-indigo-500 rounded-2xl blur opacity-30 -z-10" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold">Rekap Gaji Karyawan</h1>
-                <p className="text-blue-100 mt-1">
-                  Rekap gaji berdasarkan data absensi dan rate harian masing-masing karyawan
-                </p>
+                <h1 className="text-3xl font-bold text-white tracking-tight">Rekap Gaji Karyawan</h1>
+                <p className="text-slate-400 mt-1 text-base">Pantau dan kelola pembayaran gaji dengan mudah</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-blue-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div><p className="text-sm text-blue-600 font-medium">Total Karyawan</p><p className="text-3xl font-bold text-gray-800 mt-1">{totalFilteredEmployees} orang</p></div>
-              <div className="rounded-xl bg-blue-100 p-3"><span className="text-2xl">👥</span></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+          {/* Total Employees */}
+          <div
+            className={`glass-effect rounded-2xl p-6 card-hover animate-slide-up`}
+            style={{ animationDelay: '0.2s' }}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-500 mb-1">Total Karyawan</p>
+                <p className="text-3xl font-bold text-slate-800">{totalFilteredEmployees}</p>
+                <p className="text-xs text-slate-400 mt-1">orang</p>
+              </div>
+              <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </div>
             </div>
           </div>
-          
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-green-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div><p className="text-sm text-green-600 font-medium">Total Hari Kerja</p><p className="text-3xl font-bold text-gray-800 mt-1">{totalFilteredDays} hari</p></div>
-              <div className="rounded-xl bg-green-100 p-3"><span className="text-2xl">📆</span></div>
+
+          {/* Total Days */}
+          <div
+            className={`glass-effect rounded-2xl p-6 card-hover animate-slide-up`}
+            style={{ animationDelay: '0.25s' }}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-500 mb-1">Total Hari Kerja</p>
+                <p className="text-3xl font-bold text-slate-800">{totalFilteredDays}</p>
+                <p className="text-xs text-slate-400 mt-1">hari</p>
+              </div>
+              <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
             </div>
           </div>
-          
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-yellow-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div><p className="text-sm text-yellow-600 font-medium">Total Jam Kerja</p><p className="text-3xl font-bold text-gray-800 mt-1">{formatTime(totalFilteredHours)}</p></div>
-              <div className="rounded-xl bg-yellow-100 p-3"><span className="text-2xl">⏰</span></div>
+
+          {/* Total Hours */}
+          <div
+            className={`glass-effect rounded-2xl p-6 card-hover animate-slide-up`}
+            style={{ animationDelay: '0.3s' }}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-500 mb-1">Total Jam Kerja</p>
+                <p className="text-3xl font-bold text-slate-800">{formatTime(totalFilteredHours)}</p>
+                <p className="text-xs text-slate-400 mt-1">effektif</p>
+              </div>
+              <div className="w-14 h-14 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20">
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
             </div>
           </div>
-          
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-purple-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div><p className="text-sm text-purple-600 font-medium">Total Gaji</p><p className="text-3xl font-bold text-gray-800 mt-1">{formatCurrency(totalFilteredSalary)}</p></div>
-              <div className="rounded-xl bg-purple-100 p-3"><span className="text-2xl">💰</span></div>
+
+          {/* Total Salary */}
+          <div
+            className={`glass-effect rounded-2xl p-6 card-hover animate-slide-up`}
+            style={{ animationDelay: '0.35s' }}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-500 mb-1">Total Gaji</p>
+                <p className="text-2xl font-bold text-emerald-600">{formatCurrency(totalFilteredSalary)}</p>
+                <p className="text-xs text-slate-400 mt-1">bruto</p>
+              </div>
+              <div className="w-14 h-14 bg-gradient-to-br from-violet-500 to-violet-600 rounded-xl flex items-center justify-center shadow-lg shadow-violet-500/20">
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Payment Status Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
+          {/* Paid Count */}
+          <div
+            className={`glass-effect rounded-2xl p-5 border-l-4 border-emerald-500 animate-slide-up`}
+            style={{ animationDelay: '0.4s' }}
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
+                <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500 font-medium">Sudah Dibayar</p>
+                <p className="text-2xl font-bold text-emerald-600">{paidCount} <span className="text-sm font-normal text-slate-400">karyawan</span></p>
+              </div>
+            </div>
+          </div>
+
+          {/* Unpaid Count */}
+          <div
+            className={`glass-effect rounded-2xl p-5 border-l-4 border-amber-500 animate-slide-up`}
+            style={{ animationDelay: '0.45s' }}
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
+                <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500 font-medium">Belum Dibayar</p>
+                <p className="text-2xl font-bold text-amber-600">{unpaidCount} <span className="text-sm font-normal text-slate-400">karyawan</span></p>
+              </div>
+            </div>
+          </div>
+
+          {/* Selected Count */}
+          <div
+            className={`glass-effect rounded-2xl p-5 border-l-4 border-sky-500 animate-slide-up`}
+            style={{ animationDelay: '0.5s' }}
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-sky-100 rounded-xl flex items-center justify-center">
+                <svg className="w-6 h-6 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500 font-medium">Dipilih</p>
+                <p className="text-2xl font-bold text-sky-600">{selectedEmployees.length} <span className="text-sm font-normal text-slate-400">karyawan</span></p>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Filter Section */}
-        <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
-          <h2 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-            </svg>
-            Filter Data
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">📅 Tanggal Mulai</label>
-              <input
-                type="date"
-                value={dateRange.startDate}
-                onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
-              />
+        <div className={`glass-effect rounded-2xl p-6 mb-8 animate-slide-up`} style={{ animationDelay: '0.55s' }}>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center">
+              <svg className="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              </svg>
             </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">📅 Tanggal Akhir</label>
-              <input
-                type="date"
-                value={dateRange.endDate}
-                onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
-              />
+            <h2 className="text-lg font-semibold text-slate-800">Filter & Pencarian</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5">
+            {/* Date Start */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Tanggal Mulai</label>
+              <div className="relative">
+                <input
+                  type="date"
+                  value={dateRange.startDate}
+                  onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">🏢 Filter Departemen</label>
+
+            {/* Date End */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Tanggal Akhir</label>
+              <div className="relative">
+                <input
+                  type="date"
+                  value={dateRange.endDate}
+                  onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Department */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Departemen</label>
               <select
                 value={selectedDepartment}
-                onChange={(e) => {
-                  setSelectedDepartment(e.target.value);
-                }}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                onChange={(e) => setSelectedDepartment(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
               >
-                <option value="ALL">📋 Semua Departemen</option>
+                <option value="ALL">Semua Departemen</option>
                 {departments.map((dept) => (
-                  <option key={dept} value={dept}>🏢 {dept}</option>
+                  <option key={dept} value={dept}>{dept}</option>
                 ))}
               </select>
             </div>
-            <div className="flex items-end gap-2">
+
+            {/* Action Buttons */}
+            <div className="flex items-end gap-3">
               <button
-                onClick={() => {
-                  loadUsers();
-                  loadAttendanceData();
-                }}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium"
+                onClick={() => { loadUsers(); loadAttendanceData(); }}
+                className="btn-primary px-5 py-3 text-white rounded-xl font-medium flex items-center gap-2"
               >
-                🔍 Tampilkan
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                Tampilkan
               </button>
               <button
                 onClick={exportToExcel}
                 disabled={filteredSummary.length === 0}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                className="px-5 py-3 bg-white border-2 border-emerald-500 text-emerald-600 rounded-xl font-medium hover:bg-emerald-50 transition-all disabled:opacity-50 flex items-center gap-2"
               >
-                📊 Export Excel
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Export
               </button>
             </div>
           </div>
 
-          {/* 🔥 SEARCHABLE DROPDOWN KARYAWAN */}
-          <div className="mt-3" ref={dropdownRef}>
-            <label className="block text-xs text-gray-500 mb-1">👥 Pilih Karyawan</label>
+          {/* Payment Actions */}
+          <div className="flex flex-wrap items-center gap-3 p-4 bg-gradient-to-r from-slate-50 to-blue-50 rounded-xl border border-slate-200">
+            <div className="flex-1">
+              <p className="text-sm text-slate-600 font-medium">
+                {selectedEmployees.length > 0 ? (
+                  <span className="text-sky-600">{selectedEmployees.length} karyawan dipilih</span>
+                ) : (
+                  "Klik checkbox pada tabel untuk memilih karyawan"
+                )}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={selectAllVisible}
+                className="px-4 py-2 bg-white border border-slate-300 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-100 transition-all"
+              >
+                Pilih Semua
+              </button>
+              <button
+                onClick={clearAllSelection}
+                disabled={selectedEmployees.length === 0}
+                className="px-4 py-2 bg-white border border-slate-300 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-100 transition-all disabled:opacity-50"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="flex gap-2 border-l border-slate-300 pl-3">
+              <button
+                onClick={markAsPaid}
+                disabled={selectedEmployees.length === 0 || isUpdatingPayment}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20"
+              >
+                {isUpdatingPayment ? (
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+                Mark Paid
+              </button>
+              <button
+                onClick={markAsUnpaid}
+                disabled={selectedEmployees.length === 0 || isUpdatingPayment}
+                className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2 shadow-lg shadow-amber-500/20"
+              >
+                {isUpdatingPayment ? (
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+                Mark Unpaid
+              </button>
+            </div>
+          </div>
+
+          {/* Employee Dropdown */}
+          <div className="mt-5" ref={dropdownRef}>
+            <label className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2 block">Pilih Karyawan</label>
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowEmployeeDropdown(!showEmployeeDropdown)}
-                className="w-full px-3 py-2 text-left text-sm border border-gray-300 rounded-lg bg-white flex justify-between items-center"
+                className="w-full px-4 py-3 text-left bg-white border border-slate-200 rounded-xl flex justify-between items-center hover:border-sky-400 transition-all"
               >
-                <span className={selectedEmployees.length === 0 ? "text-gray-400" : "text-gray-700"}>
+                <span className={selectedEmployees.length === 0 ? "text-slate-400" : "text-slate-700 font-medium"}>
                   {getSelectedEmployeeNames()}
                 </span>
-                <svg className={`w-4 h-4 text-gray-400 transition-transform ${showEmployeeDropdown ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${showEmployeeDropdown ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
-              
+
               {showEmployeeDropdown && (
-                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg">
-                  <div className="p-2 border-b border-gray-200">
+                <div className="absolute z-20 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                  <div className="p-3 border-b border-slate-100">
                     <input
                       type="text"
-                      placeholder="🔍 Ketik nama karyawan..."
+                      placeholder="Cari nama karyawan..."
                       value={employeeSearchTerm}
                       onChange={(e) => setEmployeeSearchTerm(e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
                       autoFocus
                     />
                   </div>
-                  <div className="p-2 border-b border-gray-100 bg-gray-50 flex gap-2">
-                    <button
-                      onClick={selectAllEmployees}
-                      className="text-xs text-blue-600 hover:text-blue-800"
-                    >
+                  <div className="p-2 border-b border-slate-100 bg-slate-50 flex gap-3">
+                    <button onClick={selectAllEmployees} className="text-xs text-sky-600 hover:text-sky-800 font-medium">
                       Pilih Semua ({availableEmployees.length})
                     </button>
-                    <span className="text-gray-300">|</span>
-                    <button
-                      onClick={clearEmployeeSelection}
-                      className="text-xs text-red-600 hover:text-red-800"
-                    >
+                    <span className="text-slate-300">|</span>
+                    <button onClick={clearEmployeeSelection} className="text-xs text-red-500 hover:text-red-700 font-medium">
                       Reset
                     </button>
-                    <span className="text-gray-300 ml-auto text-xs text-gray-400">
-                      {filteredEmployees.length} karyawan
-                    </span>
                   </div>
-                  <div className="max-h-48 overflow-y-auto">
+                  <div className="max-h-60 overflow-y-auto">
                     {filteredEmployees.length === 0 ? (
-                      <div className="p-3 text-center text-gray-500 text-sm">
-                        {employeeSearchTerm ? "Karyawan tidak ditemukan" : "Tidak ada karyawan di departemen ini"}
+                      <div className="p-4 text-center text-slate-400 text-sm">
+                        {employeeSearchTerm ? "Karyawan tidak ditemukan" : "Tidak ada karyawan"}
                       </div>
                     ) : (
                       filteredEmployees.map((emp) => (
-                        <label
-                          key={emp.uid}
-                          className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                        >
+                        <label key={emp.uid} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors">
                           <input
                             type="checkbox"
                             checked={selectedEmployees.includes(emp.uid)}
                             onChange={() => toggleEmployeeSelection(emp.uid)}
-                            className="w-4 h-4 text-blue-600 rounded"
+                            className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
                           />
-                          <span className="text-sm text-gray-700">{emp.name}</span>
+                          <span className="text-sm text-slate-700 flex-1">{emp.name}</span>
                           {selectedDepartment === "ALL" && (
-                            <span className="text-xs text-gray-400 ml-auto">{emp.department}</span>
+                            <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{emp.department}</span>
+                          )}
+                          {paymentStatus.get(emp.uid)?.paidAt && (
+                            <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-medium">Paid</span>
                           )}
                         </label>
                       ))
@@ -622,132 +1300,183 @@ export default function PayrollPage() {
                 </div>
               )}
             </div>
-            
-            {/* Selected employees tags */}
+
+            {/* Selected Tags */}
             {selectedEmployees.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
+              <div className="mt-3 flex flex-wrap gap-2">
                 {selectedEmployees.slice(0, 5).map((uid) => {
-                  const emp = allEmployees.find(e => e.uid === uid);
+                  const emp = allEmployees.find((e) => e.uid === uid);
                   return emp ? (
-                    <span key={uid} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+                    <span key={uid} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-100 text-sky-700 text-xs rounded-lg font-medium">
                       {emp.name}
-                      <button
-                        onClick={() => toggleEmployeeSelection(uid)}
-                        className="hover:text-blue-900"
-                      >
-                        ×
-                      </button>
+                      <button onClick={() => toggleEmployeeSelection(uid)} className="hover:text-sky-900 font-bold">×</button>
                     </span>
                   ) : null;
                 })}
                 {selectedEmployees.length > 5 && (
-                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">
+                  <span className="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs rounded-lg font-medium">
                     +{selectedEmployees.length - 5} lainnya
                   </span>
                 )}
               </div>
             )}
           </div>
-          
-          {/* Informasi filter aktif */}
-          {(selectedDepartment !== "ALL" || selectedEmployees.length > 0) && (
-            <div className="mt-3 text-sm text-blue-600 bg-blue-50 p-2 rounded-lg">
-              🔍 Filter aktif: 
-              {selectedDepartment !== "ALL" && <span> Departemen: <strong>{selectedDepartment}</strong></span>}
-              {selectedEmployees.length > 0 && (
-                <span> {selectedEmployees.length} karyawan terpilih</span>
-              )}
-            </div>
-          )}
         </div>
 
-        {/* Tabel Rekap Gaji */}
-        <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
-            <div className="flex justify-between items-center">
+        {/* Table Section */}
+        <div className={`table-container overflow-hidden animate-slide-up`} style={{ animationDelay: '0.6s' }}>
+          <div className="px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-blue-50">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
-                <h2 className="text-md font-semibold text-gray-800 flex items-center gap-2">
-                  <span>💰</span>
+                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
                   Detail Rekap Gaji
                 </h2>
-                <p className="text-xs text-gray-500 mt-1">
-                  Klik pada baris untuk melihat detail absensi harian
+                <p className="text-xs text-slate-500 mt-1">
+                  Klik checkbox untuk memilih, klik baris untuk lihat detail
                 </p>
               </div>
-              <div className="text-sm text-gray-500">
-                Menampilkan {filteredSummary.length} dari {payrollSummary.length} karyawan
+              <div className="text-sm text-slate-500 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
+                Menampilkan <span className="font-bold text-sky-600">{filteredSummary.length}</span> dari <span className="font-bold">{payrollSummary.length}</span> karyawan
               </div>
             </div>
           </div>
 
           {isLoading ? (
-            <div className="p-12 text-center">
-              <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
-              <p className="mt-2 text-gray-500">Memuat data...</p>
+            <div className="p-16 text-center">
+              <div className="inline-flex items-center gap-3">
+                <div className="w-8 h-8 border-3 border-sky-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-slate-500 font-medium">Memuat data...</span>
+              </div>
             </div>
           ) : filteredSummary.length === 0 ? (
-            <div className="p-12 text-center text-gray-500">
-              <div className="text-5xl mb-2">📭</div>
-              <p>
-                {selectedEmployees.length === 1
-                  ? `Tidak ada data absensi untuk karyawan yang dipilih dalam periode ini`
-                  : selectedDepartment !== "ALL"
-                    ? `Tidak ada data absensi untuk departemen ${selectedDepartment} dalam periode ini`
-                    : "Tidak ada data absensi dalam periode ini"}
-              </p>
+            <div className="p-16 text-center">
+              <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-10 h-10 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                </svg>
+              </div>
+              <p className="text-slate-500 font-medium">Tidak ada data absensi dalam periode ini</p>
+              <p className="text-slate-400 text-sm mt-1">Pilih periode tanggal lain atau ubah filter</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left">No</th>
-                    <th className="px-4 py-3 text-left">Nama Karyawan</th>
-                    <th className="px-4 py-3 text-left">Departemen</th>
-                    <th className="px-4 py-3 text-left">Jabatan</th>
-                    <th className="px-4 py-3 text-right">Rate Harian</th>
-                    <th className="px-4 py-3 text-left">Bank</th>
-                    <th className="px-4 py-3 text-left">No. Rekening</th>
-                    <th className="px-4 py-3 text-center">Hari</th>
-                    <th className="px-4 py-3 text-center">Jam Kerja</th>
-                    <th className="px-4 py-3 text-right bg-green-50">Total Gaji</th>
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="px-4 py-4 text-left w-12">
+                      <input
+                        type="checkbox"
+                        checked={selectedEmployees.length === filteredSummary.length && filteredSummary.length > 0}
+                        onChange={(e) => e.target.checked ? selectAllVisible() : clearAllSelection()}
+                        className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                      />
+                    </th>
+                    <th className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">No</th>
+                    <th className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Nama Karyawan</th>
+                    <th className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Departemen</th>
+                    <th className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Jabatan</th>
+                    <th className="px-4 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Rate Harian</th>
+                    <th className="px-4 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Hari</th>
+                    <th className="px-4 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Jam Kerja</th>
+                    <th className="px-4 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider bg-emerald-50">Total Gaji</th>
+                    <th className="px-4 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y">
-                  {filteredSummary.map((item, index) => (
-                    <tr
-                      key={item.uid}
-                      className="hover:bg-blue-50 cursor-pointer transition-colors"
-                      onClick={() => {
-                        setSelectedEmployee(item);
-                        setShowDetailModal(true);
-                      }}
-                    >
-                      <td className="px-4 py-3">{index + 1}</td>
-                      <td className="px-4 py-3 font-medium">{item.name}</td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-1 bg-gray-100 rounded-full text-xs">
-                          {item.department || "-"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">{item.jabatan}</td>
-                      <td className="px-4 py-3 text-right">{formatCurrency(item.dailyRate)}</td>
-                      <td className="px-4 py-3">{item.bankName}</td>
-                      <td className="px-4 py-3 font-mono text-xs">{item.bankAccountNumber}</td>
-                      <td className="px-4 py-3 text-center font-medium">{item.totalDays} hari</td>
-                      <td className="px-4 py-3 text-center">{formatTime(item.totalHours)}</td>
-                      <td className="px-4 py-3 text-right font-bold text-green-700 bg-green-50">
-                        {formatCurrency(item.totalSalary)}
-                      </td>
-                    </tr>
-                  ))}
+                <tbody className="divide-y divide-slate-100">
+                  {filteredSummary.map((item, index) => {
+                    const status = paymentStatus.get(item.uid);
+                    const isPaid = !!status?.paidAt;
+                    const paidDate = status?.paidAt ? formatPaidDate(status.paidAt) : "";
+
+                    return (
+                      <tr
+                        key={item.uid}
+                        className="table-row-hover cursor-pointer"
+                        style={{ animationDelay: `${0.1 * index}s` }}
+                        onClick={() => {
+                          setSelectedEmployee(item);
+                          setShowDetailModal(true);
+                        }}
+                      >
+                        <td className="px-4 py-4 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedEmployees.includes(item.uid)}
+                            onChange={() => toggleRowSelection(item.uid)}
+                            className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </td>
+                        <td className="px-4 py-4 text-slate-400 font-medium">{index + 1}</td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm overflow-hidden bg-gradient-to-br from-sky-400 to-indigo-500">
+                              {item.photoUrl ? (
+                                <img src={item.photoUrl} alt={item.name} className="w-full h-full object-cover" />
+                              ) : (
+                                item.name.charAt(0).toUpperCase()
+                              )}
+                            </div>
+                            <span className="font-semibold text-slate-700">{item.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-medium">
+                            {item.department || "-"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-slate-600 text-sm">{item.jabatan}</td>
+                        <td className="px-4 py-4 text-right text-slate-700 font-medium">{formatCurrency(item.dailyRate)}</td>
+                        <td className="px-4 py-4 text-center">
+                          <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-sm font-bold">{item.totalDays} hari</span>
+                        </td>
+                        <td className="px-4 py-4 text-center text-slate-600 text-sm">{formatTime(item.totalHours)}</td>
+                        <td className="px-4 py-4 text-right">
+                          <span className="font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg">
+                            {formatCurrency(item.totalSalary)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          {isPaid ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 text-emerald-700 text-xs rounded-lg font-semibold">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Paid {paidDate && <span className="text-emerald-500 ml-1">({paidDate})</span>}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 text-amber-700 text-xs rounded-lg font-semibold">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              Unpaid
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
-                <tfoot className="bg-gray-100 font-semibold">
-                  <tr>
-                    <td colSpan={7} className="px-4 py-3 text-right">TOTAL</td>
-                    <td className="px-4 py-3 text-center">{totalFilteredDays} hari</td>
-                    <td className="px-4 py-3 text-center">{formatTime(totalFilteredHours)}</td>
-                    <td className="px-4 py-3 text-right bg-green-100">{formatCurrency(totalFilteredSalary)}</td>
+                <tfoot>
+                  <tr className="bg-gradient-to-r from-slate-100 to-slate-50">
+                    <td colSpan={6} className="px-4 py-4 text-right font-bold text-slate-700">TOTAL</td>
+                    <td className="px-4 py-4 text-center">
+                      <span className="font-bold text-blue-700 bg-blue-50 px-3 py-1 rounded-lg">{totalFilteredDays} hari</span>
+                    </td>
+                    <td className="px-4 py-4 text-center font-bold text-slate-700">{formatTime(totalFilteredHours)}</td>
+                    <td className="px-4 py-4 text-right">
+                      <span className="font-bold text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-lg">
+                        {formatCurrency(totalFilteredSalary)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      <span className="text-xs text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">
+                        {paidCount} Paid / {unpaidCount} Unpaid
+                      </span>
+                    </td>
                   </tr>
                 </tfoot>
               </table>
@@ -755,111 +1484,159 @@ export default function PayrollPage() {
           )}
         </div>
 
-        {/* Karyawan Tanpa Rate */}
+        {/* Zero Rate Warning */}
         {filteredSummary.filter((item) => item.dailyRate === 0).length > 0 && (
-          <div className="mt-6 bg-red-50 border border-red-200 rounded-xl p-4">
-            <div className="flex gap-3">
-              <span className="text-2xl">⚠️</span>
+          <div className="mt-6 glass-effect rounded-xl p-5 border-l-4 border-red-500 animate-slide-up" style={{ animationDelay: '0.7s' }}>
+            <div className="flex gap-4">
+              <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
               <div>
-                <p className="font-medium text-red-800">Perhatian: Ada karyawan dengan Rate Harian 0</p>
-                <p className="text-sm text-red-700 mt-1">Karyawan berikut belum diisi rate hariannya:</p>
-                <ul className="text-sm text-red-700 mt-2 list-disc list-inside">
-                  {filteredSummary
-                    .filter((item) => item.dailyRate === 0)
-                    .map((item) => (
-                      <li key={item.uid}>{item.name} ({item.department || "No Dept"}) - Silakan edit di menu Users</li>
-                    ))}
+                <p className="font-semibold text-red-800">Perhatian: Ada karyawan dengan Rate Harian 0</p>
+                <p className="text-sm text-red-600 mt-1">Karyawan berikut belum diisi rate hariannya:</p>
+                <ul className="text-sm text-red-600 mt-2 space-y-1">
+                  {filteredSummary.filter((item) => item.dailyRate === 0).map((item) => (
+                    <li key={item.uid} className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
+                      {item.name} ({item.department || "No Dept"})
+                    </li>
+                  ))}
                 </ul>
               </div>
             </div>
           </div>
         )}
 
-        {/* Catatan untuk Finance */}
-        <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-          <div className="flex gap-3">
-            <span className="text-2xl">📝</span>
+        {/* Notes Section */}
+        <div className="mt-6 glass-effect rounded-xl p-5 border-l-4 border-sky-500 animate-slide-up" style={{ animationDelay: '0.75s' }}>
+          <div className="flex gap-4">
+            <div className="w-12 h-12 bg-sky-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <svg className="w-6 h-6 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
             <div>
-              <p className="font-medium text-yellow-800">Catatan untuk Bagian Keuangan</p>
-              <ul className="text-sm text-yellow-700 mt-1 space-y-1">
-                <li>• Rate harian diambil dari data masing-masing karyawan (menu Users)</li>
-                <li>• Perhitungan gaji = Rate Harian × Total Hari Kerja</li>
-                <li>• Gunakan filter karyawan untuk rekap spesifik (bisa ketik nama)</li>
-                <li>• Filter departemen akan otomatis membatasi pilihan karyawan</li>
-                <li>• Nomor rekening di atas adalah data yang diinput oleh karyawan/admin</li>
-                <li>• Harap melakukan verifikasi ulang sebelum transfer gaji</li>
+              <p className="font-semibold text-slate-800">Catatan Penting</p>
+              <ul className="text-sm text-slate-600 mt-2 space-y-1.5">
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 bg-sky-500 rounded-full mt-2 flex-shrink-0" />
+                  Rate harian diambil dari data masing-masing karyawan (menu Users)
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 bg-sky-500 rounded-full mt-2 flex-shrink-0" />
+                  Perhitungan gaji = Rate Harian x Total Hari Kerja
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 bg-sky-500 rounded-full mt-2 flex-shrink-0" />
+                  Gunakan filter untuk rekap spesifik per karyawan atau departemen
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 bg-sky-500 rounded-full mt-2 flex-shrink-0" />
+                  Klik "Mark Paid" untuk menandai karyawan sudah dibayar
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 bg-sky-500 rounded-full mt-2 flex-shrink-0" />
+                  Harap verifikasi ulang sebelum transfer gaji
+                </li>
               </ul>
             </div>
           </div>
         </div>
       </div>
 
-      {/* MODAL DETAIL ABSENSI (sama) */}
+      {/* Modal Detail */}
       {showDetailModal && selectedEmployee && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden animate-scale-in">
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex justify-between items-center">
+        <div className="fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4">
+          <div className="modal-content bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden">
+            <div className="bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-5 flex justify-between items-center">
               <div>
                 <h2 className="text-xl font-bold text-white">Detail Absensi {selectedEmployee.name}</h2>
-                <p className="text-blue-100 text-sm">{selectedEmployee.department} - {selectedEmployee.jabatan}</p>
+                <p className="text-slate-400 text-sm mt-1">{selectedEmployee.department} - {selectedEmployee.jabatan}</p>
               </div>
-              <button onClick={() => setShowDetailModal(false)} className="text-white hover:text-gray-200">✕</button>
+              <button
+                onClick={() => setShowDetailModal(false)}
+                className="w-10 h-10 bg-white/10 hover:bg-white/20 rounded-xl flex items-center justify-center text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
 
             <div className="p-6 overflow-auto max-h-[60vh]">
               <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500">Total Hari Kerja</p><p className="text-xl font-bold">{selectedEmployee.totalDays} hari</p></div>
-                <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500">Total Jam Kerja</p><p className="text-xl font-bold">{formatTime(selectedEmployee.totalHours)}</p></div>
-                <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500">Rate Harian</p><p className="text-xl font-bold">{formatCurrency(selectedEmployee.dailyRate)}</p></div>
-                <div className="bg-green-50 rounded-lg p-3"><p className="text-xs text-green-600">Total Gaji</p><p className="text-xl font-bold text-green-700">{formatCurrency(selectedEmployee.totalSalary)}</p></div>
+                <div className="bg-slate-50 rounded-xl p-4">
+                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Hari Kerja</p>
+                  <p className="text-2xl font-bold text-slate-800 mt-1">{selectedEmployee.totalDays} hari</p>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-4">
+                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Jam Kerja</p>
+                  <p className="text-2xl font-bold text-slate-800 mt-1">{formatTime(selectedEmployee.totalHours)}</p>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-4">
+                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Rate Harian</p>
+                  <p className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(selectedEmployee.dailyRate)}</p>
+                </div>
+                <div className="bg-emerald-50 rounded-xl p-4">
+                  <p className="text-xs text-emerald-600 font-medium uppercase tracking-wider">Total Gaji</p>
+                  <p className="text-2xl font-bold text-emerald-700 mt-1">{formatCurrency(selectedEmployee.totalSalary)}</p>
+                </div>
               </div>
 
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-100">
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
                     <tr>
-                      <th className="px-3 py-2 text-left">Tanggal</th>
-                      <th className="px-3 py-2 text-center">Jam Masuk</th>
-                      <th className="px-3 py-2 text-center">Jam Pulang</th>
-                      <th className="px-3 py-2 text-right">Jam Kerja</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Tanggal</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Jam Masuk</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Jam Pulang</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Jam Kerja</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y">
+                  <tbody className="divide-y divide-slate-100">
                     {selectedEmployee.attendanceDetails.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50">
-                        <td className="px-3 py-2">{item.date}</td>
-                        <td className="px-3 py-2 text-center font-mono">{item.checkIn}</td>
-                        <td className="px-3 py-2 text-center font-mono">{item.checkOut}</td>
-                        <td className="px-3 py-2 text-right">{formatTime(item.workHours)}</td>
+                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 text-slate-700 font-medium">{item.date}</td>
+                        <td className="px-4 py-3 text-center font-mono text-slate-600">{item.checkIn}</td>
+                        <td className="px-4 py-3 text-center font-mono text-slate-600">{item.checkOut}</td>
+                        <td className="px-4 py-3 text-right text-slate-700 font-medium">{formatTime(item.workHours)}</td>
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-gray-50 font-semibold">
+                  <tfoot className="bg-slate-50 font-bold">
                     <tr>
-                      <td className="px-3 py-2">TOTAL</td>
-                      <td className="px-3 py-2 text-center">-</td>
-                      <td className="px-3 py-2 text-center">-</td>
-                      <td className="px-3 py-2 text-right">{formatTime(selectedEmployee.totalHours)}</td>
+                      <td className="px-4 py-3">TOTAL</td>
+                      <td className="px-4 py-3 text-center">-</td>
+                      <td className="px-4 py-3 text-center">-</td>
+                      <td className="px-4 py-3 text-right">{formatTime(selectedEmployee.totalHours)}</td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
-              <button onClick={() => exportDetailToExcel(selectedEmployee)} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">📊 Export Detail Excel</button>
-              <button onClick={() => setShowDetailModal(false)} className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600">Tutup</button>
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+              <button
+                onClick={() => exportDetailToExcel(selectedEmployee)}
+                className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Export Excel
+              </button>
+              <button
+                onClick={() => setShowDetailModal(false)}
+                className="px-5 py-2.5 bg-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-300 transition-all"
+              >
+                Tutup
+              </button>
             </div>
           </div>
         </div>
       )}
-
-      <style jsx>{`
-        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes scale-in { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-        .animate-fade-in { animation: fade-in 0.2s ease-out; }
-        .animate-scale-in { animation: scale-in 0.2s ease-out; }
-      `}</style>
     </ProtectedRoute>
   );
 }

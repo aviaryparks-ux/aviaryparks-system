@@ -1,0 +1,205 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==================== FUNGSI BANTU ====================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin';
+    }
+
+    function isHR() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'hr';
+    }
+
+    function isAdmin() {
+      let role = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return role == 'admin' || role == 'super_admin';
+    }
+
+    function isSPV() {
+      let role = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return role == 'spv' || role == 'manager' || role == 'super_admin' || role == 'admin' || role == 'hr';
+    }
+
+    function isSameUser(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // ==================== ABOUT & APP SETTINGS (PUBLIC READ) ====================
+    match /about/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && isAdmin();
+    }
+
+    match /appinfo/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && isAdmin();
+    }
+
+    // ==================== USERS COLLECTION ====================
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && (isSuperAdmin() || isHR() || isSameUser(userId));
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    // ==================== ATTENDANCE ====================
+    match /attendance/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    match /attendance_requests/{requestId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+    }
+
+    // ==================== LOCATION TRACKING ====================
+    match /user_locations/{userId} {
+      allow read: if isAuthenticated() && (isSameUser(userId) || isSuperAdmin() || isAdmin() || isSPV());
+      allow create: if isAuthenticated() && isSameUser(userId);
+      allow update: if isAuthenticated() && (isSameUser(userId) || isSuperAdmin() || isAdmin() || isSPV());
+      allow delete: if isAuthenticated() && (isSameUser(userId) || isSuperAdmin());
+    }
+
+    match /user_locations_history/{userId} {
+      allow read: if isAuthenticated() && (isSameUser(userId) || isSuperAdmin() || isAdmin() || isSPV());
+      allow create: if isAuthenticated() && isSameUser(userId);
+      match /{subCollection}/{subDocId} {
+        allow read: if isAuthenticated() && (isSameUser(userId) || isSuperAdmin() || isAdmin() || isSPV());
+        allow create: if isAuthenticated() && isSameUser(userId);
+      }
+    }
+
+    match /live_location/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // ==================== NOTIFICATIONS ====================
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // ==================== SETTINGS ====================
+    match /settings/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isAdmin();
+    }
+
+    match /app_settings/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && isAdmin();
+    }
+
+    match /approval_settings/{department} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isAdmin();
+    }
+
+    // ==================== SHIFTS ====================
+    match /shift_schedules/{scheduleId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated() && (isSuperAdmin() || isHR());
+    }
+
+    match /shifts/{shiftId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isSuperAdmin() || isHR());
+      allow update: if isAuthenticated() && (isSuperAdmin() || isHR());
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    match /shift_audit_logs/{logId} {
+      allow read: if isAuthenticated() && (isSuperAdmin() || isHR());
+      allow create: if isAuthenticated() && (isSuperAdmin() || isHR());
+      allow update: if isAuthenticated() && (isSuperAdmin() || isHR());
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    // ==================== MEETINGS & BRIEFINGS ====================
+    match /meetings/{meetingId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    match /meetings/{meetingId}/tasks/{taskId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    match /briefings/{briefingId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    // ==================== ASSESSMENT ====================
+    match /assessmentPeriods/{periodId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isSuperAdmin() || isHR());
+      allow update: if isAuthenticated() && (isSuperAdmin() || isHR());
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    match /assessments/{assessmentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isSuperAdmin() || isHR() || isSPV());
+      allow update: if isAuthenticated() && (isSuperAdmin() || isHR() || isSPV());
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    // ==================== PAYROLL ====================
+    match /payroll/{payrollId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isSuperAdmin() || isHR());
+      allow update: if isAuthenticated() && (isSuperAdmin() || isHR());
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    // 🔥 PAYROLL PAYMENTS (untuk payment status feature)
+    match /payroll_payments/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isSuperAdmin() || isHR() || isAdmin());
+      allow update: if isAuthenticated() && (isSuperAdmin() || isHR() || isAdmin());
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    // ==================== KPI ====================
+    match /kpis/{kpiId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isSuperAdmin() || isHR());
+      allow update: if isAuthenticated() && (isSuperAdmin() || isHR());
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    // ==================== ARTICLES / PENGUMUMAN ====================
+    match /articles/{articleId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isHR());
+      allow update: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isHR());
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+  }
+}

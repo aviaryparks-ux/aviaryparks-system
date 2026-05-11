@@ -223,11 +223,34 @@ export default function Page() {
   const loadTodayAttendance = async () => {
     if (!user) return;
     const today = new Date();
-    const docId = user.uid + "_" + today.toISOString().slice(0, 10);
+    const todayStr = today.toISOString().slice(0, 10);
+
+    // Pertama cek dengan document ID standar
+    const docId = user.uid + "_" + todayStr;
     const snap = await getDoc(doc(db, "attendance", docId));
+
     if (snap.exists()) {
       setTodayAttendance(snap.data());
     } else {
+      // Kalau tidak ada, cek semua dokumen attendance user untuk tanggal hari ini
+      // Ini menangani kasus dimana admin memindahkan dokumen ke tanggal lain
+      const q = query(
+        collection(db, "attendance"),
+        where("uid", "==", user.uid),
+        orderBy("date", "desc")
+      );
+      const allSnap = await getDocs(q);
+      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
+      const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+
+      for (const doc of allSnap.docs) {
+        const data = doc.data();
+        const docDate = data.date?.toDate ? data.date.toDate() : null;
+        if (docDate && docDate >= todayStart && docDate <= todayEnd) {
+          setTodayAttendance(data);
+          return;
+        }
+      }
       setTodayAttendance(null);
     }
   };

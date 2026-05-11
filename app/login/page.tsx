@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
+import { encryptSession } from "@/lib/crypto";
 import { doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -50,14 +51,12 @@ export default function LoginPage() {
       const userData = userDoc.data();
       const role = userData.role;
 
-      // Set session cookie
-      const session = btoa(
-        JSON.stringify({
-          uid: uid,
-          email: userData.email,
-          role: role,
-        })
-      );
+      // Set session cookie (encrypted)
+      const session = encryptSession({
+        uid: uid,
+        email: userData.email,
+        role: role,
+      });
       document.cookie = `__session=${session}; path=/; max-age=86400; SameSite=Lax`;
 
       toast.success(`Welcome back, ${userData.name}!`);
@@ -162,39 +161,20 @@ export default function LoginPage() {
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-12">
         <div className="w-full max-w-md">
           {/* Logo dan Title dengan animasi */}
-          <div className="text-center mb-8 animate-fade-down">
-            <div className="flex justify-center mb-4">
+          <div className="text-center mb-4 animate-fade-down">
+            <div className="flex justify-center">
               <div className="relative group">
-                <div className="absolute inset-0 bg-green-500/30 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-500" />
-                <div className="relative w-20 h-20 bg-white rounded-2xl flex items-center justify-center shadow-2xl">
-                  {(() => {
-                    try {
-                      return (
-                        <Image
-                          src="/images/logo-aviarypark.svg"
-                          alt="Logo"
-                          width={56}
-                          height={56}
-                          className="w-14 h-14"
-                          onError={(e) => {
-                            // Fallback jika logo tidak ditemukan
-                            (e.target as HTMLImageElement).style.display = 'none';
-                          }}
-                        />
-                      );
-                    } catch {
-                      return (
-                        <div className="w-14 h-14 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center">
-                          <span className="text-white text-xl font-bold">AP</span>
-                        </div>
-                      );
-                    }
-                  })()}
-                </div>
+                <div className="absolute inset-0 bg-green-500/30 rounded-full blur-xl group-hover:blur-2xl transition-all duration-500" />
+                <Image
+                  src="/images/avira-hris.png"
+                  alt="Logo"
+                  width={300}
+                  height={300}
+                  className="relative w-72 h-72 object-contain"
+                />
               </div>
             </div>
-            <h1 className="text-4xl font-bold text-white tracking-tight">AviaryParks</h1>
-            <p className="text-green-300 mt-2 text-sm tracking-wide">Management System</p>
+            <p className="text-green-300 text-sm tracking-wide">Empowering People, Growing Together</p>
           </div>
 
           {/* Form Card - Glassmorphism Premium */}

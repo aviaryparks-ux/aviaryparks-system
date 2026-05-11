@@ -220,8 +220,9 @@ export default function AttendanceCorrectionsPage() {
     try {
       const userRole = user?.role || "employee";
       const updatedFlowSnapshot = [...r.flowSnapshot];
-      
-      if (userRole === "spv" || userRole === "manager") {
+
+      // Super Admin bisa approve langsung ke semua departemen (langsung apply koreksi)
+      if (userRole === "super_admin") {
         updatedFlowSnapshot[0] = {
           ...updatedFlowSnapshot[0],
           status: "approved",
@@ -229,16 +230,6 @@ export default function AttendanceCorrectionsPage() {
           byName: user?.name,
           at: Timestamp.now(),
         };
-        
-        await updateDoc(doc(db, "attendance_requests", r.id), {
-          flowSnapshot: updatedFlowSnapshot,
-          currentStep: 1,
-          status: "pending",
-        });
-        
-        toast.success(`✅ Request dari ${r.name} telah disetujui oleh SPV, menunggu approval HR`);
-        
-      } else if (userRole === "hr") {
         updatedFlowSnapshot[1] = {
           ...updatedFlowSnapshot[1],
           status: "approved",
@@ -246,7 +237,7 @@ export default function AttendanceCorrectionsPage() {
           byName: user?.name,
           at: Timestamp.now(),
         };
-        
+
         const dateObj = r.date.toDate();
         const yyyy = dateObj.getFullYear();
         const mm = (dateObj.getMonth() + 1).toString().padStart(2, "0");
@@ -277,7 +268,7 @@ export default function AttendanceCorrectionsPage() {
           });
         }
         await updateDoc(attendanceRef, updateData);
-        
+
         await updateDoc(doc(db, "attendance_requests", r.id), {
           flowSnapshot: updatedFlowSnapshot,
           status: "approved",
@@ -286,10 +277,77 @@ export default function AttendanceCorrectionsPage() {
           approvedByName: user?.name,
           approvedAt: Timestamp.now(),
         });
-        
+
+        toast.success(`✅ Request dari ${r.name} telah disetujui oleh Super Admin`);
+      } else if (userRole === "spv" || userRole === "manager") {
+        updatedFlowSnapshot[0] = {
+          ...updatedFlowSnapshot[0],
+          status: "approved",
+          by: user?.uid,
+          byName: user?.name,
+          at: Timestamp.now(),
+        };
+
+        await updateDoc(doc(db, "attendance_requests", r.id), {
+          flowSnapshot: updatedFlowSnapshot,
+          currentStep: 1,
+          status: "pending",
+        });
+
+        toast.success(`✅ Request dari ${r.name} telah disetujui oleh SPV, menunggu approval HR`);
+
+      } else if (userRole === "hr") {
+        updatedFlowSnapshot[1] = {
+          ...updatedFlowSnapshot[1],
+          status: "approved",
+          by: user?.uid,
+          byName: user?.name,
+          at: Timestamp.now(),
+        };
+
+        const dateObj = r.date.toDate();
+        const yyyy = dateObj.getFullYear();
+        const mm = (dateObj.getMonth() + 1).toString().padStart(2, "0");
+        const dd = dateObj.getDate().toString().padStart(2, "0");
+        const docId = `${r.uid}_${yyyy}-${mm}-${dd}`;
+        const attendanceRef = doc(db, "attendance", docId);
+        const snap = await getDoc(attendanceRef);
+
+        const updateData: any = {};
+
+        if (r.checkIn) {
+          const [h, m] = r.checkIn.split(":");
+          updateData["checkIn.time"] = Timestamp.fromDate(new Date(yyyy, mm - 1, dd, parseInt(h), parseInt(m)));
+        }
+        if (r.checkOut) {
+          const [h, m] = r.checkOut.split(":");
+          updateData["checkOut.time"] = Timestamp.fromDate(new Date(yyyy, mm - 1, dd, parseInt(h), parseInt(m)));
+        }
+
+        if (!snap.exists()) {
+          await setDoc(attendanceRef, {
+            uid: r.uid,
+            name: r.name,
+            date: r.date,
+            department: r.department,
+            jabatan: r.jabatan,
+            createdAt: Timestamp.now(),
+          });
+        }
+        await updateDoc(attendanceRef, updateData);
+
+        await updateDoc(doc(db, "attendance_requests", r.id), {
+          flowSnapshot: updatedFlowSnapshot,
+          status: "approved",
+          currentStep: 2,
+          approvedBy: user?.uid,
+          approvedByName: user?.name,
+          approvedAt: Timestamp.now(),
+        });
+
         toast.success(`✅ Request dari ${r.name} telah disetujui oleh HRD`);
       }
-      
+
     } catch (e) {
       toast.error(`❌ Gagal approve request: ${e}`);
     } finally {
@@ -307,8 +365,8 @@ export default function AttendanceCorrectionsPage() {
     try {
       const userRole = user?.role || "employee";
       const updatedFlowSnapshot = [...r.flowSnapshot];
-      
-      if (userRole === "spv" || userRole === "manager") {
+
+      if (userRole === "super_admin") {
         updatedFlowSnapshot[0] = {
           ...updatedFlowSnapshot[0],
           status: "rejected",
@@ -316,7 +374,14 @@ export default function AttendanceCorrectionsPage() {
           byName: user?.name,
           at: Timestamp.now(),
         };
-        
+        updatedFlowSnapshot[1] = {
+          ...updatedFlowSnapshot[1],
+          status: "rejected",
+          by: user?.uid,
+          byName: user?.name,
+          at: Timestamp.now(),
+        };
+
         await updateDoc(doc(db, "attendance_requests", r.id), {
           flowSnapshot: updatedFlowSnapshot,
           status: "rejected",
@@ -324,9 +389,27 @@ export default function AttendanceCorrectionsPage() {
           rejectedByName: user?.name,
           rejectedAt: Timestamp.now(),
         });
-        
+
+        toast.error(`❌ Request dari ${r.name} ditolak oleh Super Admin`);
+      } else if (userRole === "spv" || userRole === "manager") {
+        updatedFlowSnapshot[0] = {
+          ...updatedFlowSnapshot[0],
+          status: "rejected",
+          by: user?.uid,
+          byName: user?.name,
+          at: Timestamp.now(),
+        };
+
+        await updateDoc(doc(db, "attendance_requests", r.id), {
+          flowSnapshot: updatedFlowSnapshot,
+          status: "rejected",
+          rejectedBy: user?.uid,
+          rejectedByName: user?.name,
+          rejectedAt: Timestamp.now(),
+        });
+
         toast.error(`❌ Request dari ${r.name} ditolak oleh SPV`);
-        
+
       } else if (userRole === "hr") {
         updatedFlowSnapshot[1] = {
           ...updatedFlowSnapshot[1],
@@ -335,7 +418,7 @@ export default function AttendanceCorrectionsPage() {
           byName: user?.name,
           at: Timestamp.now(),
         };
-        
+
         await updateDoc(doc(db, "attendance_requests", r.id), {
           flowSnapshot: updatedFlowSnapshot,
           status: "rejected",
@@ -343,10 +426,10 @@ export default function AttendanceCorrectionsPage() {
           rejectedByName: user?.name,
           rejectedAt: Timestamp.now(),
         });
-        
+
         toast.error(`❌ Request dari ${r.name} ditolak oleh HRD`);
       }
-      
+
     } catch (e) {
       toast.error(`❌ Gagal reject request: ${e}`);
     } finally {
@@ -368,7 +451,8 @@ export default function AttendanceCorrectionsPage() {
   const getStepText = (request: Request) => {
     if (request.status === "approved") return "✅ Selesai";
     if (request.status === "rejected") return "❌ Ditolak";
-    if (request.currentStep === 0) return "⏳ Menunggu SPV";
+    if (request.currentStep === 0 && request.flowSnapshot?.[0]?.status === 'waiting') return "⏳ Menunggu Approval";
+    if (request.currentStep === 0) return "⏳ Menunggu HRD";
     if (request.currentStep === 1) return "⏳ Menunggu HRD";
     return "📋 Proses";
   };
@@ -376,7 +460,8 @@ export default function AttendanceCorrectionsPage() {
   const getStepColor = (request: Request) => {
     if (request.status === "approved") return "text-green-600";
     if (request.status === "rejected") return "text-red-600";
-    if (request.currentStep === 0) return "text-yellow-600";
+    if (request.currentStep === 0 && request.flowSnapshot?.[0]?.status === 'waiting') return "text-purple-600";
+    if (request.currentStep === 0) return "text-blue-600";
     if (request.currentStep === 1) return "text-blue-600";
     return "text-gray-600";
   };
@@ -411,6 +496,10 @@ export default function AttendanceCorrectionsPage() {
               ) : userRole === "hr" ? (
                 <span className="block text-sm text-green-200 mt-1">
                   📍 Menampilkan semua request dari semua departemen
+                </span>
+              ) : userRole === "super_admin" ? (
+                <span className="block text-sm text-green-200 mt-1">
+                  🏆 Super Admin - Approve semua departemen langsung
                 </span>
               ) : null}
             </p>
@@ -540,10 +629,10 @@ export default function AttendanceCorrectionsPage() {
                             {stepText}
                           </span>
                           {r.currentStep === 0 && r.status === "pending" && (
-                            <span className="text-[10px] text-yellow-500">Menunggu SPV</span>
+                            <span className="text-[10px] text-yellow-500">Menunggu Approval</span>
                           )}
                           {r.currentStep === 1 && r.status === "pending" && (
-                            <span className="text-[10px] text-blue-500">SPV ✓, menunggu HR</span>
+                            <span className="text-[10px] text-blue-500">Menunggu HR</span>
                           )}
                           {r.status === "approved" && (
                             <span className="text-[10px] text-green-500">

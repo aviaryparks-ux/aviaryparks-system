@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot, query, orderBy, doc, getDoc, updateDoc, Timestamp, getDocs, where } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, doc, getDoc, updateDoc, deleteDoc, setDoc, Timestamp, getDocs, where } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -198,11 +198,17 @@ export default function AttendancePage() {
   const [editCheckInMinute, setEditCheckInMinute] = useState("");
   const [editCheckOutHour, setEditCheckOutHour] = useState("");
   const [editCheckOutMinute, setEditCheckOutMinute] = useState("");
+  const [isEditingDate, setIsEditingDate] = useState(false);
+  const [editDate, setEditDate] = useState("");
   const [isEditingShift, setIsEditingShift] = useState(false);
   const [editShiftId, setEditShiftId] = useState("");
   const [shiftsList, setShiftsList] = useState<any[]>([]);
   const [isLoadingShifts, setIsLoadingShifts] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isSavingDateEdit, setIsSavingDateEdit] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteOption, setDeleteOption] = useState<"checkin" | "checkout" | "all">("all");
 
   // 🔥 STATE FILTER - DEFAULT TANGGAL HARI INI
   const [tempDept, setTempDept] = useState("ALL");
@@ -501,9 +507,14 @@ export default function AttendancePage() {
     setSelectedAttendance(attendance);
     setIsEditingTime(false);
     setIsEditingShift(false);
+    setIsEditingDate(false);
     await loadShiftsList();
     const checkInDate = toDate(attendance.checkIn?.time);
     const checkOutDate = toDate(attendance.checkOut?.time);
+    const attendanceDate = toDate(attendance.date);
+    if (attendanceDate) {
+      setEditDate(attendanceDate.toISOString().split("T")[0]);
+    }
     if (checkInDate) {
       setEditCheckInHour(checkInDate.getHours().toString().padStart(2, '0'));
       setEditCheckInMinute(checkInDate.getMinutes().toString().padStart(2, '0'));
@@ -553,6 +564,57 @@ export default function AttendancePage() {
     } catch (error) { console.error("Error saving edit:", error); toast.error("❌ Gagal menyimpan perubahan"); } finally { setIsSavingEdit(false); }
   };
 
+  const saveEditedDate = async () => {
+    if (!selectedAttendance || !isSuperAdmin) return;
+    setIsSavingDateEdit(true);
+    try {
+      if (!editDate) {
+        toast.error("Tanggal tidak boleh kosong");
+        return;
+      }
+      const oldAttendanceRef = doc(db, "attendance", selectedAttendance.id);
+      const oldDate = toDate(selectedAttendance.date);
+      if (!oldDate) {
+        toast.error("Tanggal lama tidak valid");
+        return;
+      }
+      const oldDocId = selectedAttendance.id;
+      const newDateParts = editDate.split("-").map(Number);
+      const newDate = new Date(newDateParts[0], newDateParts[1] - 1, newDateParts[2], 12, 0, 0);
+      const newDocId = `${selectedAttendance.uid}_${editDate}`;
+      const existingDoc = await getDoc(doc(db, "attendance", newDocId));
+      if (existingDoc.exists() && oldDocId !== newDocId) {
+        toast.error(`⚠️ Data absensi untuk ${editDate} sudah ada. Hapus terlebih dahulu atau pilih tanggal lain.`);
+        setIsSavingDateEdit(false);
+        return;
+      }
+      const oldData = (await getDoc(oldAttendanceRef)).data();
+      if (!oldData) {
+        toast.error("Data asli tidak ditemukan");
+        setIsSavingDateEdit(false);
+        return;
+      }
+      const updates: any = {
+        'date': Timestamp.fromDate(newDate),
+        'updatedAt': Timestamp.now(),
+        'editedBy': currentUser?.uid,
+        'editedByName': currentUser?.name,
+        'editedAt': Timestamp.now(),
+        'dateEditedFrom': oldDate.toISOString().split("T")[0],
+        'dateEditedTo': editDate,
+      };
+      const newData = { ...oldData, ...updates };
+      await setDoc(doc(db, "attendance", newDocId), newData);
+      if (oldDocId !== newDocId) {
+        await deleteDoc(oldAttendanceRef);
+      }
+      toast.success("✅ Tanggal absensi berhasil diupdate! Document dipindahkan.");
+      setIsEditingDate(false);
+      const updatedAttendance = { ...selectedAttendance, id: newDocId, date: Timestamp.fromDate(newDate) };
+      setSelectedAttendance(updatedAttendance);
+    } catch (error) { console.error("Error saving date edit:", error); toast.error("❌ Gagal menyimpan perubahan tanggal"); } finally { setIsSavingDateEdit(false); }
+  };
+
   const saveEditedShift = async () => {
     if (!selectedAttendance || !isSuperAdmin) return;
     setIsSavingEdit(true);
@@ -573,6 +635,38 @@ export default function AttendancePage() {
       setIsEditingShift(false);
       setSelectedAttendance({ ...selectedAttendance, shift: updates['shift'] });
     } catch (error) { console.error("Error saving shift edit:", error); toast.error("❌ Gagal menyimpan perubahan shift"); } finally { setIsSavingEdit(false); }
+  };
+
+  const deleteAttendance = async () => {
+    if (!selectedAttendance || !isSuperAdmin) return;
+    setIsDeleting(true);
+    try {
+      const attendanceRef = doc(db, "attendance", selectedAttendance.id);
+      const updates: any = { 'updatedAt': Timestamp.now() };
+
+      if (deleteOption === "checkin") {
+        updates['checkIn'] = null;
+        toast.success("✅ Data check-in berhasil dihapus!");
+      } else if (deleteOption === "checkout") {
+        updates['checkOut'] = null;
+        toast.success("✅ Data check-out berhasil dihapus!");
+      } else {
+        await deleteDoc(attendanceRef);
+        toast.success("✅ Data absensi berhasil dihapus!");
+        setShowDetailModal(false);
+      }
+
+      if (deleteOption !== "all") {
+        await updateDoc(attendanceRef, updates);
+      }
+
+      setShowDeleteModal(false);
+    } catch (error) { console.error("Error deleting attendance:", error); toast.error("❌ Gagal menghapus data absensi"); } finally { setIsDeleting(false); }
+  };
+
+  const openDeleteModal = (option: "checkin" | "checkout" | "all") => {
+    setDeleteOption(option);
+    setShowDeleteModal(true);
   };
 
   // EXPORT FUNCTIONS
@@ -990,7 +1084,7 @@ export default function AttendancePage() {
                   <p className="text-green-100 text-sm">{selectedAttendance.department} • {selectedAttendance.jabatan}</p>
                 </div>
               </div>
-              <button onClick={() => setShowDetailModal(false)} className="text-white hover:text-gray-200 transition-colors">
+              <button onClick={() => { setShowDetailModal(false); setShowDeleteModal(false); }} className="text-white hover:text-gray-200 transition-colors">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -1213,9 +1307,15 @@ export default function AttendancePage() {
                 )}
               </div>
 
-              {/* Tombol Edit untuk Super Admin */}
-              {isSuperAdmin && !isEditingShift && !isEditingTime && (
+              {/* Tombol Edit dan Hapus untuk Super Admin */}
+              {isSuperAdmin && !isEditingShift && !isEditingTime && !isEditingDate && (
                 <div className="mt-6 flex justify-end gap-3">
+                  <button
+                    onClick={() => setIsEditingDate(true)}
+                    className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <span>📅</span> Edit Tanggal
+                  </button>
                   <button
                     onClick={() => setIsEditingShift(true)}
                     className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-2"
@@ -1228,6 +1328,71 @@ export default function AttendancePage() {
                   >
                     <span>✏️</span> Edit Jam Kerja
                   </button>
+                  <button onClick={openDeleteModal.bind(null, "all")} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors flex items-center gap-2">
+                    <span>🗑️</span> Hapus Absensi
+                  </button>
+                </div>
+              )}
+
+              {/* Tombol Hapus Check-in / Check-out terpisah */}
+              {isSuperAdmin && !isEditingShift && !isEditingTime && !isEditingDate && (selectedAttendance.checkIn || selectedAttendance.checkOut) && (
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  {selectedAttendance.checkIn && (
+                    <button
+                      onClick={openDeleteModal.bind(null, "checkin")}
+                      className="px-3 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg transition-colors flex items-center gap-1 text-sm"
+                    >
+                      <span>🗑️</span> Hapus Check-in ({formatTime(selectedAttendance.checkIn?.time)})
+                    </button>
+                  )}
+                  {selectedAttendance.checkOut && (
+                    <button
+                      onClick={openDeleteModal.bind(null, "checkout")}
+                      className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors flex items-center gap-1 text-sm"
+                    >
+                      <span>🗑️</span> Hapus Check-out ({formatTime(selectedAttendance.checkOut?.time)})
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Form Edit Tanggal */}
+              {isEditingDate && (
+                <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 mt-4">
+                  <h4 className="font-semibold text-purple-800 mb-3">📅 Edit Tanggal Absensi</h4>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Tanggal Baru</label>
+                    <input
+                      type="date"
+                      value={editDate}
+                      onChange={(e) => setEditDate(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Tanggal saat ini: {formatDate(selectedAttendance.date)}</p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={saveEditedDate}
+                      disabled={isSavingDateEdit}
+                      className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {isSavingDateEdit ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <span>💾</span>
+                      )}
+                      {isSavingDateEdit ? "Menyimpan..." : "💾 Simpan Tanggal"}
+                    </button>
+                    <button
+                      onClick={() => setIsEditingDate(false)}
+                      className="flex-1 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                    >
+                      Batal
+                    </button>
+                  </div>
+                  <p className="text-xs text-purple-600 mt-2">
+                    ⚠️ Perubahan tanggal akan mempengaruhi laporan dan rekap absensi
+                  </p>
                 </div>
               )}
 
@@ -1365,6 +1530,84 @@ export default function AttendancePage() {
               >
                 Tutup
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KONFIRMASI HAPUS */}
+      {showDeleteModal && selectedAttendance && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full animate-scale-in">
+            <div className="bg-red-600 px-6 py-4 rounded-t-2xl">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <span>⚠️</span> Konfirmasi Hapus
+              </h2>
+            </div>
+            <div className="p-6">
+              {deleteOption === "all" ? (
+                <>
+              <p className="text-gray-700 mb-4">
+                Apakah Anda yakin ingin menghapus seluruh data absensi berikut?
+              </p>
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <p className="font-medium text-gray-800">{selectedAttendance.name}</p>
+                <p className="text-sm text-gray-500">{formatDate(selectedAttendance.date)}</p>
+                {selectedAttendance.checkIn && (
+                  <p className="text-sm text-gray-500">Check-in: {formatTime(selectedAttendance.checkIn?.time)}</p>
+                )}
+                {selectedAttendance.checkOut && (
+                  <p className="text-sm text-gray-500">Check-out: {formatTime(selectedAttendance.checkOut?.time)}</p>
+                )}
+              </div>
+                </>
+              ) : deleteOption === "checkin" ? (
+                <>
+              <p className="text-gray-700 mb-4">
+                Apakah Anda yakin ingin menghapus data check-in berikut?
+              </p>
+              <div className="bg-green-50 rounded-lg p-4 mb-4 border border-green-200">
+                <p className="font-medium text-gray-800">{selectedAttendance.name}</p>
+                <p className="text-sm text-gray-500">{formatDate(selectedAttendance.date)}</p>
+                <p className="text-sm text-green-600 font-medium">Check-in: {formatTime(selectedAttendance.checkIn?.time)}</p>
+              </div>
+                </>
+              ) : (
+                <>
+              <p className="text-gray-700 mb-4">
+                Apakah Anda yakin ingin menghapus data check-out berikut?
+              </p>
+              <div className="bg-blue-50 rounded-lg p-4 mb-4 border border-blue-200">
+                <p className="font-medium text-gray-800">{selectedAttendance.name}</p>
+                <p className="text-sm text-gray-500">{formatDate(selectedAttendance.date)}</p>
+                <p className="text-sm text-blue-600 font-medium">Check-out: {formatTime(selectedAttendance.checkOut?.time)}</p>
+              </div>
+                </>
+              )}
+              <p className="text-sm text-red-600 mb-4">
+                ⚠️ Tindakan ini tidak dapat dibatalkan. Data absensi akan dihapus permanen.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={deleteAttendance}
+                  disabled={isDeleting}
+                  className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isDeleting ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <span>🗑️</span>
+                  )}
+                  {isDeleting ? "Menghapus..." : deleteOption === "checkin" ? "Hapus Check-in" : deleteOption === "checkout" ? "Hapus Check-out" : "Ya, Hapus Semua"}
+                </button>
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  disabled={isDeleting}
+                  className="flex-1 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors disabled:opacity-50"
+                >
+                  Batal
+                </button>
+              </div>
             </div>
           </div>
         </div>

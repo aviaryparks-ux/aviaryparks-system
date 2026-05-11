@@ -3,6 +3,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db } from '@/lib/firebase';
+import { encryptSession } from '@/lib/crypto';
 import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
@@ -79,12 +80,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               timestamp: Date.now(),
             }));
             
-            // Set session cookie
-            const session = btoa(JSON.stringify({
+            // Set session cookie (encrypted)
+            const session = encryptSession({
               uid: userData.uid,
               email: userData.email,
               role: userData.role,
-            }));
+            });
             document.cookie = `__session=${session}; path=/; max-age=86400; SameSite=Lax`;
           } else {
             console.error('User document not found');

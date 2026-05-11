@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
+import DOMPurify from 'isomorphic-dompurify';
 
 declare global {
   interface Window {
@@ -149,7 +150,7 @@ export default function VoiceRecorder() {
             <span className="text-xl">📋</span>
             Ringkasan Morning Briefing
           </h3>
-          <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: summary }} />
+          <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(summary) }} />
           
           <div className="flex gap-3 mt-6 pt-4 border-t border-green-200">
             <button className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">

@@ -2,9 +2,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import Image from "next/image";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -14,21 +14,83 @@ interface SidebarProps {
 
 export default function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user } = useAuth();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [showResults, setShowResults] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  // Close search when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowResults(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const isActivePath = (path: string) => {
     if (path === "/dashboard") return pathname === path;
     return pathname.startsWith(path);
   };
 
-  // Cek apakah user memiliki akses ke menu berdasarkan role
   const hasAccess = (roles: string[]) => {
     if (!user) return false;
     if (roles.includes("all")) return true;
     return roles.includes(user.role);
   };
 
-  // ==================== SEMUA MENU LENGKAP ====================
+  const allMenuItems = [
+    { name: "Dashboard", path: "/dashboard", icon: <DashboardIcon /> },
+    { name: "Absensi", path: "/attendance", icon: <AttendanceIcon /> },
+    { name: "Koreksi Absensi", path: "/attendance-corrections", icon: <CorrectionIcon /> },
+    { name: "Jadwal Shift", path: "/schedule-shift", icon: <ScheduleIcon /> },
+    { name: "Shift", path: "/shifts", icon: <ShiftIcon /> },
+    { name: "Shift Audit", path: "/shift-audit", icon: <AuditIcon /> },
+    { name: "Data Pegawai", path: "/users", icon: <UsersIcon /> },
+    { name: "Kompetensi", path: "/competencies", icon: <CompetencyIcon /> },
+    { name: "Aspek Penilaian", path: "/assessment-aspects", icon: <AspectIcon /> },
+    { name: "Rentang Nilai", path: "/score-ranges", icon: <RangeIcon /> },
+    { name: "Attendance Settings", path: "/attendance-settings", icon: <SettingsIcon /> },
+    { name: "Morning Briefing", path: "/morning-briefing", icon: <MorningIcon /> },
+    { name: "Pengumuman", path: "/articles", icon: <ArticleIcon /> },
+    { name: "KPI", path: "/kpi", icon: <KPIIcon /> },
+    { name: "Setting KPI", path: "/kpi/settings", icon: <SettingIcon /> },
+    { name: "Periode Penilaian", path: "/kpi/periods", icon: <PeriodIcon /> },
+    { name: "Input Penilaian", path: "/assessments/input", icon: <InputIcon /> },
+    { name: "Dalam Masa Penilaian", path: "/assessments/active", icon: <ActiveIcon /> },
+    { name: "Riwayat Penilaian", path: "/assessments/history", icon: <HistoryIcon /> },
+    { name: "Payroll", path: "/payroll", icon: <PayrollIcon /> },
+    { name: "Laporan", path: "/reports/export", icon: <ReportIcon /> },
+    { name: "Approval Flow", path: "/approval-flow", icon: <ApprovalIcon /> },
+    { name: "Settings", path: "/settings", icon: <SettingsIcon /> },
+  ];
+
+  useEffect(() => {
+    if (searchQuery.trim() === "") {
+      setSearchResults([]);
+      setShowResults(false);
+      return;
+    }
+
+    const query = searchQuery.toLowerCase();
+    const results = allMenuItems.filter(item =>
+      item.name.toLowerCase().includes(query)
+    );
+    setSearchResults(results.slice(0, 6));
+    setShowResults(true);
+  }, [searchQuery]);
+
+  const handleResultClick = (path: string) => {
+    router.push(path);
+    setSearchQuery("");
+    setShowResults(false);
+    if (onClose) onClose();
+  };
+
   const menuGroups = [
     {
       title: "MAIN",
@@ -45,7 +107,7 @@ export default function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) 
         { name: "Koreksi Absensi", path: "/attendance-corrections", icon: <CorrectionIcon />, roles: ["super_admin", "hr", "spv"] },
         { name: "Jadwal Shift", path: "/schedule-shift", icon: <ScheduleIcon />, roles: ["super_admin", "admin", "hr"] },
         { name: "Shift", path: "/shifts", icon: <ShiftIcon />, roles: ["super_admin", "hr"] },
-        { name: "Shift Audit", path: "/shift-audit", icon: <ShiftIcon />, roles: ["super_admin", "hr"] },
+        { name: "Shift Audit", path: "/shift-audit", icon: <AuditIcon />, roles: ["super_admin", "hr"] },
       ],
     },
     {
@@ -58,6 +120,7 @@ export default function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) 
         { name: "Rentang Nilai", path: "/score-ranges", icon: <RangeIcon />, roles: ["super_admin", "hr"] },
         { name: "Attendance Settings", path: "/attendance-settings", icon: <SettingsIcon />, roles: ["super_admin", "hr"] },
         { name: "Morning Briefing", path: "/morning-briefing", icon: <MorningIcon />, roles: ["super_admin", "hr"] },
+        { name: "Pengumuman", path: "/articles", icon: <ArticleIcon />, roles: ["super_admin", "admin", "hr"] },
       ],
     },
     {
@@ -90,7 +153,6 @@ export default function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) 
     },
   ];
 
-  // Filter menu groups berdasarkan role user
   const visibleGroups = menuGroups.filter(group => {
     if (group.roles.includes("all")) return true;
     if (!user) return false;
@@ -100,126 +162,227 @@ export default function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) 
   if (!user) return null;
 
   return (
-    <aside
-      className={`
-        flex flex-col h-screen sticky top-0 bg-white border-r border-gray-200 transition-all duration-300
-        ${collapsed ? "w-20" : "w-64"}
-      `}
-    >
-      {/* Sidebar Header with Logo */}
-      <div className="flex items-center justify-between h-14 px-4 border-b border-gray-200 flex-shrink-0">
-        {!collapsed ? (
-          <Link href="/dashboard" className="flex items-center gap-2 group">
-            {/* Logo SVG */}
-            <div className="relative w-8 h-8">
-              <Image
-                src="/images/logo-aviarypark.svg"
-                alt="AviaryPark Logo"
-                fill
-                className="object-contain"
-                priority
-              />
-            </div>
-            <div className="flex flex-col">
-              <span className="font-semibold text-gray-800 text-sm">AviaryParks</span>
-              <span className="text-[10px] text-gray-400">Management System</span>
-            </div>
-          </Link>
-        ) : (
-          <Link href="/dashboard" className="w-full flex justify-center">
-            <div className="relative w-8 h-8">
-              <Image
-                src="/images/logo-aviarypark.svg"
-                alt="AviaryPark Logo"
-                fill
-                className="object-contain"
-              />
-            </div>
-          </Link>
-        )}
-        {onToggle && (
-          <button
-            onClick={onToggle}
-            className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hidden md:block flex-shrink-0"
-          >
-            {collapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
-          </button>
-        )}
-      </div>
+    <>
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        * { font-family: 'Plus Jakarta Sans', sans-serif; }
 
-      {/* Navigation Menu - SCROLLABLE */}
-      <nav className="flex-1 overflow-y-auto py-4 sidebar-scroll">
-        {visibleGroups.map((group) => {
-          // Filter items dalam group berdasarkan role
-          const visibleItems = group.items.filter(item => hasAccess(item.roles));
-          if (visibleItems.length === 0) return null;
+        .sidebar-glass {
+          background: rgba(255, 255, 255, 0.95);
+          backdrop-filter: blur(20px);
+        }
 
-          return (
-            <div key={group.title} className="mb-4">
-              {/* Group Header */}
-              {!collapsed && (
-                <div className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                  {group.title}
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateX(-20px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+
+        .menu-item-hover {
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .menu-item-hover:hover {
+          transform: translateX(4px);
+        }
+
+        .active-indicator {
+          position: relative;
+        }
+
+        .active-indicator::before {
+          content: '';
+          position: absolute;
+          left: 0;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 3px;
+          height: 60%;
+          background: linear-gradient(180deg, #22c55e, #16a34a);
+          border-radius: 0 4px 4px 0;
+        }
+
+        .group-title {
+          background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(16, 163, 74, 0.05) 100%);
+        }
+      `}</style>
+
+      <aside
+        className={`
+          sidebar-glass flex flex-col h-screen sticky top-0 border-r border-emerald-100/50
+          shadow-xl shadow-emerald-900/5 transition-all duration-300 ease-out
+          ${collapsed ? "w-20" : "w-64"}
+        `}
+      >
+        {/* Sidebar Header - Search Bar */}
+        <div className="relative h-16 flex-shrink-0 overflow-visible">
+          <div className="absolute inset-0 bg-gradient-to-r from-emerald-600 to-emerald-500" />
+          <div className="absolute inset-0 opacity-20">
+            <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <defs>
+                <pattern id="sidebar-grid" width="8" height="8" patternUnits="userSpaceOnUse">
+                  <path d="M 8 0 L 0 0 0 8" fill="none" stroke="white" strokeWidth="0.5" opacity="0.3"/>
+                </pattern>
+              </defs>
+              <rect width="100" height="100" fill="url(#sidebar-grid)" />
+            </svg>
+          </div>
+          <div className="absolute -bottom-6 -right-6 w-20 h-20 bg-white/10 rounded-full blur-xl" />
+          <div className="absolute -top-4 -left-4 w-16 h-16 bg-emerald-300/20 rounded-full blur-lg" />
+
+          <div className="relative z-10 flex items-center h-full px-3">
+            {!collapsed ? (
+              <div className="flex-1 relative" ref={searchRef}>
+                <div className="relative">
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="Cari menu..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onFocus={() => setShowResults(true)}
+                    className="w-full pl-10 pr-3 py-2.5 bg-white/15 backdrop-blur-sm border border-white/20 rounded-xl text-sm text-white placeholder-white/50 focus:outline-none focus:bg-white/20 focus:border-white/30 transition-all"
+                  />
                 </div>
-              )}
 
-              {/* Menu Items */}
-              <div className="mt-1 space-y-0.5">
-                {visibleItems.map((item) => {
-                  const isActive = isActivePath(item.path);
-                  
-                  return (
-                    <Link
-                      key={item.path}
-                      href={item.path}
-                      onClick={onClose}
-                      className={`
-                        flex items-center gap-3 px-3 py-2 mx-2 rounded-lg text-sm font-medium
-                        transition-all duration-200 group relative
-                        ${isActive
-                          ? "bg-green-50 text-green-700"
-                          : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                        }
-                      `}
-                      title={collapsed ? item.name : undefined}
-                    >
-                      <span className={`w-5 h-5 ${isActive ? "text-green-600" : "text-gray-400 group-hover:text-gray-600"}`}>
-                        {item.icon}
-                      </span>
-                      {!collapsed && <span>{item.name}</span>}
-                      
-                      {/* Tooltip untuk collapsed mode */}
-                      {collapsed && (
-                        <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none">
-                          {item.name}
-                        </div>
-                      )}
-                    </Link>
-                  );
-                })}
+                {/* Search Results Dropdown - di luar container */}
+                {showResults && (
+                  <div className="fixed mt-2 ml-3 w-56 bg-white rounded-xl shadow-2xl border border-slate-200/80 overflow-hidden z-[100] animate-slide-up">
+                    {searchResults.length > 0 ? (
+                      searchResults.map((item) => (
+                        <button
+                          key={item.path}
+                          onClick={() => handleResultClick(item.path)}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-emerald-50 transition-colors border-b border-slate-100 last:border-b-0"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+                            {item.icon}
+                          </div>
+                          <span className="text-sm font-medium text-slate-700">{item.name}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-4 py-6 text-center">
+                        <p className="text-sm text-slate-500">Tidak ada hasil</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          );
-        })}
-      </nav>
+            ) : (
+              <button className="w-full flex justify-center p-2 bg-white/15 rounded-xl hover:bg-white/20 transition-all">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </button>
+            )}
 
-      {/* Sidebar Footer */}
-      {!collapsed && (
-        <div className="p-4 border-t border-gray-200 flex-shrink-0">
-          <div className="text-xs text-gray-400 text-center">
-            <p>© 2024 AviaryParks</p>
-            <p className="mt-1">v1.0.0 | Role: {user.role}</p>
+            {onToggle && (
+              <button
+                onClick={onToggle}
+                className="ml-2 p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-all duration-200 flex-shrink-0"
+              >
+                {collapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+              </button>
+            )}
           </div>
         </div>
-      )}
-    </aside>
+
+        {/* Navigation Menu */}
+        <nav className="flex-1 overflow-y-auto py-4 sidebar-scroll">
+          {visibleGroups.map((group, groupIdx) => {
+            const visibleItems = group.items.filter(item => hasAccess(item.roles));
+            if (visibleItems.length === 0) return null;
+
+            return (
+              <div key={group.title} className="mb-3">
+                {!collapsed ? (
+                  <div className="group-title mx-3 px-3 py-2 rounded-lg">
+                    <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">
+                      {group.title}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="mx-3 mb-2">
+                    <div className="w-8 h-0.5 bg-emerald-200 mx-auto rounded-full" />
+                  </div>
+                )}
+
+                <div className="mt-1 space-y-0.5">
+                  {visibleItems.map((item) => {
+                    const isActive = isActivePath(item.path);
+
+                    return (
+                      <Link
+                        key={item.path}
+                        href={item.path}
+                        onClick={onClose}
+                        className={`
+                          menu-item-hover relative flex items-center gap-3 mx-2 px-3 py-2.5 rounded-xl text-sm font-medium
+                          transition-all duration-200 group
+                          ${isActive
+                            ? "bg-gradient-to-r from-emerald-50 to-emerald-100/50 text-emerald-700 active-indicator shadow-sm shadow-emerald-200/50"
+                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                          }
+                        `}
+                        title={collapsed ? item.name : undefined}
+                        style={{ animationDelay: `${groupIdx * 0.05}s` }}
+                      >
+                        <span className={`
+                          w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200
+                          ${isActive
+                            ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/30"
+                            : "bg-slate-100 text-slate-500 group-hover:bg-emerald-100 group-hover:text-emerald-600"
+                          }
+                        `}>
+                          {item.icon}
+                        </span>
+                        {!collapsed && (
+                          <span className="flex-1 truncate">{item.name}</span>
+                        )}
+
+                        {collapsed && (
+                          <div className="absolute left-full ml-2 px-3 py-2 bg-slate-900 text-white text-sm rounded-xl opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50 pointer-events-none shadow-xl">
+                            {item.name}
+                            <div className="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-slate-900" />
+                          </div>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </nav>
+
+        {/* Sidebar Footer */}
+        <div className="flex-shrink-0 border-t border-emerald-100/50 bg-gradient-to-t from-emerald-50/50 to-transparent p-4">
+          {!collapsed ? (
+            <div className="text-center">
+              <div className="inline-flex items-center gap-2 px-3 py-2 bg-white/80 rounded-xl shadow-sm">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-xs text-slate-600 font-medium">
+                  v2.0 | {user.role}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-center">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            </div>
+          )}
+        </div>
+      </aside>
+    </>
   );
 }
 
 // ==================== ICONS ====================
 const DashboardIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
   </svg>
 );
 
@@ -245,6 +408,12 @@ const ScheduleIcon = () => (
 const ShiftIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const AuditIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
   </svg>
 );
 
@@ -281,8 +450,13 @@ const SettingsIcon = () => (
 
 const MorningIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 1v4M9 1v4M15 1v4" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+  </svg>
+);
+
+const ArticleIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
   </svg>
 );
 
