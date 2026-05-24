@@ -146,7 +146,7 @@ export async function createGroupChat(
   const conversationRef = doc(collection(db, "conversations"));
   const now = serverTimestamp();
 
-  const conversation: Omit<Conversation, "id"> = {
+  const conversation = {
     type: "group",
     name: payload.name,
     description: payload.description,
@@ -169,14 +169,14 @@ export async function createGroupChat(
       conversationRef.id,
       payload.memberIds[i],
       payload.memberNames[i] || "Unknown",
-      payload.isAutoCreated
+      payload.isAutoCreated ?? false
     );
   }
   await addUserToConversation(
     conversationRef.id,
     currentUserId,
     currentUserName,
-    payload.isAutoCreated
+    payload.isAutoCreated ?? false
   );
 
   return conversationRef.id;
@@ -277,7 +277,7 @@ export async function addMemberToGroup(
     updatedAt: serverTimestamp(),
   });
 
-  await addUserToConversation(conversationId, newMemberId, newMemberName, conv.isAutoCreated);
+  await addUserToConversation(conversationId, newMemberId, newMemberName, conv.isAutoCreated ?? false);
 }
 
 /**

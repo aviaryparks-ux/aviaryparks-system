@@ -137,7 +137,7 @@ async function updateGroupMembers(
   const groupDoc = await getDoc(doc(db, "conversations", groupId));
   if (!groupDoc.exists) return;
 
-  const existingMemberIds = groupDoc.data().memberIds || [];
+  const existingMemberIds = groupDoc.data()?.memberIds || [];
 
   // Add new members
   for (const member of newMembers) {

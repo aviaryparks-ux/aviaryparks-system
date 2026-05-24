@@ -82,3 +82,9 @@ export interface CreateGroupPayload {
   departmentId?: string;
   isAutoCreated?: boolean;
 }
+
+export type TimestampValue = FirebaseTimestamp | {
+  toDate: () => Date;
+  seconds: number;
+  nanoseconds: number;
+};
