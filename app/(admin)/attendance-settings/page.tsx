@@ -1,5 +1,6 @@
 // app/(admin)/attendance-settings/page.tsx
 "use client";
+import LoadingScreen from "@/components/ui/LoadingScreen";
 
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
@@ -69,16 +70,7 @@ export default function AttendanceSettingsPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-500">Memuat pengaturan...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <LoadingScreen fullScreen={false} size={150} />;
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "hr"]}>

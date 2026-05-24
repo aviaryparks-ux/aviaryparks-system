@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import LoadingScreen from "@/components/ui/LoadingScreen";
+import PageHeader from "@/components/ui/PageHeader";
 import Link from "next/link";
 import {
   BarChart,
@@ -65,7 +67,7 @@ interface ShiftDistribution {
   color: string;
 }
 
-const COLORS = ["#22c55e", "#eab308", "#ef4444", "#3b82f6", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316"];
+const CHART_COLORS = ["#7c3aed", "#4f46e5", "#2563eb", "#0891b2", "#059669", "#d97706", "#dc2626", "#ec4899"];
 
 // Custom Tooltip Component
 const CustomTooltip = ({ active, payload, label, data }: any) => {
@@ -75,75 +77,75 @@ const CustomTooltip = ({ active, payload, label, data }: any) => {
     const alphaCount = payload.find((p: any) => p.dataKey === "alpha")?.value || 0;
 
     return (
-      <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-200/50 p-5 min-w-[280px] z-50">
-        <div className="border-b border-slate-100 pb-3 mb-4">
-          <p className="font-bold text-slate-800 text-lg">{label} {new Date().getFullYear()}</p>
-          <p className="text-xs text-slate-500 mt-1">Detail Kehadiran Bulanan</p>
+      <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-4 min-w-[260px]">
+        <div className="border-b border-slate-100 pb-2 mb-3">
+          <p className="font-semibold text-slate-800 text-sm">{label} {new Date().getFullYear()}</p>
+          <p className="text-xs text-slate-400 mt-0.5">Detail Kehadiran Bulanan</p>
         </div>
 
-        <div className="space-y-3">
-          <div className="flex justify-between items-center p-3 bg-emerald-50 rounded-xl">
+        <div className="space-y-2">
+          <div className="flex justify-between items-center p-2 bg-emerald-50 rounded-lg">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
-              <span className="text-sm text-slate-700 font-medium">Hadir</span>
+              <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>
+              <span className="text-xs text-slate-600 font-medium">Hadir</span>
             </div>
-            <span className="font-bold text-emerald-600">{payload.find((p: any) => p.dataKey === "hadir")?.value || 0}</span>
+            <span className="font-bold text-sm text-emerald-600">{payload.find((p: any) => p.dataKey === "hadir")?.value || 0}</span>
           </div>
-          <div className="flex justify-between items-center p-3 bg-amber-50 rounded-xl">
+          <div className="flex justify-between items-center p-2 bg-amber-50 rounded-lg">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-amber-500 rounded-full"></div>
-              <span className="text-sm text-slate-700 font-medium">Terlambat</span>
+              <div className="w-2.5 h-2.5 bg-amber-500 rounded-full"></div>
+              <span className="text-xs text-slate-600 font-medium">Terlambat</span>
             </div>
-            <span className="font-bold text-amber-600">{terlambatCount}</span>
+            <span className="font-bold text-sm text-amber-600">{terlambatCount}</span>
           </div>
-          <div className="flex justify-between items-center p-3 bg-red-50 rounded-xl">
+          <div className="flex justify-between items-center p-2 bg-red-50 rounded-lg">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-              <span className="text-sm text-slate-700 font-medium">Tidak Hadir</span>
+              <div className="w-2.5 h-2.5 bg-red-500 rounded-full"></div>
+              <span className="text-xs text-slate-600 font-medium">Tidak Hadir</span>
             </div>
-            <span className="font-bold text-red-600">{alphaCount}</span>
+            <span className="font-bold text-sm text-red-600">{alphaCount}</span>
           </div>
         </div>
 
         {terlambatCount > 0 && monthData?.terlambatDetails && monthData.terlambatDetails.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <p className="text-xs font-semibold text-amber-600 mb-2 flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <p className="text-xs font-semibold text-amber-600 mb-1.5 flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               Karyawan Terlambat
             </p>
-            <div className="max-h-24 overflow-y-auto space-y-1">
+            <div className="max-h-20 overflow-y-auto space-y-1">
               {monthData.terlambatDetails.slice(0, 5).map((item: any, idx: number) => (
-                <div key={idx} className="flex justify-between items-center text-xs p-2 bg-amber-50 rounded-lg">
-                  <span className="text-slate-700 truncate max-w-[120px]">{item.name}</span>
+                <div key={idx} className="flex justify-between items-center text-xs p-1.5 bg-amber-50/50 rounded">
+                  <span className="text-slate-600 truncate max-w-[120px]">{item.name}</span>
                   <span className="text-amber-600 font-semibold">{item.total}x</span>
                 </div>
               ))}
               {monthData.terlambatDetails.length > 5 && (
-                <p className="text-[10px] text-slate-400 text-center py-1">+{monthData.terlambatDetails.length - 5} lainnya</p>
+                <p className="text-[10px] text-slate-400 text-center py-0.5">+{monthData.terlambatDetails.length - 5} lainnya</p>
               )}
             </div>
           </div>
         )}
 
         {alphaCount > 0 && monthData?.alphaDetails && monthData.alphaDetails.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <p className="text-xs font-semibold text-red-600 mb-2 flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <p className="text-xs font-semibold text-red-600 mb-1.5 flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
               Karyawan Tidak Hadir
             </p>
-            <div className="max-h-24 overflow-y-auto space-y-1">
+            <div className="max-h-20 overflow-y-auto space-y-1">
               {monthData.alphaDetails.slice(0, 5).map((item: any, idx: number) => (
-                <div key={idx} className="flex justify-between items-center text-xs p-2 bg-red-50 rounded-lg">
-                  <span className="text-slate-700 truncate max-w-[120px]">{item.name}</span>
+                <div key={idx} className="flex justify-between items-center text-xs p-1.5 bg-red-50/50 rounded">
+                  <span className="text-slate-600 truncate max-w-[120px]">{item.name}</span>
                   <span className="text-red-600 font-semibold">{item.total} hari</span>
                 </div>
               ))}
               {monthData.alphaDetails.length > 5 && (
-                <p className="text-[10px] text-slate-400 text-center py-1">+{monthData.alphaDetails.length - 5} lainnya</p>
+                <p className="text-[10px] text-slate-400 text-center py-0.5">+{monthData.alphaDetails.length - 5} lainnya</p>
               )}
             </div>
           </div>
@@ -455,7 +457,7 @@ export default function DashboardPage() {
           distribution.push({
             name: data.name,
             value: 0,
-            color: data.color || COLORS[index % COLORS.length],
+            color: CHART_COLORS[index % CHART_COLORS.length],
           });
           index++;
         }
@@ -555,38 +557,37 @@ export default function DashboardPage() {
     return `${days} hari lalu`;
   };
 
+  // ============================
+  // LOADING STATE
+  // ============================
   if (loading) {
     return (
       <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "employee"]}>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <div className="relative w-20 h-20 mx-auto mb-6">
-              <div className="absolute inset-0 border-4 border-slate-200 rounded-full"></div>
-              <div className="absolute inset-0 border-4 border-emerald-500 rounded-full border-t-transparent animate-spin"></div>
-            </div>
-            <p className="text-slate-600 font-medium text-lg">Memuat dashboard...</p>
-            <p className="text-slate-400 text-sm mt-2">Mohon tunggu sebentar</p>
-          </div>
+        <div className="min-h-[80vh] flex items-center justify-center">
+          <LoadingScreen fullScreen={false} message="Memuat dashboard..." size={150} />
         </div>
       </ProtectedRoute>
     );
   }
 
+  // ============================
+  // ERROR STATE
+  // ============================
   if (error) {
     return (
       <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "employee"]}>
-        <div className="min-h-screen flex items-center justify-center p-6">
-          <div className="text-center bg-white/80 backdrop-blur-sm p-10 rounded-3xl shadow-2xl border border-red-100 max-w-md">
-            <div className="w-20 h-20 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
-              <svg className="w-10 h-10 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="min-h-[80vh] flex items-center justify-center p-6">
+          <div className="text-center bg-white p-8 rounded-xl shadow-sm border border-red-100 max-w-md">
+            <div className="w-14 h-14 bg-red-50 rounded-xl flex items-center justify-center mx-auto mb-4">
+              <svg className="w-7 h-7 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
             </div>
-            <p className="text-red-600 font-semibold text-lg mb-2">{error}</p>
-            <p className="text-slate-500 text-sm mb-6">Terjadi kesalahan saat memuat data. Silakan coba lagi.</p>
+            <p className="text-red-600 font-semibold mb-1">{error}</p>
+            <p className="text-slate-400 text-sm mb-5">Terjadi kesalahan saat memuat data.</p>
             <button
               onClick={() => loadAllData()}
-              className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-medium hover:from-red-600 hover:to-red-700 transition-all shadow-lg shadow-red-500/20"
+              className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
             >
               Coba Lagi
             </button>
@@ -596,251 +597,108 @@ export default function DashboardPage() {
     );
   }
 
+  // ============================
+  // MAIN RENDER
+  // ============================
   return (
     <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "employee"]}>
-      <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100 p-6 lg:p-8">
-        <style jsx global>{`
-          @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-
-          :root {
-            --primary: #0f172a;
-            --accent: #0ea5e9;
-            --success: #22c55e;
-            --warning: #eab308;
-            --danger: #ef4444;
-          }
-
-          * {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-          }
-
-          @keyframes slideUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-
-          @keyframes slideIn {
-            from { opacity: 0; transform: translateX(-20px); }
-            to { opacity: 1; transform: translateX(0); }
-          }
-
-          @keyframes pulse-glow {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
-            50% { box-shadow: 0 0 20px 5px rgba(34, 197, 94, 0.2); }
-          }
-
-          @keyframes countUp {
-            from { opacity: 0; transform: scale(0.5); }
-            to { opacity: 1; transform: scale(1); }
-          }
-
-          .animate-slide-up {
-            animation: slideUp 0.5s ease-out forwards;
-            opacity: 0;
-          }
-
-          .animate-slide-in {
-            animation: slideIn 0.4s ease-out forwards;
-            opacity: 0;
-          }
-
-          .glass-effect {
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.5);
-          }
-
-          .card-hover {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          }
-
-          .card-hover:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
-          }
-
-          .btn-primary {
-            background: linear-gradient(135deg, var(--accent) 0%, #0284c7 100%);
-            transition: all 0.2s ease;
-          }
-
-          .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px -5px rgba(14, 165, 233, 0.4);
-          }
-
-          .progress-ring {
-            transition: stroke-dashoffset 0.5s ease-in-out;
-          }
-
-          .stat-icon {
-            background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.6) 100%);
-          }
-
-          .table-container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-          }
-        `}</style>
-
-        {/* Header */}
-        <div className={`relative overflow-hidden rounded-3xl mb-8 animate-slide-up`} style={{ animationDelay: '0.1s' }}>
-          <div className="absolute inset-0 bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-700" />
-          <div className="absolute inset-0 opacity-20">
-            <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-              <defs>
-                <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
-                  <path d="M 10 0 L 0 0 0 10" fill="none" stroke="white" strokeWidth="0.5" opacity="0.3"/>
-                </pattern>
-              </defs>
-              <rect width="100" height="100" fill="url(#grid)" />
-            </svg>
-          </div>
-          <div className="absolute -top-20 -right-20 w-72 h-72 bg-emerald-400/30 rounded-full blur-3xl" />
-          <div className="absolute -bottom-20 -left-20 w-72 h-72 bg-teal-400/30 rounded-full blur-3xl" />
-          <div className="absolute top-0 right-1/4 w-48 h-48 bg-white/10 rounded-full blur-2xl" />
-
-          <div className="relative z-10 px-8 py-10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-5">
-                <div className="relative">
-                  <div className="w-[72px] h-[72px] bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center shadow-xl">
-                    <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                  </div>
-                </div>
-                <div>
-                  <h1 className="text-4xl font-extrabold text-white tracking-tight">Dashboard HR</h1>
-                  <p className="text-emerald-100 mt-2 text-lg">Sistem Manajemen Kehadiran & Payroll</p>
-                </div>
-              </div>
-              <div className="hidden lg:flex items-center gap-4">
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3 text-white text-center">
-                  <p className="text-2xl font-bold">{new Date().toLocaleDateString('id-ID', { day: 'numeric' })}</p>
-                  <p className="text-xs text-emerald-200">{new Date().toLocaleDateString('id-ID', { weekday: 'long', month: 'long', year: 'numeric' })}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="space-y-6 pb-20">
+        {/* ============================================ */}
+        {/* STATS CARDS — White with colored left border */}
+        {/* ============================================ */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Total Karyawan */}
-          <div className={`glass-effect rounded-2xl p-6 card-hover animate-slide-up`} style={{ animationDelay: '0.15s' }}>
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30">
-                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <span className="px-3 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">Aktif</span>
-            </div>
-            <p className="text-sm text-slate-500 font-medium mb-1">Total Karyawan</p>
-            <p className="text-4xl font-extrabold text-slate-800">{stats.totalUsers}</p>
-            <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center shrink-0">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
-              <span>Karyawan aktif dalam sistem</span>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Karyawan</p>
+              <p className="text-2xl font-bold text-slate-800">{stats.totalUsers}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">Karyawan aktif</p>
             </div>
           </div>
 
           {/* Absen Hari Ini */}
-          <div className={`glass-effect rounded-2xl p-6 card-hover animate-slide-up`} style={{ animationDelay: '0.2s' }}>
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30">
-                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                </svg>
-              </div>
-              <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-xs font-semibold rounded-full">Hari Ini</span>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
             </div>
-            <p className="text-sm text-slate-500 font-medium mb-1">Absen Hari Ini</p>
-            <p className="text-4xl font-extrabold text-slate-800">{stats.todayAttendance}</p>
-            <div className="mt-3 flex items-center gap-2">
-              <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full transition-all duration-500"
-                  style={{ width: `${stats.totalUsers > 0 ? (stats.todayAttendance / stats.totalUsers) * 100 : 0}%` }}
-                />
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Absen Hari Ini</p>
+              <div className="flex items-baseline gap-2">
+                <p className="text-2xl font-bold text-slate-800">{stats.todayAttendance}</p>
+                <span className="text-[11px] text-emerald-600 font-medium bg-emerald-50 px-1.5 py-0.5 rounded">{stats.totalUsers > 0 ? Math.round((stats.todayAttendance / stats.totalUsers) * 100) : 0}%</span>
               </div>
-              <span className="text-xs text-slate-500 font-medium">{stats.totalUsers > 0 ? Math.round((stats.todayAttendance / stats.totalUsers) * 100) : 0}%</span>
+              <div className="mt-1 flex items-center gap-2">
+                <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${stats.totalUsers > 0 ? (stats.todayAttendance / stats.totalUsers) * 100 : 0}%` }} />
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Pending Koreksi */}
-          <div className={`glass-effect rounded-2xl p-6 card-hover animate-slide-up`} style={{ animationDelay: '0.25s' }}>
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-14 h-14 bg-gradient-to-br from-amber-500 to-amber-600 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-500/30">
-                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <span className={`px-3 py-1 text-xs font-semibold rounded-full ${stats.pendingRequests > 0 ? 'bg-amber-50 text-amber-600 animate-pulse' : 'bg-slate-100 text-slate-500'}`}>
-                {stats.pendingRequests > 0 ? 'Perlu Aksi' : 'Selesai'}
-              </span>
-            </div>
-            <p className="text-sm text-slate-500 font-medium mb-1">Pending Koreksi</p>
-            <p className={`text-4xl font-extrabold ${stats.pendingRequests > 0 ? 'text-amber-600' : 'text-slate-800'}`}>
-              {stats.pendingRequests}
-            </p>
-            <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
-              <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span>Menunggu approval</span>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Pending Koreksi</p>
+              <p className={`text-2xl font-bold ${stats.pendingRequests > 0 ? 'text-amber-600' : 'text-slate-800'}`}>
+                {stats.pendingRequests}
+              </p>
+              <p className="text-[11px] mt-0.5">
+                {stats.pendingRequests > 0 ? (
+                  <span className="text-amber-600 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-amber-500 rounded-full inline-block animate-pulse"></span>
+                    Menunggu approval
+                  </span>
+                ) : (
+                  <span className="text-slate-400">Semua terproses</span>
+                )}
+              </p>
             </div>
           </div>
 
-          {/* Kehadiran Rate */}
-          <div className={`glass-effect rounded-2xl p-6 card-hover animate-slide-up`} style={{ animationDelay: '0.3s' }}>
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-14 h-14 bg-gradient-to-br from-violet-500 to-violet-600 rounded-2xl flex items-center justify-center shadow-lg shadow-violet-500/30">
-                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
+          {/* Tingkat Kehadiran */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 flex-shrink-0 relative">
+              <svg className="w-12 h-12 transform -rotate-90" viewBox="0 0 36 36">
+                <circle cx="18" cy="18" r="15" stroke="#e2e8f0" strokeWidth="3" fill="none" />
+                <circle cx="18" cy="18" r="15" stroke={attendanceRate >= 80 ? '#22c55e' : attendanceRate >= 50 ? '#eab308' : '#ef4444'} strokeWidth="3" fill="none" strokeLinecap="round" strokeDasharray={`${attendanceRate * 0.942} 94.2`} style={{ transition: 'stroke-dasharray 0.5s ease-in-out' }} />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-[10px] font-bold text-slate-700">{attendanceRate}%</span>
               </div>
             </div>
-            <p className="text-sm text-slate-500 font-medium mb-1">Tingkat Kehadiran</p>
-            <div className="flex items-end gap-2">
-              <p className="text-4xl font-extrabold text-slate-800">{attendanceRate}</p>
-              <span className="text-xl font-bold text-slate-400 mb-1">%</span>
-            </div>
-            <div className="mt-3">
-              <div className="relative w-16 h-16">
-                <svg className="w-16 h-16 transform -rotate-90">
-                  <circle cx="32" cy="32" r="28" stroke="#e2e8f0" strokeWidth="4" fill="none" />
-                  <circle
-                    cx="32"
-                    cy="32"
-                    r="28"
-                    stroke={attendanceRate >= 80 ? '#22c55e' : attendanceRate >= 50 ? '#eab308' : '#ef4444'}
-                    strokeWidth="4"
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeDasharray={`${attendanceRate * 1.76} 176`}
-                    className="progress-ring"
-                  />
-                </svg>
-              </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Tingkat Kehadiran</p>
+              <p className="text-2xl font-bold text-slate-800">{attendanceRate}<span className="text-sm font-medium text-slate-400 ml-1">%</span></p>
+              <p className="text-[11px] text-slate-400 mt-0.5">30 hari terakhir</p>
             </div>
           </div>
         </div>
 
-        {/* Year Filter */}
-        <div className={`glass-effect rounded-2xl p-5 mb-8 animate-slide-up flex items-center justify-between`} style={{ animationDelay: '0.35s' }}>
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
-              <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* ============================================ */}
+        {/* YEAR FILTER                                  */}
+        {/* ============================================ */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-emerald-50 rounded-lg flex items-center justify-center">
+              <svg className="w-4.5 h-4.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-800">Filter Tahun</p>
-              <p className="text-xs text-slate-500">Pilih tahun untuk melihat data tren</p>
+              <p className="text-sm font-semibold text-slate-700">Filter Tahun</p>
+              <p className="text-xs text-slate-400">Pilih tahun untuk melihat data tren</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -848,10 +706,10 @@ export default function DashboardPage() {
               <button
                 key={year}
                 onClick={() => setSelectedYear(year)}
-                className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                   selectedYear === year
-                    ? "bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/30"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    ? "bg-emerald-600 text-white shadow-sm"
+                    : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"
                 }`}
               >
                 {year}
@@ -860,81 +718,85 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Main Chart */}
+        {/* ============================================ */}
+        {/* MAIN CHART — Bar Chart                       */}
+        {/* ============================================ */}
         {monthlyData.some(m => m.total > 0) && (
-          <div className={`glass-effect rounded-2xl p-6 mb-8 animate-slide-up`} style={{ animationDelay: '0.4s' }}>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-sky-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-sky-500/30">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 lg:p-8">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-5 gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-emerald-50 rounded-lg flex items-center justify-center">
+                  <svg className="w-4.5 h-4.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-slate-800">Tren Kehadiran {selectedYear}</h2>
-                  <p className="text-sm text-slate-500">Hover pada chart untuk melihat detail karyawan</p>
+                  <h2 className="text-base font-semibold text-slate-800">Tren Kehadiran {selectedYear}</h2>
+                  <p className="text-xs text-slate-400">Hover pada chart untuk melihat detail karyawan</p>
                 </div>
               </div>
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
-                  <span className="text-xs text-slate-600 font-medium">Hadir</span>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>
+                  <span className="text-xs text-slate-500">Hadir</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-amber-500 rounded-full"></div>
-                  <span className="text-xs text-slate-600 font-medium">Terlambat</span>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 bg-amber-500 rounded-full"></div>
+                  <span className="text-xs text-slate-500">Terlambat</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                  <span className="text-xs text-slate-600 font-medium">Tidak Hadir</span>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 bg-red-500 rounded-full"></div>
+                  <span className="text-xs text-slate-500">Tidak Hadir</span>
                 </div>
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={400}>
-              <BarChart data={monthlyData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 12, fontWeight: 600, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fontWeight: 500, fill: '#64748b' }} axisLine={false} tickLine={false} />
+            <ResponsiveContainer width="100%" height={380}>
+              <BarChart data={monthlyData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="month" tick={{ fontSize: 12, fontWeight: 500, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12, fontWeight: 500, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip data={monthlyData} />} />
-                <Bar dataKey="hadir" name="Hadir" fill="#22c55e" radius={[8, 8, 0, 0]} maxBarSize={40} />
-                <Bar dataKey="terlambat" name="Terlambat" fill="#eab308" radius={[8, 8, 0, 0]} maxBarSize={40} />
-                <Bar dataKey="alpha" name="Tidak Hadir" fill="#ef4444" radius={[8, 8, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="hadir" name="Hadir" fill="#22c55e" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                <Bar dataKey="terlambat" name="Terlambat" fill="#f59e0b" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                <Bar dataKey="alpha" name="Tidak Hadir" fill="#ef4444" radius={[6, 6, 0, 0]} maxBarSize={36} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         )}
 
-        {/* Second Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+        {/* ============================================ */}
+        {/* SECOND ROW — Department + Shift Charts       */}
+        {/* ============================================ */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Department Performance */}
           {departmentData.length > 0 && (
-            <div className={`glass-effect rounded-2xl p-6 animate-slide-up`} style={{ animationDelay: '0.45s' }}>
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-9 h-9 bg-emerald-50 rounded-lg flex items-center justify-center">
+                  <svg className="w-4.5 h-4.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-800">Performa Departemen</h2>
-                  <p className="text-sm text-slate-500">30 hari terakhir</p>
+                  <h2 className="text-base font-semibold text-slate-800">Performa Departemen</h2>
+                  <p className="text-xs text-slate-400">30 hari terakhir</p>
                 </div>
               </div>
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={departmentData} layout="vertical" margin={{ left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#e2e8f0" />
-                  <XAxis type="number" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                  <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 12, fontWeight: 500, fill: '#475569' }} axisLine={false} tickLine={false} />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                  <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 12, fontWeight: 500, fill: '#64748b' }} axisLine={false} tickLine={false} />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: 'rgba(255,255,255,0.95)',
+                      backgroundColor: '#fff',
                       border: '1px solid #e2e8f0',
-                      borderRadius: '12px',
-                      boxShadow: '0 10px 40px rgba(0,0,0,0.1)',
-                      padding: '12px'
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                      padding: '10px'
                     }}
                   />
-                  <Bar dataKey="hadir" name="Hadir" fill="#22c55e" radius={[0, 6, 6, 0]} barSize={20} />
+                  <Bar dataKey="hadir" name="Hadir" fill="#10b981" radius={[0, 6, 6, 0]} barSize={18} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -942,26 +804,26 @@ export default function DashboardPage() {
 
           {/* Shift Distribution */}
           {shiftDistribution.length > 0 && (
-            <div className={`glass-effect rounded-2xl p-6 animate-slide-up`} style={{ animationDelay: '0.5s' }}>
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-teal-600 rounded-xl flex items-center justify-center shadow-lg shadow-cyan-500/30">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center">
+                  <svg className="w-4.5 h-4.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-800">Distribusi Shift</h2>
-                  <p className="text-sm text-slate-500">Shift aktif dalam 30 hari</p>
+                  <h2 className="text-base font-semibold text-slate-800">Distribusi Shift</h2>
+                  <p className="text-xs text-slate-400">Shift aktif dalam 30 hari</p>
                 </div>
               </div>
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
                   <Pie
                     data={shiftDistribution}
                     cx="50%"
                     cy="50%"
-                    innerRadius={70}
-                    outerRadius={110}
+                    innerRadius={65}
+                    outerRadius={100}
                     paddingAngle={3}
                     dataKey="value"
                     label={({ name, percent }) => (percent ?? 0) > 0.05 ? `${name}` : ""}
@@ -973,11 +835,11 @@ export default function DashboardPage() {
                   </Pie>
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: 'rgba(255,255,255,0.95)',
+                      backgroundColor: '#fff',
                       border: '1px solid #e2e8f0',
-                      borderRadius: '12px',
-                      boxShadow: '0 10px 40px rgba(0,0,0,0.1)',
-                      padding: '12px'
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                      padding: '10px'
                     }}
                     formatter={(value: any) => `${value || 0} records`}
                   />
@@ -985,8 +847,8 @@ export default function DashboardPage() {
                     verticalAlign="bottom"
                     height={36}
                     iconType="circle"
-                    iconSize={10}
-                    formatter={(value) => <span className="text-sm text-slate-600 font-medium">{value}</span>}
+                    iconSize={8}
+                    formatter={(value) => <span className="text-xs text-slate-500 font-medium">{value}</span>}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -994,48 +856,50 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Bottom Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* ============================================ */}
+        {/* BOTTOM ROW — Activities + Quick Actions       */}
+        {/* ============================================ */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Recent Activities */}
-          <div className={`glass-effect rounded-2xl overflow-hidden animate-slide-up`} style={{ animationDelay: '0.55s' }}>
-            <div className="px-6 py-5 bg-gradient-to-r from-slate-50 to-blue-50 border-b border-slate-100">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-gradient-to-br from-slate-600 to-slate-700 rounded-xl flex items-center justify-center">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-slate-100 rounded-lg flex items-center justify-center">
+                  <svg className="w-4.5 h-4.5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-800">Aktivitas Terbaru</h2>
-                  <p className="text-sm text-slate-500">Aktivitas sistem terbaru</p>
+                  <h2 className="text-base font-semibold text-slate-800">Aktivitas Terbaru</h2>
+                  <p className="text-xs text-slate-400">Aktivitas sistem terbaru</p>
                 </div>
               </div>
             </div>
-            <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
+            <div className="divide-y divide-slate-50 max-h-[380px] overflow-y-auto">
               {recentActivities.length === 0 ? (
                 <div className="p-8 text-center">
-                  <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                     </svg>
                   </div>
-                  <p className="text-slate-500 font-medium">Belum ada aktivitas</p>
+                  <p className="text-slate-400 text-sm">Belum ada aktivitas</p>
                 </div>
               ) : (
                 recentActivities.slice(0, 8).map((activity, idx) => (
-                  <div key={idx} className="px-6 py-4 hover:bg-slate-50 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-2.5 h-2.5 rounded-full ${activity.type === "attendance" ? "bg-emerald-500" : "bg-blue-500"}`} />
+                  <div key={idx} className="px-5 py-3.5 hover:bg-slate-50/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${activity.type === "attendance" ? "bg-emerald-500" : "bg-blue-500"}`} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-slate-700 font-medium truncate">{activity.title}</p>
-                        <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+                        <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                           {formatTime(activity.time)}
                         </p>
                       </div>
-                      <span className={`px-3 py-1 text-xs font-medium rounded-full ${
+                      <span className={`px-2.5 py-1 text-xs font-medium rounded-md ${
                         activity.type === "attendance"
                           ? "bg-emerald-50 text-emerald-600"
                           : "bg-blue-50 text-blue-600"
@@ -1050,90 +914,54 @@ export default function DashboardPage() {
           </div>
 
           {/* Quick Actions */}
-          <div className={`glass-effect rounded-2xl p-6 animate-slide-up`} style={{ animationDelay: '0.6s' }}>
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 bg-emerald-50 rounded-lg flex items-center justify-center">
+                <svg className="w-4.5 h-4.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
               <div>
-                <h2 className="text-lg font-bold text-slate-800">Aksi Cepat</h2>
-                <p className="text-sm text-slate-500">Navigasi cepat ke fitur utama</p>
+                <h2 className="text-base font-semibold text-slate-800">Aksi Cepat</h2>
+                <p className="text-xs text-slate-400">Navigasi cepat ke fitur utama</p>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Link href="/attendance" className="group flex items-center gap-4 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-2xl hover:from-emerald-100 hover:to-teal-100 transition-all border border-emerald-100">
-                <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
-                  <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="font-semibold text-slate-800">Attendance</p>
-                  <p className="text-xs text-slate-500">Lihat absensi</p>
-                </div>
-              </Link>
-
-              <Link href="/attendance-corrections" className="group flex items-center gap-4 p-4 bg-gradient-to-r from-amber-50 to-yellow-50 rounded-2xl hover:from-amber-100 hover:to-yellow-100 transition-all border border-amber-100">
-                <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
-                  <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="font-semibold text-slate-800">Koreksi</p>
-                  <p className="text-xs text-slate-500">Kelola request</p>
-                </div>
-              </Link>
-
-              <Link href="/users" className="group flex items-center gap-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl hover:from-blue-100 hover:to-indigo-100 transition-all border border-blue-100">
-                <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
-                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="font-semibold text-slate-800">Users</p>
-                  <p className="text-xs text-slate-500">Kelola karyawan</p>
-                </div>
-              </Link>
-
-              <Link href="/shifts" className="group flex items-center gap-4 p-4 bg-gradient-to-r from-purple-50 to-violet-50 rounded-2xl hover:from-purple-100 hover:to-violet-100 transition-all border border-purple-100">
-                <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
-                  <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="font-semibold text-slate-800">Shifts</p>
-                  <p className="text-xs text-slate-500">Kelola shift</p>
-                </div>
-              </Link>
-
-              <Link href="/payroll" className="group flex items-center gap-4 p-4 bg-gradient-to-r from-rose-50 to-pink-50 rounded-2xl hover:from-rose-100 hover:to-pink-100 transition-all border border-rose-100">
-                <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
-                  <svg className="w-6 h-6 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="font-semibold text-slate-800">Payroll</p>
-                  <p className="text-xs text-slate-500">Kelola gaji</p>
-                </div>
-              </Link>
-
-              <Link href="/schedule-shift" className="group flex items-center gap-4 p-4 bg-gradient-to-r from-cyan-50 to-sky-50 rounded-2xl hover:from-cyan-100 hover:to-sky-100 transition-all border border-cyan-100">
-                <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
-                  <svg className="w-6 h-6 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="font-semibold text-slate-800">Schedule</p>
-                  <p className="text-xs text-slate-500">Jadwalkan shift</p>
-                </div>
-              </Link>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { href: "/attendance", label: "Attendance", desc: "Lihat absensi", color: "emerald" },
+                { href: "/attendance-corrections", label: "Koreksi", desc: "Kelola request", color: "amber" },
+                { href: "/users", label: "Users", desc: "Kelola karyawan", color: "blue" },
+                { href: "/shifts", label: "Shifts", desc: "Kelola shift", color: "violet" },
+                { href: "/payroll", label: "Payroll", desc: "Kelola gaji", color: "rose" },
+                { href: "/schedule-shift", label: "Schedule", desc: "Jadwalkan shift", color: "cyan" },
+              ].map((item) => {
+                const colorMap: Record<string, { bg: string; icon: string; border: string; hover: string }> = {
+                  emerald: { bg: "bg-emerald-50", icon: "text-emerald-600", border: "border-emerald-100", hover: "hover:border-emerald-200 hover:bg-emerald-50/50" },
+                  amber: { bg: "bg-amber-50", icon: "text-amber-600", border: "border-amber-100", hover: "hover:border-amber-200 hover:bg-amber-50/50" },
+                  blue: { bg: "bg-blue-50", icon: "text-blue-600", border: "border-blue-100", hover: "hover:border-blue-200 hover:bg-blue-50/50" },
+                  violet: { bg: "bg-violet-50", icon: "text-violet-600", border: "border-violet-100", hover: "hover:border-violet-200 hover:bg-violet-50/50" },
+                  rose: { bg: "bg-rose-50", icon: "text-rose-600", border: "border-rose-100", hover: "hover:border-rose-200 hover:bg-rose-50/50" },
+                  cyan: { bg: "bg-cyan-50", icon: "text-cyan-600", border: "border-cyan-100", hover: "hover:border-cyan-200 hover:bg-cyan-50/50" },
+                };
+                const c = colorMap[item.color];
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`group flex items-center gap-3 p-3.5 bg-white rounded-lg border ${c.border} ${c.hover} transition-all`}
+                  >
+                    <div className={`w-9 h-9 ${c.bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                      <svg className={`w-4.5 h-4.5 ${c.icon}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-700">{item.label}</p>
+                      <p className="text-xs text-slate-400">{item.desc}</p>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </div>

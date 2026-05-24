@@ -1,5 +1,6 @@
 // app/(admin)/assessments/input/page.tsx
 "use client";
+import LoadingScreen from "@/components/ui/LoadingScreen";
 
 import { useState, useEffect } from "react";
 import { collection, getDocs, query, where, addDoc, updateDoc, doc, Timestamp } from "firebase/firestore";
@@ -139,7 +140,7 @@ export default function InputAssessmentPage() {
     }
   };
 
-  if (loading) return <div className="flex justify-center py-8"><div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return <LoadingScreen fullScreen={false} size={150} />;
 
   return (
     <div className="space-y-6">

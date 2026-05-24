@@ -225,28 +225,20 @@ export default function ShiftsPage() {
 
   const getShiftTypeLabel = (type?: string) => {
     switch (type) {
-      case "morning": return { label: "🌅 Pagi", color: "bg-yellow-100 text-yellow-700" };
-      case "afternoon": return { label: "🌤️ Siang", color: "bg-orange-100 text-orange-700" };
-      case "night": return { label: "🌙 Malam", color: "bg-purple-100 text-purple-700" };
-      case "special": return { label: "⭐ Khusus", color: "bg-cyan-100 text-cyan-700" };
-      default: return { label: "📋 Umum", color: "bg-gray-100 text-gray-700" };
+      case "morning": return { label: "Pagi", color: "bg-yellow-100 text-yellow-700" };
+      case "afternoon": return { label: "Siang", color: "bg-orange-100 text-orange-700" };
+      case "night": return { label: "Malam", color: "bg-purple-100 text-purple-700" };
+      case "special": return { label: "Khusus", color: "bg-cyan-100 text-cyan-700" };
+      default: return { label: "Umum", color: "bg-gray-100 text-gray-700" };
     }
   };
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "hr"]}>
-      <div className="space-y-6 p-6">
-        {/* Header dengan Glassmorphism */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-green-600 to-green-700 p-6 text-white shadow-xl">
-          <div className="relative z-10">
-            <h1 className="text-2xl font-bold">📋 Manajemen Shift Kerja</h1>
-            <p className="text-green-100 mt-1">Kelola jadwal shift untuk absensi karyawan</p>
-          </div>
-        </div>
-
+        <div className="space-y-6 pb-20">
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl">
             <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-blue-100/50 blur-2xl"></div>
             <div className="relative flex items-center justify-between">
               <div>
@@ -259,7 +251,7 @@ export default function ShiftsPage() {
             </div>
           </div>
           
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl">
             <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-green-100/50 blur-2xl"></div>
             <div className="relative flex items-center justify-between">
               <div>
@@ -272,7 +264,7 @@ export default function ShiftsPage() {
             </div>
           </div>
           
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl">
             <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-yellow-100/50 blur-2xl"></div>
             <div className="relative flex items-center justify-between">
               <div>
@@ -285,7 +277,7 @@ export default function ShiftsPage() {
             </div>
           </div>
           
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl">
             <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-purple-100/50 blur-2xl"></div>
             <div className="relative flex items-center justify-between">
               <div>
@@ -300,27 +292,30 @@ export default function ShiftsPage() {
         </div>
 
         {/* Search & Filter */}
-        <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+          <div className="flex flex-col sm:flex-row gap-3 items-center">
+            <div className="flex-1 w-full relative">
               <input
                 type="text"
-                placeholder="🔍 Cari shift (nama atau kode)..."
+                placeholder="Cari shift (nama atau kode)..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                className="w-full border border-slate-200 bg-slate-50 rounded-lg pl-10 pr-4 py-2.5 text-sm text-slate-700 hover:bg-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors focus:bg-white"
               />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                🔍
+              </span>
             </div>
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-              className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+              className="w-full sm:w-48 appearance-none border border-slate-200 rounded-lg px-4 py-2.5 text-sm text-slate-700 bg-slate-50 hover:bg-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors focus:bg-white"
             >
               <option value="all">Semua Tipe</option>
-              <option value="morning">🌅 Pagi</option>
-              <option value="afternoon">🌤️ Siang</option>
-              <option value="night">🌙 Malam</option>
-              <option value="special">⭐ Khusus</option>
+              <option value="morning">Pagi</option>
+              <option value="afternoon">Siang</option>
+              <option value="night">Malam</option>
+              <option value="special">Khusus</option>
             </select>
             <button
               onClick={() => {
@@ -356,7 +351,7 @@ export default function ShiftsPage() {
               return (
                 <div
                   key={shift.id}
-                  className="group relative overflow-hidden rounded-2xl bg-white shadow-lg border border-gray-100 transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
+                  className="group relative overflow-hidden rounded-2xl bg-white shadow-lg border border-gray-100 transition-all duration-300 hover:shadow-xl"
                 >
                   <div className="h-1.5" style={{ backgroundColor: shift.color }} />
                   <div className="p-5">
@@ -437,18 +432,18 @@ export default function ShiftsPage() {
                       )}
                     </div>
 
-                    <div className="flex gap-2 pt-2">
+                    <div className="flex gap-3 pt-4 mt-2 border-t border-slate-100">
                       <button
                         onClick={() => editShift(shift)}
-                        className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                        className="flex-1 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-700 px-3 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex justify-center items-center gap-1.5"
                       >
-                        ✏️ Edit
+                        Edit
                       </button>
                       <button
                         onClick={() => handleDelete(shift)}
-                        className="flex-1 bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                        className="flex-1 bg-white border border-rose-200 hover:bg-rose-50 hover:border-rose-300 text-rose-600 px-3 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm flex justify-center items-center gap-1.5"
                       >
-                        🗑️ Hapus
+                        Hapus
                       </button>
                     </div>
                   </div>
@@ -459,12 +454,11 @@ export default function ShiftsPage() {
         )}
 
         {/* Action Buttons */}
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end gap-3 mt-6">
           <button
             onClick={() => setIsTemplateModalOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+            className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 shadow-sm transition-all"
           >
-            <span>📋</span>
             Dari Template
           </button>
           <button
@@ -472,9 +466,8 @@ export default function ShiftsPage() {
               resetForm();
               setIsModalOpen(true);
             }}
-            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 shadow-sm shadow-emerald-600/20 transition-all"
           >
-            <span>➕</span>
             Buat Baru
           </button>
         </div>

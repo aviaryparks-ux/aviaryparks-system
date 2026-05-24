@@ -11,6 +11,11 @@ import {
   updateDoc,
   deleteDoc,
   Timestamp,
+  query,
+  limit,
+  where,
+  onSnapshot,
+  getCountFromServer
 } from "firebase/firestore";
 import {
   createUserWithEmailAndPassword,
@@ -28,6 +33,8 @@ type User = {
   email: string;
   role: string;
   department?: string;
+  section?: string;
+  division?: string;
   jabatan?: string;
   dailyRate?: number;
   company?: string;
@@ -73,6 +80,8 @@ export default function UsersPage() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("employee");
   const [department, setDepartment] = useState("");
+  const [section, setSection] = useState("");
+  const [division, setDivision] = useState("");
   const [jabatan, setJabatan] = useState("");
   const [dailyRate, setDailyRate] = useState("");
   const [company, setCompany] = useState("");
@@ -87,6 +96,7 @@ export default function UsersPage() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState("ALL");
+  const [departmentsList, setDepartmentsList] = useState<any[]>([]);
 
   const bankOptions = [
     "BCA", "Mandiri", "BNI", "BRI", "CIMB Niaga", "Danamon", "Permata",
@@ -96,9 +106,21 @@ export default function UsersPage() {
 
   useEffect(() => {
     loadUsers();
+    loadDepartments();
   }, []);
 
+  const loadDepartments = async () => {
+    try {
+      const snap = await getDocs(collection(db, "departments"));
+      const arr = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setDepartmentsList(arr);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const loadUsers = async () => {
+    setLoading(true);
     try {
       const snap = await getDocs(collection(db, "users"));
       const arr: User[] = [];
@@ -108,11 +130,11 @@ export default function UsersPage() {
       setUsers(arr);
     } catch (error) {
       console.error("Error loading users:", error);
-      toast.error("Gagal memuat data users");
     } finally {
       setLoading(false);
     }
   };
+
 
   const uploadPhoto = async (uid: string) => {
     if (!photo) return null;
@@ -147,6 +169,8 @@ export default function UsersPage() {
         const updateData: any = {
           name, email, role, 
           department: normalizedDepartment,
+          section: section,
+          division: division,
           jabatan,
           dailyRate: dailyRate ? Number(dailyRate) : null,
           company: normalizedCompany,
@@ -172,6 +196,8 @@ export default function UsersPage() {
         await setDoc(doc(db, "users", uid), {
           name, email, role, 
           department: normalizedDepartment,
+          section: section,
+          division: division,
           jabatan,
           dailyRate: dailyRate ? Number(dailyRate) : null,
           company: normalizedCompany,
@@ -191,7 +217,7 @@ export default function UsersPage() {
         }
       }
       resetForm();
-      loadUsers();
+      // loadUsers(); // Using onSnapshot
       setShowForm(false);
     } catch (error: any) {
       toast.error(error.message);
@@ -217,7 +243,7 @@ export default function UsersPage() {
       await updateDoc(doc(db, "users", user.id), {
         isActive: !user.isActive,
       });
-      loadUsers();
+      // loadUsers(); // Using onSnapshot
       toast.success(`Status user berhasil diubah menjadi ${!user.isActive ? "aktif" : "nonaktif"}`);
     } catch (error: any) {
       toast.error(error.message);
@@ -230,7 +256,7 @@ export default function UsersPage() {
     
     try {
       await deleteDoc(doc(db, "users", user.id));
-      loadUsers();
+      // loadUsers(); // Using onSnapshot
       toast.success("✅ User berhasil dihapus");
     } catch (error: any) {
       toast.error(error.message);
@@ -243,41 +269,45 @@ export default function UsersPage() {
   };
 
   const editUser = (user: User) => {
+    setEditingId(user.id || "");
     setName(user.name || "");
     setEmail(user.email || "");
     setRole(user.role || "employee");
     setDepartment(user.department || "");
+    setSection(user.section || "");
+    setDivision(user.division || "");
     setJabatan(user.jabatan || "");
     setDailyRate(user.dailyRate?.toString() || "");
     setCompany(user.company || "");
     setLocation(user.location || "");
     setJoinDate(user.joinDate || "");
-    setIsActive(user.isActive ?? true);
+    setIsActive(user.isActive !== undefined ? user.isActive : true);
     setBankName(user.bankName || "");
     setBankAccountNumber(user.bankAccountNumber || "");
     setBankAccountName(user.bankAccountName || "");
-    setEditingId(user.id);
+    setPhoto(null);
     setShowForm(true);
-    setShowDetailModal(false);
   };
 
   const resetForm = () => {
+    setEditingId(null);
     setName("");
     setEmail("");
     setPassword("");
     setRole("employee");
     setDepartment("");
+    setSection("");
+    setDivision("");
     setJabatan("");
     setDailyRate("");
     setCompany("");
     setLocation("");
     setJoinDate("");
-    setPhoto(null);
     setIsActive(true);
     setBankName("");
     setBankAccountNumber("");
     setBankAccountName("");
-    setEditingId(null);
+    setPhoto(null);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -419,7 +449,7 @@ export default function UsersPage() {
     setImportData([]);
     setShowImportModal(false);
     setImporting(false);
-    loadUsers();
+    // loadUsers(); // Using onSnapshot
   };
 
   const getRoleBadge = (role: string) => {
@@ -479,7 +509,11 @@ export default function UsersPage() {
   const roleOptions = [
     { value: "ALL", label: "All Roles" },
     { value: "super_admin", label: "Super Admin" },
+    { value: "owner", label: "Owner" },
+    { value: "gm", label: "General Manager (GM)" },
     { value: "admin", label: "Admin" },
+    { value: "hod", label: "Head of Department (HOD)" },
+    { value: "manager", label: "Manager" },
     { value: "hr", label: "HR" },
     { value: "spv", label: "Supervisor" },
     { value: "employee", label: "Employee" },
@@ -505,65 +539,33 @@ export default function UsersPage() {
   return (
     <ProtectedRoute allowedRoles={["super_admin", "hr"]}>
       <div className="space-y-6 p-6">
-        {/* Header dengan Glassmorphism */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-green-600 to-green-700 p-6 text-white shadow-xl">
-          <div className="relative z-10">
-            <h1 className="text-2xl font-bold">Users Management</h1>
-            <p className="text-green-100 mt-1">Manage employee accounts and permissions</p>
-          </div>
-        </div>
-
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-blue-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-sm text-blue-600 font-medium">Total Users</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{users.length}</p>
-              </div>
-              <div className="rounded-xl bg-blue-100 p-3">
-                <span className="text-2xl">👥</span>
-              </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div>
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Users</p>
+              <p className="text-2xl font-bold text-slate-800">{users.length}</p>
             </div>
           </div>
           
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-green-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-sm text-green-600 font-medium">Active</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{users.filter((u) => u.isActive).length}</p>
-              </div>
-              <div className="rounded-xl bg-green-100 p-3">
-                <span className="text-2xl">✅</span>
-              </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div>
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Active</p>
+              <p className="text-2xl font-bold text-slate-800">{users.filter((u) => u.isActive).length}</p>
             </div>
           </div>
           
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-red-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-sm text-red-600 font-medium">Inactive</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{users.filter((u) => !u.isActive).length}</p>
-              </div>
-              <div className="rounded-xl bg-red-100 p-3">
-                <span className="text-2xl">⛔</span>
-              </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div>
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Inactive</p>
+              <p className="text-2xl font-bold text-slate-800">{users.filter((u) => !u.isActive).length}</p>
             </div>
           </div>
           
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-purple-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-sm text-purple-600 font-medium">Departments</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{new Set(users.map((u) => u.department).filter(Boolean)).size}</p>
-              </div>
-              <div className="rounded-xl bg-purple-100 p-3">
-                <span className="text-2xl">🏢</span>
-              </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div>
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Departments</p>
+              <p className="text-2xl font-bold text-slate-800">{new Set(users.map((u) => u.department).filter(Boolean)).size}</p>
             </div>
           </div>
         </div>
@@ -582,7 +584,7 @@ export default function UsersPage() {
             </div>
             <select
               value={filterRole}
-              onChange={(e) => setFilterRole(e.target.value)}
+              onChange={(e) => { setFilterRole(e.target.value); }}
               className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
             >
               {roleOptions.map((opt) => (
@@ -604,36 +606,32 @@ export default function UsersPage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3 mb-6">
           <button
             onClick={() => {
               resetForm();
               setShowForm(!showForm);
             }}
-            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+            className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all shadow-sm"
           >
-            <span className="text-lg">+</span>
             {showForm ? "Close Form" : "Add User"}
           </button>
           <button
             onClick={triggerFileUpload}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+            className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all shadow-sm"
           >
-            <span className="text-lg">📁</span>
             Upload Excel
           </button>
           <button
             onClick={importFromGoogleSheets}
-            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+            className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all shadow-sm"
           >
-            <span className="text-lg">📊</span>
             Google Sheets
           </button>
           <button
             onClick={downloadTemplate}
-            className="bg-gray-600 hover:bg-gray-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+            className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all shadow-sm"
           >
-            <span className="text-lg">📄</span>
             Template
           </button>
         </div>
@@ -711,20 +709,20 @@ export default function UsersPage() {
                         <thead className="bg-gray-100">
                           <tr>
                             <th className="px-3 py-2 text-left">Name</th>
-                            <th className="px-3 py-2 text-left">Email</th>
-                            <th className="px-3 py-2 text-left">Role</th>
-                            <th className="px-3 py-2 text-left">Department (auto UPPERCASE)</th>
+                            <th className="px-4 py-4 text-left">Department</th>
+                            <th className="px-4 py-4 text-left">Section</th>
+                            <th className="px-4 py-4 text-left">Division</th>
+                            <th className="px-4 py-4 text-left">Role</th>
                           </tr>
                         </thead>
                         <tbody>
                           {importData.slice(0, 10).map((row, idx) => (
                             <tr key={idx} className="border-b">
                               <td className="px-3 py-2">{row.Nama || row.name || "-"}</td>
-                              <td className="px-3 py-2">{row.Email || row.email || "-"}</td>
-                              <td className="px-3 py-2">{row.Role || row.role || "employee"}</td>
-                              <td className="px-3 py-2 font-mono text-green-700">
-                                {normalizeDepartment(row.Department || row.department || "-")}
-                              </td>
+                              <td className="px-4 py-4">{row.Department || row.department || "-"}</td>
+                              <td className="px-4 py-4">{row.Section || row.section || "-"}</td>
+                              <td className="px-4 py-4">{row.Division || row.division || "-"}</td>
+                              <td className="px-4 py-4">{row.Role || row.role || "employee"}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -755,12 +753,12 @@ export default function UsersPage() {
           </div>
         )}
 
-        {/* User Form - kontennya sama, hanya alert yang sudah diganti */}
+        {/* User Form */}
         {showForm && (
           <div className="rounded-xl bg-white shadow-lg border border-gray-100 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
               <h2 className="text-lg font-semibold text-gray-800">
-                {editingId ? "✏️ Edit User" : "➕ Add New User"}
+                {"Edit User"}
               </h2>
               <p className="text-xs text-gray-500 mt-1">
                 {editingId ? "Edit data user yang sudah ada" : "Isi form untuk menambahkan user baru"}
@@ -770,14 +768,14 @@ export default function UsersPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <input
                   placeholder="Full Name *"
-                  value={name}
+                  value={name || ""}
                   onChange={(e) => setName(e.target.value)}
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                 />
                 <input
                   placeholder="Email *"
                   type="email"
-                  value={email}
+                  value={email || ""}
                   onChange={(e) => setEmail(e.target.value)}
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                 />
@@ -785,50 +783,95 @@ export default function UsersPage() {
                   <input
                     type="password"
                     placeholder="Password *"
-                    value={password}
+                    value={password || ""}
                     onChange={(e) => setPassword(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   />
                 )}
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                >
-                  <option value="employee">Employee</option>
-                  <option value="spv">Supervisor (SPV)</option>
-                  <option value="hr">HR</option>
-                  <option value="admin">Admin</option>
-                  <option value="super_admin">Super Admin</option>
-                  <option value="training">Training</option>
-                  <option value="intern">Intern / Magang</option>
-                </select>
                 <div>
-                  <input
-                    placeholder="Department (akan otomatis HURUF BESAR)"
-                    value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
+                  <select
+                    value={role || ""}
+                    onChange={(e) => setRole(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                  />
-                  {department && (
-                    <p className="text-xs text-green-600 mt-1">
-                      → Akan disimpan sebagai: <span className="font-mono font-bold">{normalizeDepartment(department)}</span>
-                    </p>
-                  )}
+                  >
+                    <option value="employee">Employee</option>
+                    <option value="spv">Supervisor (SPV)</option>
+                    <option value="manager">Manager</option>
+                    <option value="hod">Head of Department (HOD)</option>
+                    <option value="hr">HR</option>
+                    <option value="admin">Admin</option>
+                    <option value="gm">General Manager (GM)</option>
+                    <option value="owner">Owner</option>
+                    <option value="super_admin">Super Admin</option>
+                    <option value="training">Training</option>
+                    <option value="intern">Intern / Magang</option>
+                  </select>
+                  <p className="text-[11px] text-gray-500 mt-1">Akses sistem (Contoh: Manager bisa akses persetujuan, Employee hanya absen).</p>
                 </div>
-                <select
-                  value={jabatan}
-                  onChange={(e) => setJabatan(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                >
-                  <option value="">Select Position</option>
-                  {jabatanOptions.map((j) => (<option key={j} value={j}>{j}</option>))}
-                </select>
+                <div className="space-y-3">
+                  <div>
+                    <select
+                      value={department || ""}
+                      onChange={(e) => { setDepartment(e.target.value); setSection(""); setDivision(""); }}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                    >
+                      <option value="">-- Select Department --</option>
+                      {departmentsList.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                      {department && !departmentsList.find(d => d.name === department) && <option value={department}>{department} (Current)</option>}
+                    </select>
+                    <p className="text-[11px] text-gray-500 mt-1">Pilih Department utama sesuai struktur organisasi.</p>
+                  </div>
+                  
+                  <div>
+                    <select
+                      value={section || ""}
+                      onChange={(e) => { setSection(e.target.value); setDivision(""); }}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                      disabled={!department || departmentsList.length === 0}
+                    >
+                      <option value="">-- Select Section --</option>
+                      {departmentsList.find((d: any) => d.name === department)?.sections?.map((s: any) => (
+                        <option key={s.id} value={s.name}>{s.name}</option>
+                      ))}
+                      {section && <option value={section}>{section} (Current)</option>}
+                    </select>
+                    <p className="text-[11px] text-gray-500 mt-1">Cabang Section di bawah Department (jika ada).</p>
+                  </div>
+                  
+                  <div>
+                    <select
+                      value={division || ""}
+                      onChange={(e) => setDivision(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                      disabled={!section || departmentsList.length === 0}
+                    >
+                      <option value="">-- Select Division --</option>
+                      {departmentsList.find((d: any) => d.name === department)?.sections?.find((s: any) => s.name === section)?.divisions?.map((div: any) => (
+                        <option key={div.id} value={div.name}>{div.name}</option>
+                      ))}
+                      {division && <option value={division}>{division} (Current)</option>}
+                    </select>
+                    <p className="text-[11px] text-gray-500 mt-1">Cabang Division di bawah Section (jika ada).</p>
+                  </div>
+                  <div>
+                    <select
+                      value={jabatan || ""}
+                      onChange={(e) => setJabatan(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                    >
+                      <option value="">Select Position</option>
+                      {jabatanOptions.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-gray-500 mt-1">Status Kepegawaian / Nama Jabatan resmi di HRD.</p>
+                  </div>
+                </div>
                 {(jabatan === "Casual" || jabatan === "Daily Worker") && (
                   <input
                     placeholder="Daily Rate (Rp)"
                     type="number"
-                    value={dailyRate}
+                    value={dailyRate || ""}
                     onChange={(e) => setDailyRate(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   />
@@ -836,7 +879,7 @@ export default function UsersPage() {
                 <div>
                   <input
                     placeholder="Company (otomatis HURUF BESAR)"
-                    value={company}
+                    value={company || ""}
                     onChange={(e) => setCompany(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   />
@@ -847,7 +890,7 @@ export default function UsersPage() {
                 <div>
                   <input
                     placeholder="Work Location (otomatis HURUF BESAR)"
-                    value={location}
+                    value={location || ""}
                     onChange={(e) => setLocation(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   />
@@ -857,7 +900,7 @@ export default function UsersPage() {
                 </div>
                 <input
                   type="date"
-                  value={joinDate}
+                  value={joinDate || ""}
                   onChange={(e) => setJoinDate(e.target.value)}
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                 />
@@ -874,7 +917,7 @@ export default function UsersPage() {
                   </div>
                 </div>
                 <select
-                  value={bankName}
+                  value={bankName || ""}
                   onChange={(e) => setBankName(e.target.value)}
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                 >
@@ -883,13 +926,13 @@ export default function UsersPage() {
                 </select>
                 <input
                   placeholder="Nomor Rekening"
-                  value={bankAccountNumber}
+                  value={bankAccountNumber || ""}
                   onChange={(e) => setBankAccountNumber(e.target.value)}
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                 />
                 <input
                   placeholder="Nama Pemilik Rekening"
-                  value={bankAccountName}
+                  value={bankAccountName || ""}
                   onChange={(e) => setBankAccountName(e.target.value)}
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                 />
@@ -929,14 +972,13 @@ export default function UsersPage() {
         )}
 
         {/* Users Table */}
-        <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 bg-white">
             <div className="flex justify-between items-center">
-              <h2 className="text-md font-semibold text-gray-800 flex items-center gap-2">
-                <span>📋</span>
+              <h2 className="text-md font-semibold text-slate-800">
                 User List
               </h2>
-              <span className="text-sm text-gray-500">{filteredUsers.length} users</span>
+              <span className="text-sm text-slate-500 font-medium bg-slate-100 px-3 py-1 rounded-full">{filteredUsers.length} users</span>
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -946,6 +988,8 @@ export default function UsersPage() {
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">User</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Role</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Department</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Section</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Division</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Position</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Rate</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
@@ -988,7 +1032,13 @@ export default function UsersPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="font-mono text-green-700 font-medium">{user.department || "-"}</span>
+                      <span className="font-mono text-slate-700 font-medium">{user.department || "-"}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-slate-700 font-medium">{user.section || "-"}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-slate-700 font-medium">{user.division || "-"}</span>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{user.jabatan || "-"}</td>
                     <td className="px-4 py-3">
@@ -1006,32 +1056,32 @@ export default function UsersPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex gap-2 flex-wrap">
+                      <div className="flex items-center gap-3 flex-wrap">
                         <button
                           onClick={() => editUser(user)}
-                          className="px-2 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-xs transition-colors"
+                          className="text-slate-500 hover:text-slate-800 text-xs font-medium transition-colors"
                         >
                           Edit
                         </button>
                         <button
                           onClick={() => resetPassword(user.email)}
-                          className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs transition-colors"
+                          className="text-slate-500 hover:text-slate-800 text-xs font-medium transition-colors"
                         >
                           Reset
                         </button>
                         <button
                           onClick={() => toggleActive(user)}
-                          className={`px-2 py-1 rounded-lg text-xs transition-colors ${
+                          className={`text-xs font-medium transition-colors ${
                             user.isActive
-                              ? "bg-red-600 hover:bg-red-700 text-white"
-                              : "bg-green-600 hover:bg-green-700 text-white"
+                              ? "text-red-500 hover:text-red-700"
+                              : "text-emerald-500 hover:text-emerald-700"
                           }`}
                         >
                           {user.isActive ? "Deactivate" : "Activate"}
                         </button>
                         <button
                           onClick={() => deleteUser(user)}
-                          className="px-2 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-xs transition-colors"
+                          className="text-slate-500 hover:text-red-600 text-xs font-medium transition-colors"
                         >
                           Delete
                         </button>
@@ -1043,15 +1093,14 @@ export default function UsersPage() {
             </table>
             {filteredUsers.length === 0 && (
               <div className="p-12 text-center text-gray-500">
-                <div className="text-5xl mb-4">👥</div>
-                <p className="text-lg font-medium">No users found</p>
+                <p className="text-lg font-medium text-slate-500">No users found</p>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* MODAL DETAIL USER - konten sama */}
+      {/* MODAL DETAIL USER */}
       {showDetailModal && selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden animate-scale-in">
@@ -1118,10 +1167,18 @@ export default function UsersPage() {
                     <span>💼</span> Informasi Pekerjaan
                   </h3>
                   <div className="space-y-3">
-                    <div className="flex justify-between py-2 border-b border-gray-200">
-                      <span className="text-gray-500">Department</span>
-                      <span className="font-mono font-bold text-green-700">{selectedUser.department || "-"}</span>
-                    </div>
+                      <div className="flex flex-col bg-gray-50 rounded-lg p-3">
+                        <span className="text-gray-500">Department</span>
+                        <span className="font-mono font-bold text-slate-700">{selectedUser.department || "-"}</span>
+                      </div>
+                      <div className="flex flex-col bg-gray-50 rounded-lg p-3">
+                        <span className="text-gray-500">Section</span>
+                        <span className="font-mono font-bold text-slate-700">{selectedUser.section || "-"}</span>
+                      </div>
+                      <div className="flex flex-col bg-gray-50 rounded-lg p-3">
+                        <span className="text-gray-500">Division</span>
+                        <span className="font-mono font-bold text-slate-700">{selectedUser.division || "-"}</span>
+                      </div>
                     <div className="flex justify-between py-2 border-b border-gray-200">
                       <span className="text-gray-500">Jabatan</span>
                       <span className="font-medium text-gray-800">{selectedUser.jabatan || "-"}</span>

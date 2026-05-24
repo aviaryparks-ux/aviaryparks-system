@@ -201,5 +201,59 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && isSuperAdmin();
     }
 
+    // ==================== MANAGER ON DUTY ====================
+    match /mod_schedules/{scheduleId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isHR());
+      allow update: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isHR());
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    match /mod_templates/{templateId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isHR());
+    }
+
+    match /mod_reports/{reportId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    // ==================== WORK ORDERS ====================
+    match /work_orders/{woId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isHR() || isSPV() || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager');
+      allow update: if isAuthenticated() && (
+        resource.data.createdBy == request.auth.uid ||
+        isSuperAdmin() || isAdmin() || isHR()
+      );
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    match /wo_inventory_templates/{templateId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isHR() || isSPV() || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager');
+    }
+
+    match /role_permissions/{roleId} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
+    }
+
+    match /work_threads/{threadId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ==================== INTERNAL MEMO ====================
+    match /internal_memos/{memoId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
   }
 }

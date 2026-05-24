@@ -1,47 +1,31 @@
 // components/layout/TopNav.tsx
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { NotificationIcon } from "@/components/icons/MenuIcons";
-import Image from "next/image";
 
 interface TopNavProps {
-  onMenuClick?: () => void;
   onMobileMenuClick?: () => void;
 }
 
-export default function TopNav({ onMenuClick, onMobileMenuClick }: TopNavProps) {
+export default function TopNav({ onMobileMenuClick }: TopNavProps) {
+  const pathname = usePathname();
   const router = useRouter();
   const { user, signOut } = useAuth();
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
+  const notificationRef = useRef<HTMLDivElement>(null);
+
   const [notifications, setNotifications] = useState([
     { id: 1, title: "Pengajuan baru", message: "Handi mengajukan cuti", isRead: false, time: "5 menit lalu" },
     { id: 2, title: "Koreksi absensi", message: "Koreksi menunggu approval", isRead: false, time: "1 jam lalu" },
   ]);
-  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [currentTime, setCurrentTime] = useState("");
-  const userDropdownRef = useRef<HTMLDivElement>(null);
-  const notificationRef = useRef<HTMLDivElement>(null);
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
-
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTime(
-        now.toLocaleTimeString("id-ID", {
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      );
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 60000);
-    return () => clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -56,6 +40,25 @@ export default function TopNav({ onMenuClick, onMobileMenuClick }: TopNavProps) 
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const getPageTitle = (path: string) => {
+    if (path === "/dashboard") return "Dashboard";
+    if (path.includes("/manager-on-duty")) return "Manager on Duty";
+    if (path.includes("/attendance-corrections")) return "Koreksi Kehadiran";
+    if (path.includes("/attendance-settings")) return "Pengaturan Absensi";
+    if (path.includes("/attendance")) return "Absensi";
+    if (path.includes("/users")) return "Data Pegawai";
+    if (path.includes("/shifts")) return "Manajemen Shift";
+    if (path.includes("/payroll")) return "Payroll";
+    if (path.includes("/internal-memo")) {
+      if (path.includes("/create")) return "Buat Memo Baru";
+      if (path.split("/").length > 2) return "Detail Memo";
+      return "Internal Memo";
+    }
+    return path.split("/").pop()?.replace(/-/g, " ").replace(/\b\w/g, l => l.toUpperCase()) || "Page";
+  };
+
+  const pageTitle = getPageTitle(pathname);
+
   const getInitials = (name: string) => {
     return name
       .split(" ")
@@ -65,246 +68,127 @@ export default function TopNav({ onMenuClick, onMobileMenuClick }: TopNavProps) 
       .slice(0, 2);
   };
 
-  const getRoleLabel = (role: string) => {
-    const labels: Record<string, string> = {
-      super_admin: "Super Admin",
-      admin: "Admin",
-      hr: "HR",
-      manager: "Manager",
-      spv: "Supervisor",
-      finance: "Finance",
-    };
-    return labels[role] || "Employee";
-  };
-
   const handleLogout = async () => {
     await signOut();
     router.push("/login");
   };
 
-  const markAsRead = (id: number) => {
-    setNotifications(prev =>
-      prev.map(n => (n.id === id ? { ...n, isRead: true } : n))
-    );
-  };
-
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-  };
-
   if (!user) return null;
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
-      <div className="flex items-center justify-between h-16 px-6">
-        {/* Left section - Logo */}
+    <header className="sticky top-0 z-40 glass-enterprise">
+      <div className="flex items-center justify-between h-20 px-4 sm:px-6 lg:px-8">
+        
+        {/* Left: Mobile Menu & Page Title */}
         <div className="flex items-center gap-4">
-          <div className="relative w-11 h-11 bg-gradient-to-br from-emerald-500 to-green-600 rounded-xl flex items-center justify-center shadow-md shadow-emerald-500/20">
-            <Image
-              src="/images/aviralogo.png"
-              alt="Avira Logo"
-              fill
-              className="object-contain p-1.5"
-              sizes="44px"
-              priority
-            />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-base font-bold text-slate-800 tracking-tight">
-              AVIRA - HRIS
-            </span>
-            <span className="text-[11px] text-slate-500">Empowering People, Growing Together</span>
+          <button 
+            onClick={onMobileMenuClick}
+            className="md:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-200/50 rounded-lg"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800 tracking-tight">{pageTitle}</h1>
+            <div className="flex items-center gap-2 text-sm text-slate-500 mt-1">
+              <span>Home</span>
+              <span className="w-1 h-1 rounded-full bg-slate-300" />
+              <span className="text-slate-600">{pageTitle}</span>
+            </div>
           </div>
         </div>
 
-        {/* Center section - Quick Stats */}
-        <div className="hidden xl:flex items-center gap-4">
-          <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-lg border border-slate-100">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-            <span className="text-xs text-slate-600 font-medium">Online</span>
-          </div>
-          <div className="w-px h-8 bg-slate-200" />
-          <span className="text-sm text-slate-500">
-            {new Date().toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
-          </span>
-          <div className="w-px h-8 bg-slate-200" />
-          <span className="text-sm font-semibold text-slate-700">{currentTime}</span>
-        </div>
-
-        {/* Right section */}
-        <div className="flex items-center gap-3">
-          {/* Role Badge */}
-          <div className="hidden md:block">
-            <span className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/60">
-              {getRoleLabel(user.role)}
+        {/* Right: Actions */}
+        <div className="flex items-center gap-4 lg:gap-6">
+          
+          {/* Date Picker Mockup */}
+          <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 shadow-sm cursor-pointer hover:border-emerald-300 transition-colors">
+            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span className="font-medium">
+              {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
+            <svg className="w-4 h-4 text-slate-400 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
           </div>
 
           {/* Notifications */}
           <div className="relative" ref={notificationRef}>
             <button
               onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-              className="relative p-2.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-all"
+              className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors rounded-full hover:bg-slate-100"
             >
               <NotificationIcon />
               {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-[#f8fafc]">
                   {unreadCount}
                 </span>
               )}
             </button>
-
+            
+            {/* Notif Dropdown (Simplified) */}
             {isNotificationOpen && (
-              <div className="absolute right-0 mt-3 w-80 bg-white rounded-xl shadow-xl border border-slate-200/80 overflow-hidden z-50 animate-slide-up">
-                <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
-                  <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-                    <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                    </svg>
-                    Notifikasi
-                  </h3>
-                  {unreadCount > 0 && (
-                    <button
-                      onClick={markAllAsRead}
-                      className="text-xs text-emerald-600 hover:text-emerald-700 font-medium"
-                    >
-                      Tandai semua dibaca
-                    </button>
-                  )}
+              <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
+                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                  <h3 className="font-semibold text-slate-800">Notifikasi</h3>
+                  <button onClick={() => setNotifications([])} className="text-xs text-emerald-600 font-medium">Tandai dibaca</button>
                 </div>
-                <div className="max-h-80 overflow-y-auto">
-                  {notifications.length === 0 ? (
-                    <div className="p-6 text-center">
-                      <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center mx-auto mb-3">
-                        <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                        </svg>
-                      </div>
-                      <p className="text-sm text-slate-500">Tidak ada notifikasi</p>
+                <div className="max-h-64 overflow-y-auto">
+                  {notifications.map(n => (
+                    <div key={n.id} className="p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer">
+                      <p className="text-sm font-medium text-slate-800">{n.title}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{n.message}</p>
                     </div>
-                  ) : (
-                    notifications.map((notif) => (
-                      <div
-                        key={notif.id}
-                        className={`p-4 border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors ${!notif.isRead ? "bg-emerald-50/30" : ""}`}
-                        onClick={() => markAsRead(notif.id)}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className={`w-2 h-2 mt-2 rounded-full flex-shrink-0 ${!notif.isRead ? "bg-emerald-500" : "bg-slate-300"}`} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-800">{notif.title}</p>
-                            <p className="text-xs text-slate-500 mt-0.5">{notif.message}</p>
-                            <p className="text-xs text-slate-400 mt-1.5 flex items-center gap-1">
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              {notif.time}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
+                  ))}
                 </div>
               </div>
             )}
           </div>
 
-          {/* User Profile Dropdown */}
+          {/* Divider */}
+          <div className="w-px h-8 bg-slate-200 hidden sm:block" />
+
+          {/* User Profile */}
           <div className="relative" ref={userDropdownRef}>
             <button
               onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-              className="flex items-center gap-3 p-1.5 pr-3 rounded-xl hover:bg-slate-100 transition-all"
+              className="flex items-center gap-3 text-left group"
             >
-              {user.photoUrl ? (
-                <img
-                  src={user.photoUrl}
-                  alt={user.name}
-                  className="w-9 h-9 rounded-lg object-cover border-2 border-slate-200"
-                />
-              ) : (
-                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">{getInitials(user.name)}</span>
-                </div>
-              )}
-              <div className="hidden lg:block text-left">
-                <p className="text-sm font-medium text-slate-800">{user.name}</p>
-                <p className="text-xs text-slate-500">{user.email}</p>
+              <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center shadow-sm">
+                <span className="text-white text-sm font-bold">{getInitials(user.name)}</span>
               </div>
-              <svg
-                className={`w-4 h-4 text-slate-400 transition-transform duration-200 hidden lg:block ${isUserDropdownOpen ? "rotate-180" : ""}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+              <div className="hidden lg:block">
+                <p className="text-sm font-semibold text-slate-800 group-hover:text-emerald-600 transition-colors flex items-center gap-1.5">
+                  {user.name}
+                  <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </p>
+                <p className="text-xs text-slate-500 capitalize">{user.role.replace('_', ' ')}</p>
+              </div>
             </button>
 
             {isUserDropdownOpen && (
-              <div className="absolute right-0 mt-3 w-72 bg-white rounded-xl shadow-xl border border-slate-200/80 overflow-hidden z-50 animate-slide-up">
-                <div className="p-4 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    {user.photoUrl ? (
-                      <img src={user.photoUrl} alt={user.name} className="w-12 h-12 rounded-lg object-cover" />
-                    ) : (
-                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
-                        <span className="text-white text-sm font-bold">{getInitials(user.name)}</span>
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-slate-800">{user.name}</p>
-                      <p className="text-xs text-slate-500 truncate">{user.email}</p>
-                      <span className="inline-flex mt-1.5 px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 rounded-md">
-                        {getRoleLabel(user.role)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
+              <div className="absolute right-0 mt-3 w-56 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
                 <div className="p-2">
-                  <Link
-                    href="/profile"
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                    onClick={() => setIsUserDropdownOpen(false)}
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
-                      <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
-                    </div>
+                  <Link href="/profile" onClick={() => setIsUserDropdownOpen(false)} className="block w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 hover:text-emerald-600 rounded-lg font-medium transition-colors">
                     My Profile
                   </Link>
-                </div>
-
-                <div className="p-2 border-t border-slate-100">
-                  <button
-                    onClick={handleLogout}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
-                      <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                      </svg>
-                    </div>
+                  <div className="h-px bg-slate-100 my-1" />
+                  <button onClick={handleLogout} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-lg font-medium transition-colors">
                     Logout
                   </button>
                 </div>
               </div>
             )}
           </div>
+
         </div>
       </div>
-
-      <style jsx global>{`
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-slide-up {
-          animation: slideUp 0.15s ease-out forwards;
-        }
-      `}</style>
     </header>
   );
 }

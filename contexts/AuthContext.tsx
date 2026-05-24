@@ -19,6 +19,7 @@ type User = {
   joinDate?: string;     // ← TAMBAHKAN
   phone?: string;        // ← TAMBAHKAN
   address?: string;      // ← TAMBAHKAN
+  customPermissions?: Record<string, boolean>;
 };
 
 type AuthContextType = {

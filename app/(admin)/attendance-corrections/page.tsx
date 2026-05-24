@@ -17,6 +17,7 @@ import {
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/contexts/AuthContext";
 import toast from "react-hot-toast";
+import { Clock, CheckCircle2, XCircle, FileEdit, AlertTriangle, ShieldAlert, Inbox } from "lucide-react";
 
 type Request = {
   id: string;
@@ -471,10 +472,10 @@ export default function AttendanceCorrectionsPage() {
   if (!hasAccess) {
     return (
       <div className="min-h-[400px] flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-6xl mb-4">🔒</div>
-          <h2 className="text-xl font-semibold text-gray-700 mb-2">Akses Ditolak</h2>
-          <p className="text-gray-500">Anda tidak memiliki akses ke halaman ini.</p>
+        <div className="text-center bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+          <ShieldAlert className="w-16 h-16 text-rose-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">Akses Ditolak</h2>
+          <p className="text-slate-500">Anda tidak memiliki hak akses ke halaman Koreksi Kehadiran.</p>
         </div>
       </div>
     );
@@ -482,120 +483,84 @@ export default function AttendanceCorrectionsPage() {
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "hr", "manager", "spv"]}>
-      <div className="space-y-6 p-6">
-        {/* Header dengan Glassmorphism */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-green-600 to-green-700 p-6 text-white shadow-xl">
-          <div className="relative z-10">
-            <h1 className="text-2xl font-bold">Koreksi Absensi</h1>
-            <p className="text-green-100 mt-1">
-              Kelola dan review request koreksi absensi karyawan
-              {userRole === "spv" || userRole === "manager" ? (
-                <span className="block text-sm text-green-200 mt-1">
-                  📍 Hanya menampilkan request dari departemen: <strong>{userDepartment}</strong>
-                </span>
-              ) : userRole === "hr" ? (
-                <span className="block text-sm text-green-200 mt-1">
-                  📍 Menampilkan semua request dari semua departemen
-                </span>
-              ) : userRole === "super_admin" ? (
-                <span className="block text-sm text-green-200 mt-1">
-                  🏆 Super Admin - Approve semua departemen langsung
-                </span>
-              ) : null}
-            </p>
-          </div>
-        </div>
-
+      <div className="space-y-6 pb-20">
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-yellow-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-sm text-yellow-600 font-medium">
-                  Pending
-                  {userRole === "hr" && <span className="block text-xs text-yellow-500">(menunggu HR)</span>}
-                  {userRole === "spv" && <span className="block text-xs text-yellow-500">(menunggu SPV)</span>}
-                </p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{roleBasedPendingCount}</p>
-              </div>
-              <div className="rounded-xl bg-yellow-100 p-3">
-                <span className="text-2xl">⏳</span>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-4 transition-all hover:shadow-md">
+            <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center shrink-0 border border-amber-100">
+              <Clock className="w-6 h-6 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Menunggu</p>
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-2xl font-bold text-slate-800">{roleBasedPendingCount}</h3>
+                <span className="text-xs font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-100/50">
+                  {userRole === "hr" ? "Review HR" : userRole === "spv" ? "Review SPV" : "Tindakan"}
+                </span>
               </div>
             </div>
           </div>
           
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-green-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-sm text-green-600 font-medium">Approved</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{approvedCount}</p>
-              </div>
-              <div className="rounded-xl bg-green-100 p-3">
-                <span className="text-2xl">✅</span>
-              </div>
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-4 transition-all hover:shadow-md">
+            <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0 border border-emerald-100">
+              <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Disetujui</p>
+              <h3 className="text-2xl font-bold text-slate-800">{approvedCount}</h3>
             </div>
           </div>
           
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-red-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-sm text-red-600 font-medium">Rejected</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{rejectedCount}</p>
-              </div>
-              <div className="rounded-xl bg-red-100 p-3">
-                <span className="text-2xl">❌</span>
-              </div>
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-4 transition-all hover:shadow-md">
+            <div className="w-12 h-12 rounded-xl bg-rose-50 flex items-center justify-center shrink-0 border border-rose-100">
+              <XCircle className="w-6 h-6 text-rose-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Ditolak</p>
+              <h3 className="text-2xl font-bold text-slate-800">{rejectedCount}</h3>
             </div>
           </div>
         </div>
 
         {/* Filter Tabs */}
-        <div className="rounded-xl bg-white p-2 shadow-md border border-gray-100">
-          <div className="flex gap-1 overflow-x-auto">
-            {["ALL", "pending", "approved", "rejected"].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setFilter(tab)}
-                className={`px-5 py-2 text-sm font-medium transition-all duration-200 rounded-lg whitespace-nowrap ${
-                  filter === tab
-                    ? "bg-green-600 text-white shadow-md"
-                    : "text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                {tab === "ALL" ? "Semua" : tab.charAt(0).toUpperCase() + tab.slice(1)}
-                {tab === "pending" && roleBasedPendingCount > 0 && (
-                  <span className={`ml-2 px-1.5 py-0.5 text-xs rounded-full ${
-                    filter === tab ? "bg-white text-green-600" : "bg-yellow-100 text-yellow-700"
-                  }`}>
-                    {roleBasedPendingCount}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {["ALL", "pending", "approved", "rejected"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setFilter(tab)}
+              className={`px-5 py-2.5 text-sm font-semibold transition-all duration-200 rounded-xl whitespace-nowrap border ${
+                filter === tab
+                  ? "bg-slate-800 text-white border-slate-800 shadow-sm"
+                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300"
+              }`}
+            >
+              {tab === "ALL" ? "Semua Request" : tab === "pending" ? "Menunggu" : tab === "approved" ? "Disetujui" : "Ditolak"}
+              {tab === "pending" && roleBasedPendingCount > 0 && (
+                <span className={`ml-2 px-2 py-0.5 text-xs rounded-lg ${
+                  filter === tab ? "bg-white/20 text-white" : "bg-amber-100 text-amber-800"
+                }`}>
+                  {roleBasedPendingCount}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
 
         {/* Table */}
-        <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Karyawan</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Dept</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Jabatan</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Tanggal</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Jam</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Alasan</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Aksi</th>
+                  <th className="px-6 py-4 font-bold text-xs text-slate-500 uppercase tracking-wider">Karyawan</th>
+                  <th className="px-6 py-4 font-bold text-xs text-slate-500 uppercase tracking-wider">Waktu & Shift</th>
+                  <th className="px-6 py-4 font-bold text-xs text-slate-500 uppercase tracking-wider">Alasan Koreksi</th>
+                  <th className="px-6 py-4 font-bold text-xs text-slate-500 uppercase tracking-wider">Status Approval</th>
+                  <th className="px-6 py-4 font-bold text-xs text-slate-500 uppercase tracking-wider text-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody>
-                {displayData.map((r, idx) => {
+              <tbody className="divide-y divide-slate-100">
+                {displayData.map((r) => {
                   const canAction = canApprove(r);
                   const stepText = getStepText(r);
                   const stepColor = getStepColor(r);
@@ -603,94 +568,91 @@ export default function AttendanceCorrectionsPage() {
                   return (
                     <tr 
                       key={r.id} 
-                      className={`border-b transition-all duration-150 ${
-                        idx % 2 === 0 ? "bg-white" : "bg-gray-50"
-                      } hover:bg-green-50`}
+                      className="hover:bg-slate-50/80 transition-colors group"
                     >
-                      <td className="px-4 py-3 font-medium text-gray-800">{r.name}</td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-1 rounded-full text-xs font-medium">
-                          {r.department || "-"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600">{r.jabatan || "-"}</td>
-                      <td className="px-4 py-3 text-gray-600">{formatDate(r.date)}</td>
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-gray-700">{r.checkIn ?? "--"} - {r.checkOut ?? "--"}</span>
-                       </td>
-                      <td className="px-4 py-3 max-w-xs">
-                        <div className="truncate text-gray-600" title={r.reason}>
-                          {r.reason.length > 60 ? `${r.reason.substring(0, 60)}...` : r.reason}
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-slate-800">{r.name}</span>
+                          <span className="text-xs font-medium text-slate-500 mt-0.5">{r.jabatan || "-"} • {r.department || "-"}</span>
                         </div>
-                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-1">
-                          <span className={`text-xs font-medium ${stepColor}`}>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-700">{formatDate(r.date)}</span>
+                          <span className="text-xs font-mono font-medium text-slate-500 mt-1 bg-slate-100 px-2 py-0.5 rounded-md inline-block w-fit border border-slate-200">
+                            {r.checkIn ?? "--:--"} → {r.checkOut ?? "--:--"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="max-w-xs text-slate-600 text-sm leading-relaxed" title={r.reason}>
+                          {r.reason}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1.5 items-start">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-md text-[11px] font-bold border uppercase tracking-wide ${
+                            r.status === "approved" ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                            r.status === "rejected" ? "bg-rose-50 text-rose-700 border-rose-100" :
+                            "bg-amber-50 text-amber-700 border-amber-100"
+                          }`}>
                             {stepText}
                           </span>
-                          {r.currentStep === 0 && r.status === "pending" && (
-                            <span className="text-[10px] text-yellow-500">Menunggu Approval</span>
-                          )}
-                          {r.currentStep === 1 && r.status === "pending" && (
-                            <span className="text-[10px] text-blue-500">Menunggu HR</span>
-                          )}
-                          {r.status === "approved" && (
-                            <span className="text-[10px] text-green-500">
-                              Oleh: {r.approvedByName} • {formatDateTime(r.approvedAt)}
+                          
+                          {r.status === "pending" && (
+                            <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {r.currentStep === 0 ? "Review SPV" : "Review HR"}
                             </span>
                           )}
+                          
+                          {r.status === "approved" && (
+                            <span className="text-[11px] font-medium text-slate-500">
+                              Oleh: {r.approvedByName}
+                            </span>
+                          )}
+                          
                           {r.status === "rejected" && (
-                            <span className="text-[10px] text-red-500">
-                              Oleh: {r.rejectedByName} • {formatDateTime(r.rejectedAt)}
+                            <span className="text-[11px] font-medium text-slate-500">
+                              Oleh: {r.rejectedByName}
                             </span>
                           )}
                         </div>
-                       </td>
-                      <td className="px-4 py-3">
+                      </td>
+                      <td className="px-6 py-4 text-right">
                         {r.status === "pending" && canAction ? (
-                          <div className="flex gap-2">
+                          <div className="flex justify-end gap-2">
                             <button
                               onClick={() => approve(r)}
                               disabled={loading[r.id]}
-                              className={`px-3 py-1.5 rounded-lg text-white text-sm font-medium transition-all duration-200 ${
-                                loading[r.id] 
-                                  ? "bg-gray-400 cursor-not-allowed" 
-                                  : "bg-green-600 hover:bg-green-700 shadow-md hover:shadow-lg"
-                              }`}
+                              className="px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white border border-emerald-200 hover:border-emerald-600 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 flex items-center gap-1.5"
                             >
                               {loading[r.id] ? (
-                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                               ) : (
-                                "Approve"
+                                <CheckCircle2 className="w-4 h-4" />
                               )}
+                              Setujui
                             </button>
                             <button
                               onClick={() => reject(r)}
                               disabled={loading[r.id]}
-                              className={`px-3 py-1.5 rounded-lg text-white text-sm font-medium transition-all duration-200 ${
-                                loading[r.id] 
-                                  ? "bg-gray-400 cursor-not-allowed" 
-                                  : "bg-red-600 hover:bg-red-700 shadow-md hover:shadow-lg"
-                              }`}
+                              className="px-4 py-2 bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 flex items-center gap-1.5"
                             >
                               {loading[r.id] ? (
-                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                               ) : (
-                                "Reject"
+                                <XCircle className="w-4 h-4" />
                               )}
+                              Tolak
                             </button>
                           </div>
                         ) : r.status === "pending" && !canAction ? (
-                          <span className="text-xs text-gray-400 italic">
-                            {userRole === "hr" ? "Menunggu SPV" : 
-                             userRole === "spv" ? "Menunggu approval" : "Tidak ada akses"}
+                          <span className="text-xs font-medium text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+                            Menunggu Hak Akses
                           </span>
-                        ) : r.status === "approved" ? (
-                          <span className="text-xs text-green-600 font-medium">✓ Disetujui</span>
-                        ) : r.status === "rejected" ? (
-                          <span className="text-xs text-red-600 font-medium">✗ Ditolak</span>
                         ) : (
-                          <span className="text-gray-400 text-sm">-</span>
+                          <span className="text-slate-300">-</span>
                         )}
                       </td>
                     </tr>
@@ -698,16 +660,18 @@ export default function AttendanceCorrectionsPage() {
                 })}
               </tbody>
             </table>
+            
             {displayData.length === 0 && (
-              <div className="p-12 text-center text-gray-500">
-                <div className="text-5xl mb-4">📭</div>
-                <p className="text-lg font-medium">Tidak ada request koreksi</p>
-                {userRole === "hr" && (
-                  <p className="text-sm mt-1">Tidak ada request yang menunggu approval HR</p>
-                )}
-                {(userRole === "spv" || userRole === "manager") && (
-                  <p className="text-sm mt-1">Belum ada request koreksi dari departemen {userDepartment}</p>
-                )}
+              <div className="py-16 flex flex-col items-center justify-center text-slate-500">
+                <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mb-4 border border-slate-100">
+                  <Inbox className="w-8 h-8 text-slate-300" />
+                </div>
+                <p className="text-lg font-bold text-slate-700 mb-1">Tidak ada request koreksi</p>
+                <p className="text-sm text-slate-500">
+                  {userRole === "hr" ? "Semua request sudah direview." : 
+                   (userRole === "spv" || userRole === "manager") ? `Belum ada request dari departemen ${userDepartment}.` : 
+                   "Belum ada data koreksi absensi yang masuk."}
+                </p>
               </div>
             )}
           </div>

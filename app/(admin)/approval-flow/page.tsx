@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
@@ -21,9 +21,12 @@ export default function ApprovalFlowPage() {
   const [departments, setDepartments] = useState<string[]>([]);
 
   const roles = [
-    { value: "spv", label: "SPV", icon: "👔", description: "Supervisor" },
-    { value: "manager", label: "Manager", icon: "💼", description: "Department Manager" },
-    { value: "hrd", label: "HRD", icon: "📋", description: "Human Resources" },
+    { value: "spv", label: "Supervisor", icon: "👔", description: "Supervisor (Division Level)" },
+    { value: "manager", label: "Manager", icon: "💼", description: "Manager (Section Level)" },
+    { value: "hod", label: "HOD", icon: "🏗️", description: "Head of Department" },
+    { value: "gm", label: "General Manager", icon: "🏢", description: "General Manager" },
+    { value: "owner", label: "Owner", icon: "👑", description: "Owner / Direktur" },
+    { value: "hr", label: "HR", icon: "📋", description: "Human Resources" },
     { value: "admin", label: "Admin", icon: "👨‍💼", description: "Administrator" },
   ];
 
@@ -34,10 +37,13 @@ export default function ApprovalFlowPage() {
 
   const loadDepartments = async () => {
     try {
-      const settingsSnap = await getDoc(doc(db, "approval_settings", "departments"));
-      if (settingsSnap.exists()) {
-        setDepartments(settingsSnap.data().list || []);
-      }
+      const snap = await getDocs(collection(db, "departments"));
+      const list: string[] = [];
+      snap.forEach(docSnap => {
+        list.push(docSnap.data().name);
+      });
+      list.sort((a, b) => a.localeCompare(b));
+      setDepartments(list);
     } catch (error) {
       console.error("Error loading departments:", error);
     }

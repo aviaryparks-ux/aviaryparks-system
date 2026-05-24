@@ -513,23 +513,6 @@ export default function MorningBriefingPage() {
   return (
     <ProtectedRoute allowedRoles={["super_admin", "hr"]}>
       <div className="space-y-6 p-6">
-        {/* Header - Sama seperti Attendance Page */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 p-6 text-white shadow-xl">
-          <div className="relative z-10">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
-                <span className="text-2xl">🎙️</span>
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold">Meeting Intelligence</h1>
-                <p className="text-blue-100 mt-1">
-                  Rekam meeting, AI akan mengekstrak poin-poin penting secara otomatis
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Stats Cards - Sama seperti Attendance Page */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">

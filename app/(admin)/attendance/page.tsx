@@ -2,14 +2,48 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval } from "date-fns";
+import { id } from "date-fns/locale";
+import LoadingScreen from "@/components/ui/LoadingScreen";
+import PageHeader from "@/components/ui/PageHeader";
 import { db } from "@/lib/firebase";
 import { collection, onSnapshot, query, orderBy, doc, getDoc, updateDoc, deleteDoc, setDoc, Timestamp, getDocs, where } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import EmployeeFilterModal from "@/components/EmployeeFilterModal";
 import { useAuth } from "@/contexts/AuthContext";
 import toast from "react-hot-toast";
+import {
+  Users,
+  CheckCircle2,
+  Clock,
+  XCircle,
+  AlertTriangle,
+  CalendarDays,
+  FileEdit,
+  Download,
+  Filter,
+  RefreshCw,
+  Search,
+  FileSpreadsheet,
+  FileText,
+  RotateCcw,
+  ChevronDown,
+  ChevronUp,
+  MapPin,
+  Image as ImageIcon,
+  Camera,
+  Info,
+  Calendar,
+  List,
+  Trash2,
+  X
+} from "lucide-react";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 // ================= TYPE DEFINITIONS =================
 type User = {
@@ -213,7 +247,7 @@ export default function AttendancePage() {
   // 🔥 STATE FILTER - DEFAULT TANGGAL HARI INI
   const [tempDept, setTempDept] = useState("ALL");
   const [tempJabatan, setTempJabatan] = useState("ALL");
-  const [tempEmployee, setTempEmployee] = useState("ALL");
+  const [tempEmployees, setTempEmployees] = useState<string[]>([]);
   const [tempStartDate, setTempStartDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split("T")[0];
@@ -226,7 +260,8 @@ export default function AttendancePage() {
 
   const [dept, setDept] = useState("ALL");
   const [jabatan, setJabatan] = useState("ALL");
-  const [employee, setEmployee] = useState("ALL");
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
+  const [isEmployeeModalOpen, setIsEmployeeModalOpen] = useState(false);
   const [startDate, setStartDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split("T")[0];
@@ -237,6 +272,7 @@ export default function AttendancePage() {
   });
   const [status, setStatus] = useState("ALL");
   const [showTodayOnly, setShowTodayOnly] = useState(true);
+  const [isFilterOpen, setIsFilterOpen] = useState(true);
 
   const isSuperAdmin = currentUser?.role === "super_admin";
   const isAdmin = currentUser?.role === "admin";
@@ -351,9 +387,9 @@ export default function AttendancePage() {
     if (isSPV && userDepartment) filteredData = filteredData.filter(a => a.department === userDepartment);
     return filteredData.filter((a) => {
       let ok = true;
-      if (dept !== "ALL") ok = ok && a.department === dept;
+      if (dept !== "ALL" && !isSPV) ok = ok && a.department === dept;
       if (jabatan !== "ALL") ok = ok && a.jabatan === jabatan;
-      if (employee !== "ALL") ok = ok && a.uid === employee;
+      if (selectedEmployees.length > 0) ok = ok && selectedEmployees.includes(a.uid);
       if (status !== "ALL") ok = ok && getAttendanceStatus(a).status === status;
       if (startDate) {
         const date = toDate(a.date);
@@ -365,7 +401,7 @@ export default function AttendancePage() {
       }
       return ok;
     });
-  }, [data, dept, jabatan, employee, status, startDate, endDate, isSPV, userDepartment]);
+  }, [data, dept, jabatan, selectedEmployees, status, startDate, endDate, isSPV, userDepartment]);
 
   // Stats
   const stats = useMemo(() => {
@@ -407,7 +443,7 @@ export default function AttendancePage() {
     setTempEndDate(todayStr);
     setDept("ALL");
     setJabatan("ALL");
-    setEmployee("ALL");
+    setSelectedEmployees([]);
     setStatus("ALL");
     setStartDate(todayStr);
     setEndDate(todayStr);
@@ -421,7 +457,7 @@ export default function AttendancePage() {
     setTempEndDate("");
     setDept("ALL");
     setJabatan("ALL");
-    setEmployee("ALL");
+    setSelectedEmployees([]);
     setStatus("ALL");
     setStartDate("");
     setEndDate("");
@@ -449,22 +485,22 @@ export default function AttendancePage() {
     }
     setDept(tempDept);
     setJabatan(tempJabatan);
-    setEmployee(tempEmployee);
+    setSelectedEmployees(tempEmployees);
     setStatus(tempStatus);
     setStartDate(tempStartDate);
     setEndDate(tempEndDate);
     setShowTodayOnly(false);
     toast.success("Filter diterapkan");
-  }, [tempDept, tempJabatan, tempEmployee, tempStatus, tempStartDate, tempEndDate]);
+  }, [tempDept, tempJabatan, tempEmployees, tempStatus, tempStartDate, tempEndDate]);
 
   const resetFilter = useCallback(() => {
     setTempDept("ALL");
     setTempJabatan("ALL");
-    setTempEmployee("ALL");
+    setTempEmployees([]);
     setTempStatus("ALL");
     setDept("ALL");
     setJabatan("ALL");
-    setEmployee("ALL");
+    setSelectedEmployees([]);
     setStatus("ALL");
     // Reset ke hari ini
     const today = new Date();
@@ -801,14 +837,7 @@ export default function AttendancePage() {
   };
 
   if (loading || usersLoading || correctionsLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-500">Memuat data absensi...</p>
-        </div>
-      </div>
-    );
+    return <LoadingScreen fullScreen={false} message="Memuat data absensi..." />;
   }
 
   if (error) {
@@ -823,162 +852,223 @@ export default function AttendancePage() {
     );
   }
 
-  return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "employee"]}>
-      <div className="space-y-6 p-6">
-        {/* Header */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-green-600 to-green-700 p-6 text-white shadow-xl">
-          <div className="relative z-10">
-            <h1 className="text-2xl font-bold">Manajemen Absensi</h1>
-            <p className="text-green-100 mt-1">
-              Kelola dan monitor data kehadiran karyawan
-              {isSPV && userDepartment && ` - Department: ${userDepartment}`}
-              {showTodayOnly && <span className="ml-2 text-yellow-200">📅 Menampilkan hari ini</span>}
-            </p>
-          </div>
-        </div>
-
-        {/* Quick Action Buttons */}
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={setTodayFilter}
-            className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${showTodayOnly ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
-          >
-            <span>📅</span> Hari Ini
-          </button>
-          <button
-            onClick={setAllDataFilter}
-            className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${!showTodayOnly && !startDate ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
-          >
-            <span>📊</span> Semua Data
-          </button>
-          <button
-            onClick={setPayrollPeriod}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors flex items-center gap-2"
-          >
-            📅 Periode 26-25
-          </button>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-blue-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div><p className="text-sm text-blue-600">Total Records</p><p className="text-3xl font-bold text-gray-800">{stats.total}</p></div>
-              <div className="rounded-xl bg-blue-100 p-3"><span className="text-2xl">📊</span></div>
+    return (
+      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "employee"]}>
+        <div className="space-y-6 pb-20">
+          {/* Unified Toolbar (Stats, Filters, Actions) */}
+        {/* Stats Cards - Sleek SaaS Style */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Users className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total</p>
+              <p className="text-xl font-extrabold text-slate-800">{stats.total}</p>
             </div>
           </div>
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-green-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div><p className="text-sm text-green-600">✅ Hadir</p><p className="text-3xl font-bold text-gray-800">{stats.hadir}</p></div>
-              <div className="rounded-xl bg-green-100 p-3"><span className="text-2xl">✅</span></div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Hadir</p>
+              <p className="text-xl font-extrabold text-slate-800">{stats.hadir}</p>
             </div>
           </div>
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-yellow-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div><p className="text-sm text-yellow-600">⏰ Terlambat</p><p className="text-3xl font-bold text-gray-800">{stats.terlambat}</p></div>
-              <div className="rounded-xl bg-yellow-100 p-3"><span className="text-2xl">⏰</span></div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center">
+              <Clock className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Terlambat</p>
+              <p className="text-xl font-extrabold text-slate-800">{stats.terlambat}</p>
             </div>
           </div>
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-red-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div><p className="text-sm text-red-600">❌ Tidak Hadir</p><p className="text-3xl font-bold text-gray-800">{stats.alpha}</p></div>
-              <div className="rounded-xl bg-red-100 p-3"><span className="text-2xl">❌</span></div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center">
+              <XCircle className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tidak Hadir</p>
+              <p className="text-xl font-extrabold text-slate-800">{stats.alpha}</p>
             </div>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-orange-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div><p className="text-sm text-orange-600">⚠️ NSP</p><p className="text-3xl font-bold text-gray-800">{stats.nsp}</p></div>
-              <div className="rounded-xl bg-orange-100 p-3"><span className="text-2xl">⚠️</span></div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">NSP</p>
+              <p className="text-xl font-extrabold text-slate-800">{stats.nsp}</p>
             </div>
           </div>
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-purple-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div><p className="text-sm text-purple-600">📅 Libur</p><p className="text-3xl font-bold text-gray-800">{stats.libur}</p></div>
-              <div className="rounded-xl bg-purple-100 p-3"><span className="text-2xl">📅</span></div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center">
+              <CalendarDays className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Libur</p>
+              <p className="text-xl font-extrabold text-slate-800">{stats.libur}</p>
             </div>
           </div>
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-indigo-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div><p className="text-sm text-indigo-600">✏️ Dikoreksi</p><p className="text-3xl font-bold text-gray-800">{stats.corrected}</p></div>
-              <div className="rounded-xl bg-indigo-100 p-3"><span className="text-2xl">✏️</span></div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <FileEdit className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Dikoreksi</p>
+              <p className="text-xl font-extrabold text-slate-800">{stats.corrected}</p>
             </div>
           </div>
         </div>
 
-        {/* Filter Section */}
-        <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
-          <h2 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
-            Filter Data {showTodayOnly && <span className="text-xs text-green-600">(Hari Ini)</span>}
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
-            <select value={tempDept} onChange={(e) => setTempDept(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2">
-              {deptList.map((d) => <option key={d}>{d}</option>)}
-            </select>
-            <select value={tempJabatan} onChange={(e) => setTempJabatan(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2">
-              {jabatanList.map((j) => <option key={j}>{j}</option>)}
-            </select>
-            <select value={tempEmployee} onChange={(e) => setTempEmployee(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2">
-              <option value="ALL">Semua Karyawan</option>
-              {employeeList.map((uid) => uid !== "ALL" && <option key={uid} value={uid}>{users[uid]?.name || uid}</option>)}
-            </select>
-            <select value={tempStatus} onChange={(e) => setTempStatus(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2">
-              <option value="ALL">📋 Semua Status</option>
-              <option value="hadir">✅ Hadir</option><option value="terlambat">⏰ Terlambat</option>
-              <option value="alpha">❌ Tidak Hadir</option><option value="nsp">⚠️ NSP</option><option value="libur">📅 Libur</option>
-            </select>
-            <div className="flex gap-2">
-              <input type="date" value={tempStartDate} onChange={(e) => setTempStartDate(e.target.value)} className="flex-1 border border-gray-300 rounded-lg px-3 py-2" />
-              <input type="date" value={tempEndDate} onChange={(e) => setTempEndDate(e.target.value)} className="flex-1 border border-gray-300 rounded-lg px-3 py-2" />
+        {/* Unified Toolbar */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-2">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                <Filter className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  Filter & Export
+                  {showTodayOnly && <span className="text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded-md text-[10px] border border-emerald-100">📅 Hari Ini</span>}
+                </h2>
+                <p className="text-xs text-slate-500">Sesuaikan data yang ingin ditampilkan</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 items-center w-full lg:w-auto justify-between lg:justify-end">
+              <div className="flex flex-wrap gap-2">
+                <button onClick={setTodayFilter} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${showTodayOnly ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                  <CalendarDays className="w-3.5 h-3.5" /> Hari Ini
+                </button>
+                <button onClick={setAllDataFilter} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${!showTodayOnly && !startDate ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                  <Users className="w-3.5 h-3.5" /> Semua Data
+                </button>
+                <button onClick={setPayrollPeriod} className="px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200">
+                  <CalendarDays className="w-3.5 h-3.5" /> Periode 26-25
+                </button>
+              </div>
+              <button 
+                onClick={() => setIsFilterOpen(!isFilterOpen)} 
+                className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors ml-auto lg:ml-2"
+                title={isFilterOpen ? "Sembunyikan Filter" : "Tampilkan Filter"}
+              >
+                {isFilterOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+              </button>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={applyFilter} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">✓ Terapkan Filter</button>
-            <button onClick={resetFilter} className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">↺ Reset ke Hari Ini</button>
-          </div>
-        </div>
 
-        {/* Export Section */}
-        <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
-          <h2 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Export Data
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={exportDetailExcel} disabled={exporting !== null} className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
-              {exporting === "detail-excel" ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <span>📊</span>}
-              Detail Excel
-            </button>
-            <button onClick={exportDetailPDF} disabled={exporting !== null} className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
-              {exporting === "detail-pdf" ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <span>📄</span>}
-              Detail PDF
-            </button>
-            <button onClick={exportRecapExcel} disabled={exporting !== null} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
-              {exporting === "recap-excel" ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <span>📊</span>}
-              Rekap Excel
-            </button>
-            <button onClick={exportRecapPDF} disabled={exporting !== null} className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
-              {exporting === "recap-pdf" ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <span>📄</span>}
-              Rekap PDF
-            </button>
-          </div>
+          {isFilterOpen && (
+            <div className="flex flex-col lg:flex-row gap-4 pt-4 border-t border-slate-100 mt-2 animate-fade-in">
+              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="relative">
+                  <select value={tempDept} onChange={(e) => setTempDept(e.target.value)} className="w-full appearance-none border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-sm text-slate-700 bg-slate-50 hover:bg-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors">
+                    {deptList.map((d) => <option key={d}>{d}</option>)}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                  </div>
+                </div>
+                <div className="relative">
+                  <select value={tempJabatan} onChange={(e) => setTempJabatan(e.target.value)} className="w-full appearance-none border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-sm text-slate-700 bg-slate-50 hover:bg-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors">
+                    {jabatanList.map((j) => <option key={j}>{j}</option>)}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                  </div>
+                </div>
+                <div className="relative">
+                  <button
+                    onClick={() => setIsEmployeeModalOpen(true)}
+                    className="w-full text-left appearance-none border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-sm text-slate-700 bg-slate-50 hover:bg-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors truncate"
+                  >
+                    {tempEmployees.length > 0 ? `${tempEmployees.length} Karyawan Dipilih` : "Semua Karyawan"}
+                  </button>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                  </div>
+                </div>
+                <div className="relative">
+                  <select value={tempStatus} onChange={(e) => setTempStatus(e.target.value)} className="w-full appearance-none border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-sm text-slate-700 bg-slate-50 hover:bg-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors">
+                    <option value="ALL">Semua Status</option>
+                    <option value="hadir">Hadir</option>
+                    <option value="terlambat">Terlambat</option>
+                    <option value="alpha">Tidak Hadir</option>
+                    <option value="nsp">NSP</option>
+                    <option value="libur">Libur</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                  </div>
+                </div>
+                <div className="flex gap-2 col-span-1 md:col-span-2 lg:col-span-1 border border-slate-200 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500">
+                  <DatePicker
+                    selectsRange={true}
+                    startDate={tempStartDate ? new Date(tempStartDate) : undefined}
+                    endDate={tempEndDate ? new Date(tempEndDate) : undefined}
+                    onChange={(update: [Date | null, Date | null]) => {
+                      const [start, end] = update;
+                      // Keep timezone offset out by extracting year, month, date locally
+                      const formatDate = (d: Date | null) => {
+                        if (!d) return "";
+                        const y = d.getFullYear();
+                        const m = String(d.getMonth() + 1).padStart(2, '0');
+                        const day = String(d.getDate()).padStart(2, '0');
+                        return `${y}-${m}-${day}`;
+                      };
+                      setTempStartDate(formatDate(start));
+                      setTempEndDate(formatDate(end));
+                    }}
+                    dateFormat="dd/MM/yyyy"
+                    placeholderText="Pilih Rentang Tanggal"
+                    className="w-full bg-transparent px-3 py-2 text-sm text-slate-700 outline-none border-none placeholder-slate-400 focus:ring-0 cursor-pointer"
+                    wrapperClassName="w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0 border-t lg:border-t-0 pt-4 lg:pt-0">
+                <button onClick={applyFilter} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5">
+                  <Search className="w-4 h-4" /> <span className="hidden sm:inline">Terapkan</span>
+                </button>
+                <button onClick={resetFilter} className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center justify-center" title="Reset Filter">
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+
+                <div className="w-px h-8 bg-slate-200 mx-1 hidden lg:block"></div>
+
+                {/* Export Button Group */}
+                <div className="flex border border-slate-200 rounded-lg overflow-hidden bg-white">
+                  <div className="px-3 py-2 bg-slate-50 border-r border-slate-200 text-slate-500 text-sm font-medium flex items-center gap-1.5">
+                    <Download className="w-4 h-4" /> Export
+                  </div>
+                  <button onClick={exportDetailExcel} disabled={exporting !== null} className="hover:bg-slate-50 text-slate-700 px-3 py-2 text-sm font-medium transition-colors border-r border-slate-200 flex items-center gap-1.5 group" title="Export Excel">
+                    {exporting === "detail-excel" ? <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" /> : <FileSpreadsheet className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />}
+                    <span className="hidden xl:inline">Excel</span>
+                  </button>
+                  <button onClick={exportDetailPDF} disabled={exporting !== null} className="hover:bg-slate-50 text-slate-700 px-3 py-2 text-sm font-medium transition-colors border-r border-slate-200 flex items-center gap-1.5 group" title="Export PDF">
+                    {exporting === "detail-pdf" ? <RefreshCw className="w-4 h-4 animate-spin text-red-600" /> : <FileText className="w-4 h-4 text-red-600 group-hover:scale-110 transition-transform" />}
+                    <span className="hidden xl:inline">PDF</span>
+                  </button>
+                  <button onClick={exportRecapExcel} disabled={exporting !== null} className="hover:bg-slate-50 text-slate-700 px-3 py-2 text-sm font-medium transition-colors border-r border-slate-200 flex items-center gap-1.5 group" title="Export Rekap Excel">
+                    {exporting === "recap-excel" ? <RefreshCw className="w-4 h-4 animate-spin text-blue-600" /> : <FileSpreadsheet className="w-4 h-4 text-blue-600 group-hover:scale-110 transition-transform" />}
+                    <span className="hidden xl:inline">Rekap XLS</span>
+                  </button>
+                  <button onClick={exportRecapPDF} disabled={exporting !== null} className="hover:bg-slate-50 text-slate-700 px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 group" title="Export Rekap PDF">
+                    {exporting === "recap-pdf" ? <RefreshCw className="w-4 h-4 animate-spin text-purple-600" /> : <FileText className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />}
+                    <span className="hidden xl:inline">Rekap PDF</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Detail Table */}
-        <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
             <div className="flex justify-between items-center">
               <h2 className="text-md font-semibold text-gray-800 flex items-center gap-2"><span>📋</span> Detail Absensi</h2>
@@ -987,18 +1077,18 @@ export default function AttendancePage() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Nama</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Dept</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Jabatan</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Shift</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Tanggal</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Masuk</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Pulang</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Jam Kerja</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Foto</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
+              <thead className="bg-slate-50/50">
+                <tr className="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                  <th className="px-4 py-4 text-left">Nama</th>
+                  <th className="px-4 py-4 text-left">Dept</th>
+                  <th className="px-4 py-4 text-left">Jabatan</th>
+                  <th className="px-4 py-4 text-left">Shift</th>
+                  <th className="px-4 py-4 text-left">Tanggal</th>
+                  <th className="px-4 py-4 text-left">Masuk</th>
+                  <th className="px-4 py-4 text-left">Pulang</th>
+                  <th className="px-4 py-4 text-left">Jam Kerja</th>
+                  <th className="px-4 py-4 text-left">Foto</th>
+                  <th className="px-4 py-4 text-left">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -1031,22 +1121,22 @@ export default function AttendancePage() {
 
         {/* Recap Table */}
         {recapList.length > 0 && (
-          <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
               <h2 className="text-md font-semibold text-gray-800 flex items-center gap-2"><span>💰</span> Rekap Gaji (Harian / Borongan)</h2>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Nama</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Dept</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Jabatan</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Hari Kerja</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Total Jam</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Rata-rata Jam</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Rate</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Total Gaji</th>
+                <thead className="bg-slate-50/50">
+                  <tr className="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                    <th className="px-4 py-4 text-left">Nama</th>
+                    <th className="px-4 py-4 text-left">Dept</th>
+                    <th className="px-4 py-4 text-left">Jabatan</th>
+                    <th className="px-4 py-4 text-left">Hari Kerja</th>
+                    <th className="px-4 py-4 text-left">Total Jam</th>
+                    <th className="px-4 py-4 text-left">Rata-rata Jam</th>
+                    <th className="px-4 py-4 text-left">Rate</th>
+                    <th className="px-4 py-4 text-left">Total Gaji</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1071,63 +1161,67 @@ export default function AttendancePage() {
 
       {/* MODAL DETAIL ABSENSI DENGAN FOTO LENGKAP */}
       {showDetailModal && selectedAttendance && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden animate-scale-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden animate-scale-in border border-slate-200">
             {/* Header Modal */}
-            <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-4 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
-                  <span className="text-white text-lg font-bold">{getInitials(selectedAttendance.name)}</span>
+            <div className="bg-emerald-600 px-6 py-5 flex justify-between items-center relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500 rounded-full blur-3xl opacity-50 -mr-20 -mt-20 pointer-events-none"></div>
+              <div className="flex items-center gap-4 relative z-10">
+                <div className="w-14 h-14 rounded-full bg-white/20 border border-white/30 flex items-center justify-center shadow-inner">
+                  <span className="text-white text-xl font-bold">{getInitials(selectedAttendance.name)}</span>
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-white">{selectedAttendance.name}</h2>
-                  <p className="text-green-100 text-sm">{selectedAttendance.department} • {selectedAttendance.jabatan}</p>
+                  <h2 className="text-xl font-bold text-white tracking-tight">{selectedAttendance.name}</h2>
+                  <p className="text-emerald-100 text-sm font-medium flex items-center gap-1.5 mt-0.5">
+                    <Users className="w-3.5 h-3.5" />
+                    {selectedAttendance.department} <span className="opacity-50">•</span> {selectedAttendance.jabatan}
+                  </p>
                 </div>
               </div>
-              <button onClick={() => { setShowDetailModal(false); setShowDeleteModal(false); }} className="text-white hover:text-gray-200 transition-colors">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+              <button onClick={() => { setShowDetailModal(false); setShowDeleteModal(false); }} className="text-emerald-100 hover:text-white hover:bg-emerald-500/50 p-2 rounded-xl transition-all relative z-10">
+                <X className="w-6 h-6" />
               </button>
             </div>
 
             {/* Body Modal */}
-            <div className="p-6 overflow-y-auto max-h-[70vh]">
+            <div className="p-6 overflow-y-auto max-h-[75vh] bg-slate-50">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Informasi Absensi */}
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                    <span>📋</span> Informasi Absensi
+                <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Info className="w-4 h-4 text-slate-400" /> Informasi Absensi
                   </h3>
                   <div className="space-y-3">
-                    <div className="flex justify-between py-2 border-b border-gray-200">
-                      <span className="text-gray-500">Tanggal</span>
-                      <span className="font-medium text-gray-800">{formatDate(selectedAttendance.date)}</span>
+                    <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                      <span className="text-slate-500 text-sm font-medium">Tanggal</span>
+                      <span className="font-semibold text-slate-800">{formatDate(selectedAttendance.date)}</span>
                     </div>
-                    <div className="flex justify-between py-2 border-b border-gray-200">
-                      <span className="text-gray-500">Shift</span>
+                    <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                      <span className="text-slate-500 text-sm font-medium">Shift</span>
                       <div className="flex items-center gap-2">
                         {selectedAttendance.shift && (
                           <>
-                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedAttendance.shift.color }} />
-                            <span className="font-medium">{selectedAttendance.shift.name}</span>
-                            <span className="text-xs text-gray-400">({selectedAttendance.shift.startTime} - {selectedAttendance.shift.endTime})</span>
+                            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: selectedAttendance.shift.color }} />
+                            <span className="font-semibold text-slate-800">{selectedAttendance.shift.name}</span>
+                            <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
+                              {selectedAttendance.shift.startTime} - {selectedAttendance.shift.endTime}
+                            </span>
                           </>
                         )}
-                        {!selectedAttendance.shift && <span className="text-gray-400">-</span>}
+                        {!selectedAttendance.shift && <span className="text-slate-400 font-medium">-</span>}
                       </div>
                     </div>
-                    <div className="flex justify-between py-2 border-b border-gray-200">
-                      <span className="text-gray-500">Status</span>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getAttendanceStatus(selectedAttendance).color}`}>
+                    <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                      <span className="text-slate-500 text-sm font-medium">Status</span>
+                      <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide border ${getAttendanceStatus(selectedAttendance).color.replace('bg-', 'bg-opacity-10 border-')}`}>
                         {getAttendanceStatus(selectedAttendance).label}
                       </span>
                     </div>
                     {selectedAttendance.isCorrected && (
-                      <div className="flex justify-between py-2 border-b border-gray-200">
-                        <span className="text-gray-500">Status Koreksi</span>
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
-                          ✏️ Sudah Dikoreksi
+                      <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                        <span className="text-slate-500 text-sm font-medium">Status Koreksi</span>
+                        <span className="px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide bg-orange-50 text-orange-600 border border-orange-200 flex items-center gap-1.5">
+                          <FileEdit className="w-3.5 h-3.5" /> Dikoreksi
                         </span>
                       </div>
                     )}
@@ -1135,35 +1229,44 @@ export default function AttendancePage() {
                 </div>
 
                 {/* Waktu Absensi */}
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                    <span>⏰</span> Waktu Absensi
+                <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-slate-400" /> Waktu Kehadiran
                   </h3>
                   <div className="space-y-3">
-                    <div className="flex justify-between py-2 border-b border-gray-200">
-                      <span className="text-gray-500">Check-in</span>
-                      <span className="font-medium text-green-600">
-                        {selectedAttendance.isCorrected && selectedAttendance.correctedCheckIn 
-                          ? `${selectedAttendance.correctedCheckIn} ✏️` 
-                          : formatDateTime(selectedAttendance.checkIn?.time) || "--:--"}
+                    <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                      <span className="text-slate-500 text-sm font-medium">Check-in</span>
+                      <span className="font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md flex items-center gap-1.5">
+                        {selectedAttendance.isCorrected && selectedAttendance.correctedCheckIn ? (
+                          <>{selectedAttendance.correctedCheckIn} <FileEdit className="w-3.5 h-3.5 text-orange-500" /></>
+                        ) : (
+                          formatDateTime(selectedAttendance.checkIn?.time) || "--:--"
+                        )}
                       </span>
                     </div>
-                    <div className="flex justify-between py-2 border-b border-gray-200">
-                      <span className="text-gray-500">Check-out</span>
-                      <span className="font-medium text-blue-600">
-                        {selectedAttendance.isCorrected && selectedAttendance.correctedCheckOut 
-                          ? `${selectedAttendance.correctedCheckOut} ✏️` 
-                          : formatDateTime(selectedAttendance.checkOut?.time) || "--:--"}
+                    <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                      <span className="text-slate-500 text-sm font-medium">Check-out</span>
+                      <span className="font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md flex items-center gap-1.5">
+                        {selectedAttendance.isCorrected && selectedAttendance.correctedCheckOut ? (
+                          <>{selectedAttendance.correctedCheckOut} <FileEdit className="w-3.5 h-3.5 text-orange-500" /></>
+                        ) : (
+                          formatDateTime(selectedAttendance.checkOut?.time) || "--:--"
+                        )}
                       </span>
                     </div>
-                    <div className="flex justify-between py-2 border-b border-gray-200">
-                      <span className="text-gray-500">Jam Kerja</span>
-                      <span className="font-medium text-gray-800">{formatWorkHours(getWorkHours(selectedAttendance))}</span>
+                    <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                      <span className="text-slate-500 text-sm font-medium">Jam Kerja</span>
+                      <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                        {formatWorkHours(getWorkHours(selectedAttendance))}
+                      </span>
                     </div>
                     {selectedAttendance.distance && (
-                      <div className="flex justify-between py-2 border-b border-gray-200">
-                        <span className="text-gray-500">Jarak dari Kantor</span>
-                        <span className="font-medium text-gray-600">{selectedAttendance.distance.toFixed(0)} meter</span>
+                      <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                        <span className="text-slate-500 text-sm font-medium">Jarak Lokasi</span>
+                        <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                          {selectedAttendance.distance.toFixed(0)} meter
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1171,108 +1274,108 @@ export default function AttendancePage() {
 
                 {/* 🔥 FOTO ABSENSI - FULL SIZE */}
                 <div className="lg:col-span-2">
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                      <span>📸</span> Foto Absensi
+                  <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                      <Camera className="w-4 h-4 text-slate-400" /> Bukti Kehadiran
                     </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                       {/* Foto Check-in */}
-                      <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
-                        <div className="bg-green-100 px-4 py-2 border-b">
+                      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm group/card">
+                        <div className="bg-emerald-50 px-4 py-3 border-b border-emerald-100/50">
                           <div className="flex items-center justify-between">
-                            <span className="text-sm font-semibold text-green-700 flex items-center gap-2">
-                              <span>🟢</span> Foto Check-in
+                            <span className="text-sm font-bold text-emerald-700 flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></span>
+                              Check-in
                             </span>
-                            <span className="text-xs text-gray-500">{formatTime(selectedAttendance.checkIn?.time)}</span>
+                            <span className="text-xs font-medium text-emerald-600/70 bg-emerald-100/50 px-2 py-1 rounded-md">
+                              {formatTime(selectedAttendance.checkIn?.time)}
+                            </span>
                           </div>
                         </div>
-                        <div className="p-3">
+                        <div className="p-3 bg-slate-50/50">
                           {selectedAttendance.checkIn?.photo ? (
                             <div 
-                              className="relative group cursor-pointer"
+                              className="relative group cursor-pointer rounded-lg overflow-hidden border border-slate-200 shadow-sm"
                               onClick={() => window.open(selectedAttendance.checkIn?.photo, '_blank')}
                             >
                               <img 
                                 src={selectedAttendance.checkIn.photo} 
                                 alt="Check-in"
-                                className="w-full h-56 object-cover rounded-lg transition-all duration-200 group-hover:scale-105"
+                                className="w-full h-64 object-cover transition-transform duration-500 group-hover:scale-105"
                                 onError={(e) => {
-                                  (e.target as HTMLImageElement).src = 'https://placehold.co/600x400/e2e8f0/94a3b8?text=Foto+Tidak+Tersedia';
+                                  (e.target as HTMLImageElement).src = 'https://placehold.co/600x400/f8fafc/94a3b8?text=Foto+Tidak+Tersedia';
                                 }}
                               />
-                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all rounded-lg flex items-center justify-center">
-                                <span className="opacity-0 group-hover:opacity-100 text-white text-sm bg-black/50 px-3 py-1 rounded-full transition-all">
-                                  🔍 Klik untuk perbesar
+                              <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/40 transition-colors flex items-center justify-center">
+                                <span className="opacity-0 group-hover:opacity-100 text-white text-sm font-medium bg-slate-900/80 px-4 py-2 rounded-lg backdrop-blur-sm transition-all transform translate-y-4 group-hover:translate-y-0 flex items-center gap-2 shadow-xl">
+                                  <ImageIcon className="w-4 h-4" /> Perbesar Foto
                                 </span>
                               </div>
                             </div>
                           ) : (
-                            <div className="w-full h-56 bg-gray-100 rounded-lg flex flex-col items-center justify-center">
-                              <svg className="w-14 h-14 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                              </svg>
-                              <p className="text-gray-400 text-sm mt-2">Tidak ada foto check-in</p>
+                            <div className="w-full h-64 bg-slate-100 rounded-lg flex flex-col items-center justify-center border border-dashed border-slate-300">
+                              <ImageIcon className="w-12 h-12 text-slate-300 mb-3" />
+                              <p className="text-slate-400 text-sm font-medium">Tidak ada foto</p>
                             </div>
                           )}
                         </div>
                         {/* Info Lokasi Check-in */}
                         {selectedAttendance.checkIn?.location && (
-                          <div className="px-3 pb-3">
-                            <div className="flex items-center gap-1 text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
-                              <span>📍</span>
-                              <span className="flex-1 truncate">{selectedAttendance.checkIn.location}</span>
+                          <div className="px-3 pb-3 bg-slate-50/50">
+                            <div className="flex items-center gap-2 text-xs text-slate-600 bg-white border border-slate-200 p-2.5 rounded-lg shadow-sm">
+                              <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
+                              <span className="flex-1 truncate font-medium">{selectedAttendance.checkIn.location}</span>
                             </div>
                           </div>
                         )}
                       </div>
 
                       {/* Foto Check-out */}
-                      <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
-                        <div className="bg-blue-100 px-4 py-2 border-b">
+                      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm group/card">
+                        <div className="bg-blue-50 px-4 py-3 border-b border-blue-100/50">
                           <div className="flex items-center justify-between">
-                            <span className="text-sm font-semibold text-blue-700 flex items-center gap-2">
-                              <span>🔵</span> Foto Check-out
+                            <span className="text-sm font-bold text-blue-700 flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></span>
+                              Check-out
                             </span>
-                            <span className="text-xs text-gray-500">{formatTime(selectedAttendance.checkOut?.time)}</span>
+                            <span className="text-xs font-medium text-blue-600/70 bg-blue-100/50 px-2 py-1 rounded-md">
+                              {formatTime(selectedAttendance.checkOut?.time)}
+                            </span>
                           </div>
                         </div>
-                        <div className="p-3">
+                        <div className="p-3 bg-slate-50/50">
                           {selectedAttendance.checkOut?.photo ? (
                             <div 
-                              className="relative group cursor-pointer"
+                              className="relative group cursor-pointer rounded-lg overflow-hidden border border-slate-200 shadow-sm"
                               onClick={() => window.open(selectedAttendance.checkOut?.photo, '_blank')}
                             >
                               <img 
                                 src={selectedAttendance.checkOut.photo} 
                                 alt="Check-out"
-                                className="w-full h-56 object-cover rounded-lg transition-all duration-200 group-hover:scale-105"
+                                className="w-full h-64 object-cover transition-transform duration-500 group-hover:scale-105"
                                 onError={(e) => {
-                                  (e.target as HTMLImageElement).src = 'https://placehold.co/600x400/e2e8f0/94a3b8?text=Foto+Tidak+Tersedia';
+                                  (e.target as HTMLImageElement).src = 'https://placehold.co/600x400/f8fafc/94a3b8?text=Foto+Tidak+Tersedia';
                                 }}
                               />
-                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all rounded-lg flex items-center justify-center">
-                                <span className="opacity-0 group-hover:opacity-100 text-white text-sm bg-black/50 px-3 py-1 rounded-full transition-all">
-                                  🔍 Klik untuk perbesar
+                              <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/40 transition-colors flex items-center justify-center">
+                                <span className="opacity-0 group-hover:opacity-100 text-white text-sm font-medium bg-slate-900/80 px-4 py-2 rounded-lg backdrop-blur-sm transition-all transform translate-y-4 group-hover:translate-y-0 flex items-center gap-2 shadow-xl">
+                                  <ImageIcon className="w-4 h-4" /> Perbesar Foto
                                 </span>
                               </div>
                             </div>
                           ) : (
-                            <div className="w-full h-56 bg-gray-100 rounded-lg flex flex-col items-center justify-center">
-                              <svg className="w-14 h-14 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                              </svg>
-                              <p className="text-gray-400 text-sm mt-2">Tidak ada foto check-out</p>
+                            <div className="w-full h-64 bg-slate-100 rounded-lg flex flex-col items-center justify-center border border-dashed border-slate-300">
+                              <ImageIcon className="w-12 h-12 text-slate-300 mb-3" />
+                              <p className="text-slate-400 text-sm font-medium">Tidak ada foto</p>
                             </div>
                           )}
                         </div>
                         {/* Info Lokasi Check-out */}
                         {selectedAttendance.checkOut?.location && (
-                          <div className="px-3 pb-3">
-                            <div className="flex items-center gap-1 text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
-                              <span>📍</span>
-                              <span className="flex-1 truncate">{selectedAttendance.checkOut.location}</span>
+                          <div className="px-3 pb-3 bg-slate-50/50">
+                            <div className="flex items-center gap-2 text-xs text-slate-600 bg-white border border-slate-200 p-2.5 rounded-lg shadow-sm">
+                              <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
+                              <span className="flex-1 truncate font-medium">{selectedAttendance.checkOut.location}</span>
                             </div>
                           </div>
                         )}
@@ -1284,21 +1387,21 @@ export default function AttendancePage() {
                 {/* Catatan (jika ada) */}
                 {(selectedAttendance.checkIn?.note || selectedAttendance.checkOut?.note) && (
                   <div className="lg:col-span-2">
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                        <span>📝</span> Catatan
+                    <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-slate-400" /> Catatan Kehadiran
                       </h3>
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         {selectedAttendance.checkIn?.note && (
-                          <div className="p-2 bg-white rounded-lg border-l-4 border-green-500">
-                            <p className="text-xs text-gray-500 mb-1">Catatan Check-in:</p>
-                            <p className="text-sm text-gray-700">{selectedAttendance.checkIn.note}</p>
+                          <div className="p-4 bg-slate-50 rounded-xl border-l-4 border-emerald-500 shadow-sm">
+                            <p className="text-xs font-bold text-emerald-600/80 uppercase tracking-wider mb-1.5">Catatan Check-in</p>
+                            <p className="text-sm text-slate-700 leading-relaxed font-medium">{selectedAttendance.checkIn.note}</p>
                           </div>
                         )}
                         {selectedAttendance.checkOut?.note && (
-                          <div className="p-2 bg-white rounded-lg border-l-4 border-blue-500">
-                            <p className="text-xs text-gray-500 mb-1">Catatan Check-out:</p>
-                            <p className="text-sm text-gray-700">{selectedAttendance.checkOut.note}</p>
+                          <div className="p-4 bg-slate-50 rounded-xl border-l-4 border-blue-500 shadow-sm">
+                            <p className="text-xs font-bold text-blue-600/80 uppercase tracking-wider mb-1.5">Catatan Check-out</p>
+                            <p className="text-sm text-slate-700 leading-relaxed font-medium">{selectedAttendance.checkOut.note}</p>
                           </div>
                         )}
                       </div>
@@ -1309,27 +1412,35 @@ export default function AttendancePage() {
 
               {/* Tombol Edit dan Hapus untuk Super Admin */}
               {isSuperAdmin && !isEditingShift && !isEditingTime && !isEditingDate && (
-                <div className="mt-6 flex justify-end gap-3">
+                <div className="mt-8 pt-6 border-t border-slate-200 flex flex-wrap justify-end gap-3">
                   <button
                     onClick={() => setIsEditingDate(true)}
-                    className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                    className="px-4 py-2.5 bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-700 font-medium text-sm rounded-xl transition-all shadow-sm flex items-center gap-2 group"
                   >
-                    <span>📅</span> Edit Tanggal
+                    <Calendar className="w-4 h-4 text-slate-400 group-hover:text-slate-600" />
+                    Edit Tanggal
                   </button>
                   <button
                     onClick={() => setIsEditingShift(true)}
-                    className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                    className="px-4 py-2.5 bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-700 font-medium text-sm rounded-xl transition-all shadow-sm flex items-center gap-2 group"
                   >
-                    <span>🔄</span> Edit Shift
+                    <RefreshCw className="w-4 h-4 text-slate-400 group-hover:text-slate-600" />
+                    Edit Shift
                   </button>
                   <button
                     onClick={() => setIsEditingTime(true)}
-                    className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                    className="px-4 py-2.5 bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-700 font-medium text-sm rounded-xl transition-all shadow-sm flex items-center gap-2 group"
                   >
-                    <span>✏️</span> Edit Jam Kerja
+                    <Clock className="w-4 h-4 text-slate-400 group-hover:text-slate-600" />
+                    Edit Jam Kerja
                   </button>
-                  <button onClick={openDeleteModal.bind(null, "all")} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors flex items-center gap-2">
-                    <span>🗑️</span> Hapus Absensi
+                  <div className="w-px h-10 bg-slate-200 mx-1 hidden sm:block"></div>
+                  <button 
+                    onClick={openDeleteModal.bind(null, "all")} 
+                    className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-medium text-sm rounded-xl transition-all shadow-sm flex items-center gap-2 group"
+                  >
+                    <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                    Hapus Absensi
                   </button>
                 </div>
               )}
@@ -1340,17 +1451,17 @@ export default function AttendancePage() {
                   {selectedAttendance.checkIn && (
                     <button
                       onClick={openDeleteModal.bind(null, "checkin")}
-                      className="px-3 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg transition-colors flex items-center gap-1 text-sm"
+                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors flex items-center gap-1.5 text-sm font-medium border border-rose-100"
                     >
-                      <span>🗑️</span> Hapus Check-in ({formatTime(selectedAttendance.checkIn?.time)})
+                      <Trash2 className="w-3.5 h-3.5" /> Hapus Check-in ({formatTime(selectedAttendance.checkIn?.time)})
                     </button>
                   )}
                   {selectedAttendance.checkOut && (
                     <button
                       onClick={openDeleteModal.bind(null, "checkout")}
-                      className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors flex items-center gap-1 text-sm"
+                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors flex items-center gap-1.5 text-sm font-medium border border-rose-100"
                     >
-                      <span>🗑️</span> Hapus Check-out ({formatTime(selectedAttendance.checkOut?.time)})
+                      <Trash2 className="w-3.5 h-3.5" /> Hapus Check-out ({formatTime(selectedAttendance.checkOut?.time)})
                     </button>
                   )}
                 </div>
@@ -1358,113 +1469,133 @@ export default function AttendancePage() {
 
               {/* Form Edit Tanggal */}
               {isEditingDate && (
-                <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 mt-4">
-                  <h4 className="font-semibold text-purple-800 mb-3">📅 Edit Tanggal Absensi</h4>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Tanggal Baru</label>
+                <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm mt-4 animate-fade-in">
+                  <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-emerald-600" /> Edit Tanggal Absensi
+                  </h4>
+                  <div className="mb-5">
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Tanggal Baru</label>
                     <input
                       type="date"
                       value={editDate}
                       onChange={(e) => setEditDate(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all outline-none bg-slate-50 hover:bg-white"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Tanggal saat ini: {formatDate(selectedAttendance.date)}</p>
+                    <p className="text-xs font-medium text-slate-500 mt-2 flex items-center gap-1">
+                      <Info className="w-3.5 h-3.5" /> Tanggal saat ini: {formatDate(selectedAttendance.date)}
+                    </p>
                   </div>
                   <div className="flex gap-3">
                     <button
                       onClick={saveEditedDate}
                       disabled={isSavingDateEdit}
-                      className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                      className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
                     >
                       {isSavingDateEdit ? (
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       ) : (
-                        <span>💾</span>
+                        <FileEdit className="w-4 h-4" />
                       )}
-                      {isSavingDateEdit ? "Menyimpan..." : "💾 Simpan Tanggal"}
+                      {isSavingDateEdit ? "Menyimpan..." : "Simpan Tanggal"}
                     </button>
                     <button
                       onClick={() => setIsEditingDate(false)}
-                      className="flex-1 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                      className="flex-1 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium rounded-xl transition-colors shadow-sm"
                     >
                       Batal
                     </button>
                   </div>
-                  <p className="text-xs text-purple-600 mt-2">
-                    ⚠️ Perubahan tanggal akan mempengaruhi laporan dan rekap absensi
+                  <p className="text-xs font-medium text-orange-600 mt-3 flex items-center gap-1.5 bg-orange-50 p-2 rounded-lg border border-orange-100">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    Perubahan tanggal akan mempengaruhi laporan dan rekap absensi
                   </p>
                 </div>
               )}
 
               {/* Form Edit Shift */}
               {isEditingShift && (
-                <div className="bg-blue-50 rounded-xl p-4 border border-blue-200 mt-4">
-                  <h4 className="font-semibold text-blue-800 mb-3">🔄 Edit Shift</h4>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Shift Baru</label>
+                <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm mt-4 animate-fade-in">
+                  <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <RefreshCw className="w-5 h-5 text-blue-600" /> Edit Shift
+                  </h4>
+                  <div className="mb-5">
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Pilih Shift Baru</label>
                     {isLoadingShifts ? (
-                      <div className="flex justify-center py-4">
-                        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                      <div className="flex justify-center py-6 bg-slate-50 rounded-xl border border-slate-200">
+                        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                       </div>
                     ) : (
-                      <select
-                        value={editShiftId}
-                        onChange={(e) => setEditShiftId(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Pilih Shift</option>
-                        {shiftsList.map((shift) => (
-                          <option key={shift.id} value={shift.id}>
-                            {shift.name} ({shift.startTime} - {shift.endTime})
-                          </option>
-                        ))}
-                      </select>
+                      <div className="relative">
+                        <select
+                          value={editShiftId}
+                          onChange={(e) => setEditShiftId(e.target.value)}
+                          className="w-full appearance-none px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none bg-slate-50 hover:bg-white text-slate-700 font-medium"
+                        >
+                          <option value="">-- Pilih Shift --</option>
+                          {shiftsList.map((shift) => (
+                            <option key={shift.id} value={shift.id}>
+                              {shift.name} ({shift.startTime} - {shift.endTime})
+                            </option>
+                          ))}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
+                          <ChevronDown className="h-4 w-4" />
+                        </div>
+                      </div>
                     )}
                   </div>
                   <div className="flex gap-3">
                     <button
                       onClick={saveEditedShift}
                       disabled={isSavingEdit || !editShiftId}
-                      className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                      className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
                     >
-                      {isSavingEdit ? "Menyimpan..." : "💾 Simpan Perubahan Shift"}
+                      {isSavingEdit ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <FileEdit className="w-4 h-4" />
+                      )}
+                      {isSavingEdit ? "Menyimpan..." : "Simpan Shift"}
                     </button>
                     <button
                       onClick={() => setIsEditingShift(false)}
-                      className="flex-1 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                      className="flex-1 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium rounded-xl transition-colors shadow-sm"
                     >
                       Batal
                     </button>
                   </div>
-                  <p className="text-xs text-blue-600 mt-2">
-                    ⚠️ Perubahan shift akan mempengaruhi perhitungan keterlambatan dan jam kerja
+                  <p className="text-xs font-medium text-blue-600 mt-3 flex items-center gap-1.5 bg-blue-50 p-2 rounded-lg border border-blue-100">
+                    <Info className="w-4 h-4 shrink-0" />
+                    Perubahan shift akan memperbarui perhitungan jam kerja secara otomatis
                   </p>
                 </div>
               )}
 
               {/* Form Edit Jam */}
               {isEditingTime && (
-                <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-4">
-                  <h4 className="font-semibold text-yellow-800 mb-3">✏️ Edit Jam Kerja</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Check-in Baru</label>
-                      <div className="flex gap-2">
+                <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm mt-4 animate-fade-in">
+                  <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-indigo-600" /> Edit Jam Kerja
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Check-in Baru</label>
+                      <div className="flex gap-2 items-center">
                         <select
                           value={editCheckInHour}
                           onChange={(e) => setEditCheckInHour(e.target.value)}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                          className="flex-1 appearance-none px-3 py-2 border border-slate-300 rounded-lg text-center font-medium focus:ring-2 focus:ring-indigo-500 bg-white"
                         >
                           <option value="">Jam</option>
                           {Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')).map(h => (
                             <option key={h} value={h}>{h}</option>
                           ))}
                         </select>
-                        <span className="text-gray-500">:</span>
+                        <span className="text-slate-400 font-bold">:</span>
                         <select
                           value={editCheckInMinute}
                           onChange={(e) => setEditCheckInMinute(e.target.value)}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                          className="flex-1 appearance-none px-3 py-2 border border-slate-300 rounded-lg text-center font-medium focus:ring-2 focus:ring-indigo-500 bg-white"
                         >
                           <option value="">Menit</option>
                           {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => (
@@ -1473,24 +1604,24 @@ export default function AttendancePage() {
                         </select>
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Check-out Baru</label>
-                      <div className="flex gap-2">
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Check-out Baru</label>
+                      <div className="flex gap-2 items-center">
                         <select
                           value={editCheckOutHour}
                           onChange={(e) => setEditCheckOutHour(e.target.value)}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                          className="flex-1 appearance-none px-3 py-2 border border-slate-300 rounded-lg text-center font-medium focus:ring-2 focus:ring-indigo-500 bg-white"
                         >
                           <option value="">Jam</option>
                           {Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')).map(h => (
                             <option key={h} value={h}>{h}</option>
                           ))}
                         </select>
-                        <span className="text-gray-500">:</span>
+                        <span className="text-slate-400 font-bold">:</span>
                         <select
                           value={editCheckOutMinute}
                           onChange={(e) => setEditCheckOutMinute(e.target.value)}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                          className="flex-1 appearance-none px-3 py-2 border border-slate-300 rounded-lg text-center font-medium focus:ring-2 focus:ring-indigo-500 bg-white"
                         >
                           <option value="">Menit</option>
                           {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(m => (
@@ -1500,33 +1631,39 @@ export default function AttendancePage() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-3 mt-4">
+                  <div className="flex gap-3">
                     <button
                       onClick={saveEditedTime}
                       disabled={isSavingEdit}
-                      className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                      className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
                     >
-                      {isSavingEdit ? "Menyimpan..." : "💾 Simpan Perubahan"}
+                      {isSavingEdit ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <FileEdit className="w-4 h-4" />
+                      )}
+                      {isSavingEdit ? "Menyimpan..." : "Simpan Jam Kerja"}
                     </button>
                     <button
                       onClick={() => setIsEditingTime(false)}
-                      className="flex-1 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                      className="flex-1 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium rounded-xl transition-colors shadow-sm"
                     >
                       Batal
                     </button>
                   </div>
-                  <p className="text-xs text-yellow-600 mt-2">
-                    ⚠️ Perubahan ini akan tercatat di log (editedBy, editedAt)
+                  <p className="text-xs font-medium text-amber-600 mt-3 flex items-center gap-1.5 bg-amber-50 p-2 rounded-lg border border-amber-100">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    Perubahan ini akan tercatat dengan status "Dikoreksi"
                   </p>
                 </div>
               )}
             </div>
 
             {/* Footer Modal */}
-            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end">
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
               <button
                 onClick={() => setShowDetailModal(false)}
-                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white font-medium rounded-xl transition-all shadow-sm shadow-slate-900/10 active:scale-95"
               >
                 Tutup
               </button>
@@ -1612,6 +1749,18 @@ export default function AttendancePage() {
           </div>
         </div>
       )}
+
+      {/* Employee Filter Modal */}
+      <EmployeeFilterModal
+        isOpen={isEmployeeModalOpen}
+        onClose={() => setIsEmployeeModalOpen(false)}
+        onSave={(uids) => {
+          setTempEmployees(uids);
+        }}
+        users={users}
+        employeeList={employeeList}
+        initialSelected={tempEmployees}
+      />
 
       <style jsx>{`
         @keyframes fade-in {

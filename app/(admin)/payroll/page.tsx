@@ -15,6 +15,10 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import LoadingScreen from "@/components/ui/LoadingScreen";
+import PageHeader from "@/components/ui/PageHeader";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 
@@ -88,6 +92,7 @@ export default function PayrollPage() {
   const [filteredSummary, setFilteredSummary] = useState<PayrollSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(true);
   const [dateRange, setDateRange] = useState({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
       .toISOString()
@@ -142,13 +147,20 @@ export default function PayrollPage() {
 
   // Load users and attendance data
   useEffect(() => {
-    loadUsers();
-    loadAttendanceData();
+    const initData = async () => {
+      const uMap = await loadUsers();
+      if (uMap) {
+        await loadAttendanceData(uMap);
+      }
+    };
+    initData();
   }, []);
 
   // Reload attendance when date range changes
   useEffect(() => {
-    loadAttendanceData();
+    if (users.size > 0) {
+      loadAttendanceData(users);
+    }
   }, [dateRange]);
 
   useEffect(() => {
@@ -198,9 +210,11 @@ export default function PayrollPage() {
       setUsers(usersMap);
       setDepartments(Array.from(deptSet).sort());
       setAllEmployees(empList.sort((a, b) => a.name.localeCompare(b.name)));
+      return usersMap;
     } catch (error) {
       console.error("Error loading users:", error);
       toast.error("Gagal memuat data karyawan");
+      return null;
     }
   };
 
@@ -261,7 +275,7 @@ export default function PayrollPage() {
     setSelectedEmployees([]);
   };
 
-  const loadAttendanceData = async () => {
+  const loadAttendanceData = async (currentUsersMap: Map<string, User> = users) => {
     setIsLoading(true);
     try {
       const startDateTime = new Date(dateRange.startDate);
@@ -283,7 +297,7 @@ export default function PayrollPage() {
         ...doc.data(),
       })) as AttendanceRecord[];
 
-      calculatePayrollSummary(data);
+      calculatePayrollSummary(data, currentUsersMap);
     } catch (error) {
       console.error("Error loading attendance:", error);
       toast.error("Gagal memuat data absensi");
@@ -292,14 +306,14 @@ export default function PayrollPage() {
     }
   };
 
-  const calculatePayrollSummary = (data: AttendanceRecord[]) => {
+  const calculatePayrollSummary = (data: AttendanceRecord[], currentUsersMap: Map<string, User>) => {
     const summaryMap = new Map<string, PayrollSummary>();
 
     data.forEach((att) => {
       if (!att.checkIn?.time || !att.checkOut?.time) return;
 
       const uid = att.uid;
-      const user = users.get(uid);
+      const user = currentUsersMap.get(uid);
       if (!user || user.isActive === false) return;
 
       const dailyRate = user?.dailyRate || 0;
@@ -333,9 +347,9 @@ export default function PayrollPage() {
           jabatan: user?.jabatan || "-",
           department: department,
           dailyRate: dailyRate,
-          bankName: att.bankAccount?.bankName || user?.bankName || "-",
-          bankAccountNumber: att.bankAccount?.accountNumber || user?.bankAccountNumber || "-",
-          bankAccountName: att.bankAccount?.accountName || user?.bankAccountName || "-",
+          bankName: user?.bankName || "-",
+          bankAccountNumber: user?.bankAccountNumber || "-",
+          bankAccountName: user?.bankAccountName || "-",
           totalDays: 0,
           totalHours: 0,
           totalSalary: 0,
@@ -370,6 +384,35 @@ export default function PayrollPage() {
 
     setIsUpdatingPayment(true);
     try {
+      // Overlap check
+      const allPaymentsSnap = await getDocs(collection(db, "payroll_payments"));
+      const currentStart = new Date(dateRange.startDate);
+      const currentEnd = new Date(dateRange.endDate);
+      
+      let isOverlapping = false;
+      let overlappingPeriod = "";
+
+      allPaymentsSnap.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.periodKey === `${dateRange.startDate}_${dateRange.endDate}`) return;
+        
+        const existStart = new Date(data.startDate);
+        const existEnd = new Date(data.endDate);
+
+        if (currentStart <= existEnd && currentEnd >= existStart) {
+          isOverlapping = true;
+          overlappingPeriod = `${data.startDate} s/d ${data.endDate}`;
+        }
+      });
+
+      if (isOverlapping) {
+        const confirmMsg = `⚠️ PERINGATAN: Rentang tanggal ini tumpang tindih dengan periode pembayaran lain (${overlappingPeriod}).\n\nMelanjutkan proses ini berpotensi menyebabkan perhitungan gaji ganda (karyawan dibayar dua kali untuk tanggal yang sama).\n\nYakin ingin melanjutkan?`;
+        if (!window.confirm(confirmMsg)) {
+          setIsUpdatingPayment(false);
+          return;
+        }
+      }
+
       const periodKey = `${dateRange.startDate}_${dateRange.endDate}`;
       const docId = `payment_${periodKey.replace(/-/g, "")}`;
 
@@ -537,7 +580,7 @@ export default function PayrollPage() {
         Jabatan: item.jabatan,
         "Rate Harian": `Rp ${item.dailyRate.toLocaleString()}`,
         Bank: item.bankName,
-        "Nomor Rekening": item.bankAccountNumber,
+        "Nomor Rekening": item.bankAccountNumber && item.bankAccountNumber !== "-" ? `'${item.bankAccountNumber}` : "-",
         "Nama Pemilik": item.bankAccountName,
         "Total Hari Kerja": `${item.totalDays}x`,
         "Total Jam Kerja": `${item.totalHours.toFixed(1)} jam`,
@@ -780,362 +823,172 @@ export default function PayrollPage() {
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "hr", "admin"]}>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6 lg:p-8">
-        {/* CSS Variables & Animations */}
-        <style jsx global>{`
-          @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-
-          :root {
-            --primary: #0f172a;
-            --accent: #0ea5e9;
-            --accent-dark: #0284c7;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-          }
-
-          * {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-          }
-
-          @keyframes slideUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-
-          @keyframes slideIn {
-            from { opacity: 0; transform: translateX(-20px); }
-            to { opacity: 1; transform: translateX(0); }
-          }
-
-          @keyframes pulse-glow {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.4); }
-            50% { box-shadow: 0 0 20px 5px rgba(14, 165, 233, 0.2); }
-          }
-
-          @keyframes shimmer {
-            0% { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
-          }
-
-          @keyframes float {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-5px); }
-          }
-
-          @keyframes countUp {
-            from { opacity: 0; transform: scale(0.5); }
-            to { opacity: 1; transform: scale(1); }
-          }
-
-          .animate-slide-up {
-            animation: slideUp 0.5s ease-out forwards;
-            opacity: 0;
-          }
-
-          .animate-slide-in {
-            animation: slideIn 0.4s ease-out forwards;
-            opacity: 0;
-          }
-
-          .card-hover {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          }
-
-          .card-hover:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
-          }
-
-          .glass-effect {
-            background: rgba(255, 255, 255, 0.8);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.5);
-          }
-
-          .gradient-border {
-            position: relative;
-          }
-
-          .gradient-border::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            padding: 1px;
-            background: linear-gradient(135deg, rgba(14, 165, 233, 0.5), rgba(139, 92, 246, 0.5));
-            border-radius: inherit;
-            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-            mask-composite: exclude;
-          }
-
-          .btn-primary {
-            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
-            transition: all 0.2s ease;
-          }
-
-          .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px -5px rgba(14, 165, 233, 0.4);
-          }
-
-          .btn-primary:active {
-            transform: translateY(0);
-          }
-
-          .table-row-hover {
-            transition: all 0.2s ease;
-          }
-
-          .table-row-hover:hover {
-            background: linear-gradient(90deg, rgba(14, 165, 233, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%);
-          }
-
-          .status-pulse {
-            animation: pulse-glow 2s infinite;
-          }
-
-          .shimmer-effect {
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-            background-size: 200% 100%;
-            animation: shimmer 1.5s infinite;
-          }
-
-          .float-animation {
-            animation: float 3s ease-in-out infinite;
-          }
-
-          .stat-icon {
-            background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.6) 100%);
-          }
-
-          .table-container {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-          }
-
-          .modal-backdrop {
-            background: rgba(15, 23, 42, 0.6);
-            backdrop-filter: blur(8px);
-          }
-
-          .modal-content {
-            animation: slideUp 0.3s ease-out forwards;
-          }
-
-          .checkbox-custom:checked {
-            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
-            border-color: var(--accent);
-          }
-        `}</style>
-
-        {/* Header */}
-        <div className={`relative overflow-hidden rounded-2xl mb-8 animate-slide-up`} style={{ animationDelay: '0.1s' }}>
-          {/* Background Pattern */}
-          <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900" />
-          <div className="absolute inset-0 opacity-30">
-            <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-              <defs>
-                <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
-                  <path d="M 10 0 L 0 0 0 10" fill="none" stroke="white" strokeWidth="0.5" opacity="0.1"/>
-                </pattern>
-              </defs>
-              <rect width="100" height="100" fill="url(#grid)" />
-            </svg>
-          </div>
-          <div className="absolute -top-20 -right-20 w-60 h-60 bg-sky-500/20 rounded-full blur-3xl" />
-          <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-indigo-500/20 rounded-full blur-3xl" />
-
-          <div className="relative z-10 px-8 py-8">
-            <div className="flex items-center gap-5">
-              <div className="relative">
-                <div className="w-16 h-16 bg-gradient-to-br from-sky-400 to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-500/30 float-animation">
-                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div className="absolute -inset-1 bg-gradient-to-r from-sky-400 to-indigo-500 rounded-2xl blur opacity-30 -z-10" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-white tracking-tight">Rekap Gaji Karyawan</h1>
-                <p className="text-slate-400 mt-1 text-base">Pantau dan kelola pembayaran gaji dengan mudah</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
+      <div className="space-y-6 pb-20">
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Total Employees */}
-          <div
-            className={`glass-effect rounded-2xl p-6 card-hover animate-slide-up`}
-            style={{ animationDelay: '0.2s' }}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500 mb-1">Total Karyawan</p>
-                <p className="text-3xl font-bold text-slate-800">{totalFilteredEmployees}</p>
-                <p className="text-xs text-slate-400 mt-1">orang</p>
-              </div>
-              <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center shrink-0">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Karyawan</p>
+              <p className="text-2xl font-bold text-slate-800">{totalFilteredEmployees}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">orang</p>
             </div>
           </div>
 
           {/* Total Days */}
-          <div
-            className={`glass-effect rounded-2xl p-6 card-hover animate-slide-up`}
-            style={{ animationDelay: '0.25s' }}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500 mb-1">Total Hari Kerja</p>
-                <p className="text-3xl font-bold text-slate-800">{totalFilteredDays}</p>
-                <p className="text-xs text-slate-400 mt-1">hari</p>
-              </div>
-              <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Hari Kerja</p>
+              <p className="text-2xl font-bold text-slate-800">{totalFilteredDays}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">hari</p>
             </div>
           </div>
 
           {/* Total Hours */}
-          <div
-            className={`glass-effect rounded-2xl p-6 card-hover animate-slide-up`}
-            style={{ animationDelay: '0.3s' }}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500 mb-1">Total Jam Kerja</p>
-                <p className="text-3xl font-bold text-slate-800">{formatTime(totalFilteredHours)}</p>
-                <p className="text-xs text-slate-400 mt-1">effektif</p>
-              </div>
-              <div className="w-14 h-14 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20">
-                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Jam Kerja</p>
+              <p className="text-2xl font-bold text-slate-800">{formatTime(totalFilteredHours)}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">efektif</p>
             </div>
           </div>
 
           {/* Total Salary */}
-          <div
-            className={`glass-effect rounded-2xl p-6 card-hover animate-slide-up`}
-            style={{ animationDelay: '0.35s' }}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500 mb-1">Total Gaji</p>
-                <p className="text-2xl font-bold text-emerald-600">{formatCurrency(totalFilteredSalary)}</p>
-                <p className="text-xs text-slate-400 mt-1">bruto</p>
-              </div>
-              <div className="w-14 h-14 bg-gradient-to-br from-violet-500 to-violet-600 rounded-xl flex items-center justify-center shadow-lg shadow-violet-500/20">
-                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-violet-50 text-violet-500 flex items-center justify-center shrink-0">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Gaji</p>
+              <p className="text-2xl font-bold text-emerald-600">{formatCurrency(totalFilteredSalary)}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">bruto</p>
             </div>
           </div>
         </div>
 
         {/* Payment Status Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {/* Paid Count */}
-          <div
-            className={`glass-effect rounded-2xl p-5 border-l-4 border-emerald-500 animate-slide-up`}
-            style={{ animationDelay: '0.4s' }}
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
-                <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm text-slate-500 font-medium">Sudah Dibayar</p>
-                <p className="text-2xl font-bold text-emerald-600">{paidCount} <span className="text-sm font-normal text-slate-400">karyawan</span></p>
-              </div>
+          <div className="bg-white rounded-xl p-5 border border-slate-200 border-l-4 border-l-emerald-500 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center">
+              <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Sudah Dibayar</p>
+              <p className="text-2xl font-bold text-emerald-600">{paidCount} <span className="text-xs font-normal text-slate-400">karyawan</span></p>
             </div>
           </div>
 
           {/* Unpaid Count */}
-          <div
-            className={`glass-effect rounded-2xl p-5 border-l-4 border-amber-500 animate-slide-up`}
-            style={{ animationDelay: '0.45s' }}
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
-                <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm text-slate-500 font-medium">Belum Dibayar</p>
-                <p className="text-2xl font-bold text-amber-600">{unpaidCount} <span className="text-sm font-normal text-slate-400">karyawan</span></p>
-              </div>
+          <div className="bg-white rounded-xl p-5 border border-slate-200 border-l-4 border-l-amber-500 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 bg-amber-50 rounded-full flex items-center justify-center">
+              <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Belum Dibayar</p>
+              <p className="text-2xl font-bold text-amber-600">{unpaidCount} <span className="text-xs font-normal text-slate-400">karyawan</span></p>
             </div>
           </div>
 
           {/* Selected Count */}
-          <div
-            className={`glass-effect rounded-2xl p-5 border-l-4 border-sky-500 animate-slide-up`}
-            style={{ animationDelay: '0.5s' }}
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-sky-100 rounded-xl flex items-center justify-center">
-                <svg className="w-6 h-6 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm text-slate-500 font-medium">Dipilih</p>
-                <p className="text-2xl font-bold text-sky-600">{selectedEmployees.length} <span className="text-sm font-normal text-slate-400">karyawan</span></p>
-              </div>
+          <div className="bg-white rounded-xl p-5 border border-slate-200 border-l-4 border-l-sky-500 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 bg-sky-50 rounded-full flex items-center justify-center">
+              <svg className="w-6 h-6 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Dipilih</p>
+              <p className="text-2xl font-bold text-sky-600">{selectedEmployees.length} <span className="text-xs font-normal text-slate-400">karyawan</span></p>
             </div>
           </div>
         </div>
 
         {/* Filter Section */}
-        <div className={`glass-effect rounded-2xl p-6 mb-8 animate-slide-up overflow-visible`} style={{ animationDelay: '0.55s' }}>
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center">
-              <svg className="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-visible transition-all duration-300">
+          <div 
+            className="flex items-center justify-between p-6 cursor-pointer hover:bg-white/40 transition-colors rounded-t-2xl"
+            onClick={() => setIsFilterOpen(!isFilterOpen)}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center">
+                <svg className="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+              </div>
+              <h2 className="text-lg font-semibold text-slate-800">Filter & Pencarian</h2>
+            </div>
+            <div className={`w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center transition-transform duration-300 ${isFilterOpen ? 'rotate-180' : ''}`}>
+              <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </div>
-            <h2 className="text-lg font-semibold text-slate-800">Filter & Pencarian</h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5">
+          <div className={`grid grid-cols-1 md:grid-cols-4 gap-4 px-6 pb-6 ${isFilterOpen ? 'block' : 'hidden'}`}>
             {/* Date Start */}
             <div className="space-y-2">
               <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Tanggal Mulai</label>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={dateRange.startDate}
-                  onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
-                />
-              </div>
+                <div className="relative border border-slate-200 rounded-xl bg-white hover:border-sky-300 transition-colors focus-within:ring-2 focus-within:ring-sky-500 focus-within:border-sky-500">
+                  <DatePicker
+                    selected={dateRange.startDate ? new Date(dateRange.startDate) : undefined}
+                    onChange={(date: Date | null) => {
+                      if (date) {
+                        const y = date.getFullYear();
+                        const m = String(date.getMonth() + 1).padStart(2, '0');
+                        const d = String(date.getDate()).padStart(2, '0');
+                        setDateRange({ ...dateRange, startDate: `${y}-${m}-${d}` });
+                      }
+                    }}
+                    dateFormat="dd/MM/yyyy"
+                    className="w-full bg-transparent px-4 py-3 text-sm text-slate-700 outline-none border-none focus:ring-0 cursor-pointer"
+                    wrapperClassName="w-full"
+                    placeholderText="Pilih tanggal mulai"
+                  />
+                </div>
             </div>
 
             {/* Date End */}
             <div className="space-y-2">
               <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Tanggal Akhir</label>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={dateRange.endDate}
-                  onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
-                />
-              </div>
+                <div className="relative border border-slate-200 rounded-xl bg-white hover:border-sky-300 transition-colors focus-within:ring-2 focus-within:ring-sky-500 focus-within:border-sky-500">
+                  <DatePicker
+                    selected={dateRange.endDate ? new Date(dateRange.endDate) : undefined}
+                    onChange={(date: Date | null) => {
+                      if (date) {
+                        const y = date.getFullYear();
+                        const m = String(date.getMonth() + 1).padStart(2, '0');
+                        const d = String(date.getDate()).padStart(2, '0');
+                        setDateRange({ ...dateRange, endDate: `${y}-${m}-${d}` });
+                      }
+                    }}
+                    dateFormat="dd/MM/yyyy"
+                    className="w-full bg-transparent px-4 py-3 text-sm text-slate-700 outline-none border-none focus:ring-0 cursor-pointer"
+                    wrapperClassName="w-full"
+                    placeholderText="Pilih tanggal akhir"
+                  />
+                </div>
             </div>
 
             {/* Department */}
@@ -1351,10 +1204,7 @@ export default function PayrollPage() {
 
           {isLoading ? (
             <div className="p-16 text-center">
-              <div className="inline-flex items-center gap-3">
-                <div className="w-8 h-8 border-3 border-sky-500 border-t-transparent rounded-full animate-spin" />
-                <span className="text-slate-500 font-medium">Memuat data...</span>
-              </div>
+              <LoadingScreen fullScreen={false} message="Memuat data gaji..." size={120} />
             </div>
           ) : filteredSummary.length === 0 ? (
             <div className="p-16 text-center">
@@ -1491,7 +1341,7 @@ export default function PayrollPage() {
 
         {/* Zero Rate Warning */}
         {filteredSummary.filter((item) => item.dailyRate === 0).length > 0 && (
-          <div className="mt-6 glass-effect rounded-xl p-5 border-l-4 border-red-500 animate-slide-up" style={{ animationDelay: '0.7s' }}>
+          <div className="mt-6 bg-white rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-red-500 p-5 animate-slide-up" style={{ animationDelay: '0.7s' }}>
             <div className="flex gap-4">
               <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
                 <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1515,7 +1365,7 @@ export default function PayrollPage() {
         )}
 
         {/* Notes Section */}
-        <div className="mt-6 glass-effect rounded-xl p-5 border-l-4 border-sky-500 animate-slide-up" style={{ animationDelay: '0.75s' }}>
+        <div className="mt-6 bg-white rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-sky-500 p-5 animate-slide-up" style={{ animationDelay: '0.75s' }}>
           <div className="flex gap-4">
             <div className="w-12 h-12 bg-sky-100 rounded-xl flex items-center justify-center flex-shrink-0">
               <svg className="w-6 h-6 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

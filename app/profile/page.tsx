@@ -8,6 +8,8 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import SignatureCanvas from 'react-signature-canvas';
+import { useRef } from "react";
 
 export default function AdminProfilePage() {
   const { user, loading: authLoading } = useAuth();
@@ -17,6 +19,10 @@ export default function AdminProfilePage() {
   const [isUploading, setIsUploading] = useState(false);
   const [userData, setUserData] = useState<any>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
+  const sigPadRef = useRef<SignatureCanvas>(null);
+  const [isSavingSignature, setIsSavingSignature] = useState(false);
+  const [sigMode, setSigMode] = useState<'draw' | 'upload'>('draw');
   
   // Form state
   const [name, setName] = useState("");
@@ -65,6 +71,7 @@ export default function AdminProfilePage() {
         
         setRole(data.role || "employee");
         setPhotoUrl(data.photoUrl || null);
+        setSignatureUrl(data.signatureUrl || null);
       }
     } catch (error) {
       console.error("Error loading user data:", error);
@@ -115,6 +122,64 @@ export default function AdminProfilePage() {
       alert("❌ Gagal upload foto");
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleClearSignature = () => {
+    sigPadRef.current?.clear();
+  };
+
+  const handleSaveSignature = async () => {
+    if (!user || !sigPadRef.current) return;
+    
+    if (sigPadRef.current.isEmpty()) {
+      alert("⚠️ Tanda tangan masih kosong!");
+      return;
+    }
+
+    setIsSavingSignature(true);
+    try {
+      // Get base64 string of the signature
+      const base64Signature = sigPadRef.current.getTrimmedCanvas().toDataURL('image/png');
+      
+      // Save directly to Firestore as it is just a small string
+      await updateDoc(doc(db, "users", user.uid), {
+        signatureUrl: base64Signature,
+        updatedAt: new Date(),
+      });
+      
+      setSignatureUrl(base64Signature);
+      alert("✅ Tanda tangan berhasil disimpan");
+    } catch (error) {
+      console.error("Error saving signature:", error);
+      alert("❌ Gagal menyimpan tanda tangan");
+    } finally {
+      setIsSavingSignature(false);
+    }
+  };
+
+  const handleSignatureFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    setIsSavingSignature(true);
+    try {
+      const storageRef = ref(storage, `signatures/${user.uid}/signature.png`);
+      await uploadBytes(storageRef, file);
+      const downloadUrl = await getDownloadURL(storageRef);
+      
+      await updateDoc(doc(db, "users", user.uid), {
+        signatureUrl: downloadUrl,
+        updatedAt: new Date(),
+      });
+      
+      setSignatureUrl(downloadUrl);
+      alert("✅ Tanda tangan berhasil diupload & disimpan");
+    } catch (error) {
+      console.error("Error uploading signature:", error);
+      alert("❌ Gagal upload tanda tangan");
+    } finally {
+      setIsSavingSignature(false);
     }
   };
 
@@ -339,6 +404,103 @@ export default function AdminProfilePage() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Digital Signature Card */}
+        <div className="mt-6 bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+              <span className="text-blue-600 text-lg">✍️</span>
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-800">Tanda Tangan Digital</h3>
+              <p className="text-sm text-gray-500">Digunakan untuk persetujuan Memo Internal</p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+            {/* Signature Input Area */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-sm font-medium text-gray-700">Pilih Metode:</p>
+                <div className="flex bg-gray-100 p-1 rounded-lg">
+                  <button 
+                    onClick={() => setSigMode('draw')}
+                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${sigMode === 'draw' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}
+                  >
+                    Gambar Langsung
+                  </button>
+                  <button 
+                    onClick={() => setSigMode('upload')}
+                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${sigMode === 'upload' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}
+                  >
+                    Upload File
+                  </button>
+                </div>
+              </div>
+
+              {sigMode === 'draw' ? (
+                <>
+                  <div className="border-2 border-dashed border-gray-300 rounded-xl overflow-hidden bg-gray-50 cursor-crosshair">
+                    <SignatureCanvas 
+                      ref={sigPadRef}
+                      canvasProps={{
+                        className: 'signature-canvas w-full h-40'
+                      }}
+                      backgroundColor="rgb(249,250,251)"
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button 
+                      onClick={handleClearSignature}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300 transition-colors font-medium"
+                    >
+                      Bersihkan
+                    </button>
+                    <button 
+                      onClick={handleSaveSignature}
+                      disabled={isSavingSignature}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
+                    >
+                      {isSavingSignature ? "Menyimpan..." : "Simpan Tanda Tangan"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 flex flex-col items-center justify-center h-40 p-6 text-center">
+                  <svg className="w-8 h-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  <p className="text-sm text-gray-600 mb-4">Upload gambar tanda tangan kamu (PNG transparan disarankan)</p>
+                  <label className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors font-medium cursor-pointer">
+                    {isSavingSignature ? "Mengunggah..." : "Pilih File"}
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={handleSignatureFileUpload}
+                      disabled={isSavingSignature}
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* Current Signature Display */}
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-3">Tanda Tangan Tersimpan:</p>
+              {signatureUrl ? (
+                <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center h-40">
+                  <img src={signatureUrl} alt="Saved Signature" className="max-h-full max-w-full object-contain" />
+                </div>
+              ) : (
+                <div className="bg-gray-50 border border-gray-200 border-dashed rounded-xl p-4 flex flex-col items-center justify-center h-40 text-gray-400">
+                  <span className="text-2xl mb-2">❌</span>
+                  <p className="text-sm">Belum ada tanda tangan</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

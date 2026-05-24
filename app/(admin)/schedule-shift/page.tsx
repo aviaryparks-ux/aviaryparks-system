@@ -12,10 +12,16 @@ import {
   getDoc,
   writeBatch,
   addDoc,
+  query,
+  where
 } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/contexts/AuthContext";
 import * as XLSX from "xlsx";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
+import LoadingScreen from "@/components/ui/LoadingScreen";
+import { CalendarDays, Users, Search, Save, Filter, ChevronLeft, ChevronRight, X, ChevronDown, ChevronUp, FileText, CheckCircle, CalendarClock, Clock, Check, XCircle } from "lucide-react";
 
 type User = {
   uid: string;
@@ -155,22 +161,34 @@ const ShiftSelectCell = ({
     }
   };
 
+  const selectedShift = shifts.find(s => s.name === searchText);
+
   if (isLibur && !allowHolidayAssign) {
     return (
-      <div className="text-[10px] text-gray-400 py-2 text-center">
+      <div className="text-[10px] text-gray-400 py-2 text-center bg-slate-50/50 rounded-md border border-dashed border-slate-200">
         Libur
       </div>
     );
   }
 
   return (
-    <div className="space-y-1">
+    <div className="relative group">
       <input
         type="text"
         value={searchText}
         onChange={(e) => handleChange(e.target.value)}
-        placeholder="Ketik nama shift..."
-        className="w-full text-[11px] border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-green-500"
+        placeholder="Pilih shift..."
+        style={selectedShift ? { 
+          backgroundColor: `${selectedShift.color}15`, 
+          color: selectedShift.color,
+          borderColor: `${selectedShift.color}40`,
+          fontWeight: 600
+        } : {}}
+        className={`w-full text-[11px] text-center rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all placeholder:text-slate-300 shadow-sm ${
+          selectedShift 
+            ? "border" 
+            : "border border-dashed border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+        }`}
         list={`shift-list-${userId}-${date}`}
       />
       <datalist id={`shift-list-${userId}-${date}`}>
@@ -211,8 +229,11 @@ export default function ScheduleShiftPage() {
   const [rangeShiftId, setRangeShiftId] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [userSearchTerm, setUserSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
   const [selectAll, setSelectAll] = useState(false);
   const [rangeLoading, setRangeLoading] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(true);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -345,21 +366,27 @@ export default function ScheduleShiftPage() {
       const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
       const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
       
-      const schedulesSnap = await getDocs(collection(db, "shift_schedules"));
+      const startStr = formatDateToYYYYMMDD(startOfMonth);
+      const endStr = formatDateToYYYYMMDD(endOfMonth);
+      
+      const schedulesQuery = query(
+        collection(db, "shift_schedules"),
+        where("date", ">=", startStr),
+        where("date", "<=", endStr)
+      );
+      const schedulesSnap = await getDocs(schedulesQuery);
+      
       const schedulesMap: Record<string, Schedule> = {};
       schedulesSnap.forEach(doc => {
         const data = doc.data();
-        const scheduleDate = new Date(data.date);
-        if (scheduleDate >= startOfMonth && scheduleDate <= endOfMonth) {
-          const shift = shiftsList.find(s => s.id === data.shiftId);
-          schedulesMap[`${data.userId}_${data.date}`] = {
-            userId: data.userId,
-            shiftId: data.shiftId,
-            date: data.date,
-            shiftName: shift?.name,
-            shiftColor: shift?.color,
-          };
-        }
+        const shift = shiftsList.find(s => s.id === data.shiftId);
+        schedulesMap[`${data.userId}_${data.date}`] = {
+          userId: data.userId,
+          shiftId: data.shiftId,
+          date: data.date,
+          shiftName: shift?.name,
+          shiftColor: shift?.color,
+        };
       });
       setSchedules(schedulesMap);
       
@@ -648,6 +675,13 @@ export default function ScheduleShiftPage() {
     user.jabatan.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+  const paginatedUsers = filteredUsers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedDepartment, selectedEmployee]);
+
   const filteredUsersForModal = users.filter(user => 
     user.name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
     user.department.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
@@ -682,66 +716,46 @@ export default function ScheduleShiftPage() {
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv"]}>
-      <div className="space-y-6 p-6">
-        {/* Header dengan Glassmorphism */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-green-600 to-green-700 p-6 text-white shadow-xl">
-          <div className="relative z-10">
-            <h1 className="text-2xl font-bold">📅 Penjadwalan Shift</h1>
-            <p className="text-green-100 mt-1">Atur dan kelola jadwal shift karyawan dengan mudah</p>
-          </div>
-        </div>
-
+      <div className="space-y-6 pb-20">
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-blue-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-sm text-blue-600 font-medium">Total Jadwal</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{stats.totalAssignments}</p>
-              </div>
-              <div className="rounded-xl bg-blue-100 p-3">
-                <span className="text-2xl">📅</span>
-              </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+              <CalendarDays className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Jadwal</p>
+              <p className="text-xl font-extrabold text-slate-800">{stats.totalAssignments}</p>
             </div>
           </div>
           
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-green-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-sm text-green-600 font-medium">Karyawan</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{stats.totalUsers}</p>
-              </div>
-              <div className="rounded-xl bg-green-100 p-3">
-                <span className="text-2xl">👥</span>
-              </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <Users className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Karyawan</p>
+              <p className="text-xl font-extrabold text-slate-800">{stats.totalUsers}</p>
             </div>
           </div>
           
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-purple-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-sm text-purple-600 font-medium">Periode</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{stats.totalDays}</p>
-              </div>
-              <div className="rounded-xl bg-purple-100 p-3">
-                <span className="text-2xl">📆</span>
-              </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center">
+              <CalendarClock className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Periode Hari</p>
+              <p className="text-xl font-extrabold text-slate-800">{stats.totalDays}</p>
             </div>
           </div>
           
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-orange-100/50 blur-2xl"></div>
-            <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-sm text-orange-600 font-medium">Terisi</p>
-                <p className="text-3xl font-bold text-gray-800 mt-1">{stats.filledPercentage}%</p>
-              </div>
-              <div className="rounded-xl bg-orange-100 p-3">
-                <span className="text-2xl">📊</span>
-              </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center">
+              <CheckCircle className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Persentase Terisi</p>
+              <p className="text-xl font-extrabold text-slate-800">{stats.filledPercentage}%</p>
             </div>
           </div>
         </div>
@@ -785,68 +799,91 @@ export default function ScheduleShiftPage() {
         )}
 
         {/* Filter Section */}
-        <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
-          <h2 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-            </svg>
-            Filter Data
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">🏢 Departemen</label>
-              <select
-                value={selectedDepartment}
-                onChange={(e) => setSelectedDepartment(e.target.value)}
-                disabled={!canSeeAllDepartments}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 disabled:bg-gray-100"
-              >
-                <option value="ALL">Semua Departemen</option>
-                {canSeeAllDepartments && [...new Set(users.map(u => u.department))].map(dept => (
-                  <option key={dept} value={dept}>{dept}</option>
-                ))}
-              </select>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-2">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                <Filter className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  Filter Jadwal
+                </h2>
+                <p className="text-xs text-slate-500">Sesuaikan data karyawan dan departemen</p>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">👤 Karyawan</label>
-              <select
-                value={selectedEmployee}
-                onChange={(e) => setSelectedEmployee(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500"
+            <div className="flex flex-wrap gap-2 items-center w-full lg:w-auto justify-between lg:justify-end">
+              <div className="flex gap-2 items-center">
+                <button
+                  onClick={loadData}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  <Search className="w-4 h-4" /> <span className="hidden sm:inline">Refresh Data</span>
+                </button>
+                <button
+                  onClick={() => setCurrentView(currentView === "calendar" ? "table" : "calendar")}
+                  className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  {currentView === "calendar" ? <FileText className="w-4 h-4" /> : <CalendarDays className="w-4 h-4" />}
+                  <span className="hidden sm:inline">{currentView === "calendar" ? "Tampilan Tabel" : "Tampilan Kalender"}</span>
+                </button>
+              </div>
+              <button 
+                onClick={() => setIsFilterOpen(!isFilterOpen)} 
+                className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors ml-auto lg:ml-2 border border-transparent hover:border-emerald-200"
+                title={isFilterOpen ? "Sembunyikan Filter" : "Tampilkan Filter"}
               >
-                <option value="ALL">Semua Karyawan</option>
-                {users.map(user => (
-                  <option key={user.uid} value={user.uid}>{user.name} - {user.department}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">🔍 Cari</label>
-              <input
-                type="text"
-                placeholder="Nama atau jabatan..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={loadData}
-                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
-              >
-                <span>🔄</span>
-                Refresh
-              </button>
-              <button
-                onClick={() => setCurrentView(currentView === "calendar" ? "table" : "calendar")}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
-              >
-                <span>{currentView === "calendar" ? "📋" : "📅"}</span>
-                {currentView === "calendar" ? "Tabel" : "Kalender"}
+                {isFilterOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
               </button>
             </div>
           </div>
+          
+          {isFilterOpen && (
+          <div className="flex flex-col lg:flex-row gap-4 pt-4 border-t border-slate-100 mt-2 animate-fade-in">
+            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="relative">
+                <select
+                  value={selectedDepartment}
+                  onChange={(e) => setSelectedDepartment(e.target.value)}
+                  disabled={!canSeeAllDepartments}
+                  className="w-full appearance-none border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-sm text-slate-700 bg-slate-50 hover:bg-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors disabled:bg-slate-100 disabled:opacity-50"
+                >
+                  <option value="ALL">Semua Departemen</option>
+                  {canSeeAllDepartments && [...new Set(users.map(u => u.department))].map(dept => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                  <ChevronDown className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="relative">
+                <select
+                  value={selectedEmployee}
+                  onChange={(e) => setSelectedEmployee(e.target.value)}
+                  className="w-full appearance-none border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-sm text-slate-700 bg-slate-50 hover:bg-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
+                >
+                  <option value="ALL">Semua Karyawan</option>
+                  {users.map(user => (
+                    <option key={user.uid} value={user.uid}>{user.name} - {user.department}</option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                  <ChevronDown className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Cari nama atau jabatan..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full appearance-none border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 bg-slate-50 hover:bg-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
+                />
+              </div>
+            </div>
+          </div>
+          )}
         </div>
 
         {/* Action Buttons */}
@@ -1054,11 +1091,8 @@ export default function ScheduleShiftPage() {
         {currentView === "calendar" && (
           <div className="rounded-xl bg-white shadow-md border border-gray-100 overflow-hidden">
             {loading ? (
-              <div className="p-16 text-center">
-                <div className="inline-block">
-                  <div className="w-12 h-12 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
-                </div>
-                <p className="text-gray-500 mt-4">Memuat data jadwal...</p>
+              <div className="p-16 flex justify-center">
+                <LoadingScreen fullScreen={false} message="Memuat kalender jadwal..." />
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1078,20 +1112,25 @@ export default function ScheduleShiftPage() {
                         const weekend = isWeekend(date);
                         const isToday = formatDateToYYYYMMDD(date) === formatDateToYYYYMMDD(new Date());
                         return (
-                          <th key={idx} className={`px-2 py-3 text-center min-w-[100px] border-r border-gray-100 ${
-                            isToday ? 'bg-green-50' : ''
-                          }`}>
-                            <div className="text-[11px] text-gray-400 font-medium">{dayNames[date.getDay()]}</div>
-                            <div className={`text-base font-bold ${
-                              holiday.isHoliday ? "text-red-500" : 
-                              weekend ? "text-gray-400" : "text-gray-700"
-                            }`}>
-                              {date.getDate()}
+                          <th key={idx} className="px-2 py-3 text-center min-w-[100px] border-r border-slate-100 bg-white">
+                            <div className="flex flex-col items-center gap-1">
+                              <div className={`text-[10px] font-semibold tracking-wider uppercase ${isToday ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                {dayNames[date.getDay()]}
+                              </div>
+                              <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold ${
+                                isToday ? "bg-emerald-500 text-white shadow-sm shadow-emerald-200" : 
+                                holiday.isHoliday ? "text-rose-500 bg-rose-50" : 
+                                weekend ? "text-slate-400 bg-slate-50" : "text-slate-700 hover:bg-slate-50 transition-colors"
+                              }`}>
+                                {date.getDate()}
+                              </div>
+                              <div className={`text-[10px] font-medium ${isToday ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                {monthNames[date.getMonth()]}
+                              </div>
                             </div>
-                            <div className="text-[10px] text-gray-400">{monthNames[date.getMonth()]}</div>
                             {holiday.isHoliday && (
-                              <div className="mt-1 px-1.5 py-0.5 bg-red-50 rounded text-[8px] text-red-600 font-medium truncate max-w-[80px]" title={holiday.name}>
-                                {holiday.name?.substring(0, 10)}
+                              <div className="mt-1.5 px-2 py-0.5 bg-rose-50 rounded-md text-[9px] text-rose-600 font-semibold truncate w-full max-w-[90px] mx-auto border border-rose-100" title={holiday.name}>
+                                {holiday.name?.substring(0, 12)}
                               </div>
                             )}
                           </th>
@@ -1100,7 +1139,7 @@ export default function ScheduleShiftPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredUsers.map((user, idx) => (
+                    {paginatedUsers.map((user, idx) => (
                       <tr key={user.uid} className={`border-t ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-green-50 transition-colors`}>
                         <td className="sticky left-0 bg-white z-10 px-4 py-3 border-r border-gray-100 min-w-[180px]">
                           <div className="font-medium text-gray-800 text-sm">{user.name}</div>
@@ -1177,22 +1216,29 @@ export default function ScheduleShiftPage() {
               </h2>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-500">Tanggal:</span>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-500"
-                />
+                <div className="relative border border-slate-200 rounded-lg bg-white hover:border-emerald-300 transition-colors focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500">
+                  <DatePicker
+                    selected={selectedDate ? new Date(selectedDate) : undefined}
+                    onChange={(date: Date | null) => {
+                      if (date) {
+                        const y = date.getFullYear();
+                        const m = String(date.getMonth() + 1).padStart(2, '0');
+                        const d = String(date.getDate()).padStart(2, '0');
+                        setSelectedDate(`${y}-${m}-${d}`);
+                      }
+                    }}
+                    dateFormat="dd/MM/yyyy"
+                    className="w-32 bg-transparent px-3 py-1.5 text-sm text-slate-700 outline-none border-none focus:ring-0 cursor-pointer"
+                    wrapperClassName="w-auto"
+                  />
+                </div>
                 <span className="text-sm text-gray-500">({filteredUsers.length} karyawan)</span>
               </div>
             </div>
             
             {loading ? (
-              <div className="p-16 text-center">
-                <div className="inline-block">
-                  <div className="w-12 h-12 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
-                </div>
-                <p className="text-gray-500 mt-4">Memuat data...</p>
+              <div className="p-16 flex justify-center">
+                <LoadingScreen fullScreen={false} message="Memuat tabel jadwal..." />
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1208,7 +1254,7 @@ export default function ScheduleShiftPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredUsers.map((user, idx) => {
+                    {paginatedUsers.map((user, idx) => {
                       const schedule = schedules[`${user.uid}_${selectedDate}`];
                       const currentShift = schedule ? shifts.find(s => s.id === schedule.shiftId) : null;
                       const selectedDateObj = parseDateFromYYYYMMDD(selectedDate);
@@ -1273,77 +1319,101 @@ export default function ScheduleShiftPage() {
         {showRangeModal && (
           <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
             <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col animate-scale-in">
-              <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-purple-50 to-white">
+              <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                    <span>✨</span>
+                  <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                    <CalendarClock className="w-5 h-5 text-emerald-600" />
                     Assign Shift Massal
                   </h2>
-                  <p className="text-xs text-gray-500 mt-1">Assign shift untuk banyak karyawan sekaligus</p>
+                  <p className="text-xs text-slate-500 mt-1">Assign shift untuk banyak karyawan sekaligus</p>
                 </div>
                 <button 
                   onClick={() => setShowRangeModal(false)} 
-                  className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-100 rounded-lg"
+                  className="text-slate-400 hover:text-slate-600 transition-colors p-1.5 hover:bg-slate-200 rounded-lg"
                 >
-                  ✕
+                  <X className="w-5 h-5" />
                 </button>
               </div>
               
               <div className="p-5 space-y-4 overflow-y-auto flex-1">
-                <div className="bg-gradient-to-r from-blue-50 to-blue-100/50 p-4 rounded-xl">
-                  <label className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">📅 Rentang Tanggal</label>
-                  <div className="flex gap-2 mt-2">
-                    <input
-                      type="date"
-                      value={dateRange.start}
-                      onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                      className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
-                    />
-                    <span className="text-gray-400 self-center">→</span>
-                    <input
-                      type="date"
-                      value={dateRange.end}
-                      onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                      className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
-                    />
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <label className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                    <CalendarDays className="w-4 h-4 text-emerald-600" /> Rentang Tanggal
+                  </label>
+                  <div className="grid grid-cols-2 gap-3 mt-2">
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-medium mb-1 block">Dari Tanggal</label>
+                      <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-emerald-500 transition-colors">
+                        <span className="text-emerald-500">📅</span>
+                        <input
+                          type="date"
+                          value={dateRange.start}
+                          onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                          className="w-full bg-transparent text-sm text-slate-700 outline-none border-none placeholder-slate-400 focus:ring-0 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-medium mb-1 block">Sampai Tanggal</label>
+                      <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-emerald-500 transition-colors">
+                        <span className="text-emerald-500">📅</span>
+                        <input
+                          type="date"
+                          value={dateRange.end}
+                          onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                          className="w-full bg-transparent text-sm text-slate-700 outline-none border-none placeholder-slate-400 focus:ring-0 cursor-pointer"
+                        />
+                      </div>
+                    </div>
                   </div>
                   {dateRange.start && dateRange.end && (
-                    <div className="text-xs text-blue-600 mt-2">
-                      📆 Total {Math.ceil((parseDateFromYYYYMMDD(dateRange.end).getTime() - parseDateFromYYYYMMDD(dateRange.start).getTime()) / (1000 * 60 * 60 * 24)) + 1} hari
+                    <div className="text-xs font-medium text-emerald-600 mt-3 bg-emerald-50 px-2.5 py-1.5 rounded-md inline-flex border border-emerald-100">
+                      Total: {Math.ceil((parseDateFromYYYYMMDD(dateRange.end).getTime() - parseDateFromYYYYMMDD(dateRange.start).getTime()) / (1000 * 60 * 60 * 24)) + 1} hari
                     </div>
                   )}
                 </div>
 
-                <div className="bg-gradient-to-r from-purple-50 to-purple-100/50 p-4 rounded-xl">
-                  <label className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-2">⏰ Pilih Shift</label>
-                  <select
-                    value={rangeShiftId}
-                    onChange={(e) => setRangeShiftId(e.target.value)}
-                    className="w-full border border-purple-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white mt-2"
-                  >
-                    <option value="">-- Pilih Shift --</option>
-                    {shifts.map(shift => (
-                      <option key={shift.id} value={shift.id}>
-                        {shift.name} ({shift.startTime} - {shift.endTime})
-                      </option>
-                    ))}
-                  </select>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <label className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-emerald-600" /> Pilih Shift
+                  </label>
+                  <div className="relative mt-2">
+                    <select
+                      value={rangeShiftId}
+                      onChange={(e) => setRangeShiftId(e.target.value)}
+                      className="w-full appearance-none border border-slate-200 rounded-lg pl-3 pr-8 py-2.5 text-sm text-slate-700 bg-slate-50 hover:bg-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
+                    >
+                      <option value="">-- Pilih Shift --</option>
+                      {shifts.map(shift => (
+                        <option key={shift.id} value={shift.id}>
+                          {shift.name} ({shift.startTime} - {shift.endTime})
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                      <ChevronDown className="h-4 w-4" />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="bg-gradient-to-r from-green-50 to-green-100/50 p-4 rounded-xl">
-                  <label className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">👥 Pilih Karyawan</label>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                  <label className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                    <Users className="w-4 h-4 text-emerald-600" /> Pilih Karyawan
+                  </label>
                   <div className="relative mt-2">
-                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">🔍</span>
+                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">
+                      <Search className="w-4 h-4" />
+                    </span>
                     <input
                       type="text"
                       placeholder="Cari karyawan..."
                       value={userSearchTerm}
                       onChange={(e) => setUserSearchTerm(e.target.value)}
-                      className="w-full border border-green-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                      className="w-full border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm text-slate-700 bg-slate-50 hover:bg-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
                     />
                   </div>
                   
-                  <div className="flex items-center gap-2 mt-3 mb-2 pb-2 border-b border-green-200">
+                  <div className="flex items-center gap-2 mt-3 mb-2 pb-3 border-b border-slate-100">
                     <input
                       type="checkbox"
                       id="selectAll"
@@ -1356,16 +1426,16 @@ export default function ScheduleShiftPage() {
                         }
                         setSelectAll(!selectAll);
                       }}
-                      className="w-4 h-4 rounded border-green-300 text-purple-600 focus:ring-purple-500"
+                      className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                     />
-                    <label htmlFor="selectAll" className="text-sm font-medium text-gray-700">
+                    <label htmlFor="selectAll" className="text-sm font-medium text-slate-700 cursor-pointer select-none">
                       Pilih Semua ({filteredUsersForModal.length})
                     </label>
                   </div>
                   
-                  <div className="max-h-48 overflow-y-auto space-y-1">
+                  <div className="max-h-48 overflow-y-auto space-y-1.5 pr-2 custom-scrollbar">
                     {filteredUsersForModal.map(user => (
-                      <label key={user.uid} className="flex items-center gap-2 p-2 hover:bg-white rounded-lg cursor-pointer transition-all">
+                      <label key={user.uid} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors border border-transparent hover:border-slate-100 group">
                         <input
                           type="checkbox"
                           checked={selectedUserIds.has(user.uid)}
@@ -1376,46 +1446,99 @@ export default function ScheduleShiftPage() {
                             setSelectedUserIds(newSelected);
                             setSelectAll(newSelected.size === filteredUsersForModal.length);
                           }}
-                          className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                          className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                         />
-                        <div className="flex-1">
-                          <div className="text-sm font-medium text-gray-800">{user.name}</div>
-                          <div className="text-xs text-gray-500">{user.department} • {user.jabatan}</div>
+                        <div className="flex-1 flex flex-col">
+                          <span className="text-sm font-medium text-slate-800 group-hover:text-emerald-700 transition-colors">{user.name}</span>
+                          <span className="text-[11px] text-slate-500">{user.department} • {user.jabatan}</span>
                         </div>
                       </label>
                     ))}
                   </div>
                   
-                  <div className="mt-3 pt-2 border-t border-green-200">
-                    <div className="text-xs font-medium text-green-700">
-                      ✓ {selectedUserIds.size} karyawan terpilih
+                  <div className="mt-3 pt-3 border-t border-slate-100">
+                    <div className="text-xs font-semibold text-emerald-700 bg-emerald-50 w-fit px-2.5 py-1 rounded-md border border-emerald-100 flex items-center gap-1.5">
+                      <CheckCircle className="w-3.5 h-3.5" /> {selectedUserIds.size} karyawan terpilih
                     </div>
                   </div>
                 </div>
               </div>
               
-              <div className="p-5 border-t border-gray-100 bg-gray-50 flex gap-3">
-                <button
-                  onClick={assignDateRangeToSelectedUsers}
-                  disabled={rangeLoading || !dateRange.start || !dateRange.end || !rangeShiftId || selectedUserIds.size === 0}
-                  className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white py-2.5 rounded-xl text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md"
-                >
-                  {rangeLoading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Memproses...
-                    </span>
-                  ) : (
-                    `Assign ke ${selectedUserIds.size} Karyawan`
-                  )}
-                </button>
+              <div className="p-5 border-t border-slate-100 bg-slate-50 flex gap-3">
                 <button
                   onClick={() => setShowRangeModal(false)}
-                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-2.5 rounded-xl text-sm font-medium transition-all"
+                  className="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm"
                 >
                   Batal
                 </button>
+                <button
+                  onClick={assignDateRangeToSelectedUsers}
+                  disabled={rangeLoading || !dateRange.start || !dateRange.end || !rangeShiftId || selectedUserIds.size === 0}
+                  className="flex-[2] bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2"
+                >
+                  {rangeLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      Menyimpan...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      Assign ke {selectedUserIds.size} Karyawan
+                    </>
+                  )}
+                </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Pagination UI */}
+        {totalPages > 1 && (
+          <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-200 gap-4">
+            <div className="text-sm text-slate-500">
+              Menampilkan <span className="font-semibold text-slate-800">{((currentPage - 1) * itemsPerPage) + 1}</span> hingga <span className="font-semibold text-slate-800">{Math.min(currentPage * itemsPerPage, filteredUsers.length)}</span> dari <span className="font-semibold text-slate-800">{filteredUsers.length}</span> karyawan
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-2 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              
+              <div className="flex items-center gap-1 hidden sm:flex">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum = i + 1;
+                  if (totalPages > 5 && currentPage > 3) {
+                    pageNum = currentPage - 2 + i;
+                    if (pageNum > totalPages) pageNum = totalPages - (4 - i);
+                  }
+                  
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
+                        currentPage === pageNum 
+                          ? 'bg-emerald-600 text-white shadow-sm' 
+                          : 'text-slate-600 hover:bg-slate-50 border border-transparent hover:border-slate-200'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
         )}
