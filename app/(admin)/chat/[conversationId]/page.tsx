@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   getConversation,
   subscribeToMessages,
@@ -25,7 +25,9 @@ import { AgoraCallRoom } from "@/components/AgoraCallRoom";
 
 export default function ChatRoomPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const conversationId = params.conversationId as string;
+  const autoJoinParam = searchParams.get("autoJoin");
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -94,8 +96,7 @@ export default function ChatRoomPage() {
 
   useEffect(() => {
     // Auto-join if directed from CallListener (accepted incoming call)
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get("autoJoin") === "true") {
+    if (autoJoinParam === "true") {
       // Find if we are currently accepting a call
       const checkIncoming = async () => {
         const docSnap = await getDoc(doc(db, "active_calls", conversationId));
@@ -107,7 +108,7 @@ export default function ChatRoomPage() {
       };
       checkIncoming();
     }
-  }, [conversationId]);
+  }, [conversationId, autoJoinParam]);
 
   useEffect(() => {
     if (!conversationId) return;
