@@ -178,26 +178,44 @@ export default function ChatRoomPage() {
   const handleStartCall = async (isVideo: boolean) => {
     if (!currentUserId || !conversationId || !conversation) return;
     
-    // Determine receiver
-    let receiverId = "";
-    if (conversation.type === "private" && conversation.participants) {
-      receiverId = conversation.participants.find(id => id !== currentUserId) || "";
-    } else {
-      // For groups, we just join directly and drop a message so others can see a call started
-      await sendMessage(conversationId, `Memulai panggilan ${isVideo ? "video" : "suara"} grup...`, 'call');
-      await joinCallDirectly(isVideo);
-      return;
-    }
-
     try {
+      // Check if call is already active
+      const docSnap = await getDoc(doc(db, "active_calls", conversationId));
+      if (docSnap.exists() && (docSnap.data().status === "ringing" || docSnap.data().status === "accepted")) {
+        // Call already active, join directly
+        await joinCallDirectly(isVideo);
+        return;
+      }
+
+      // Determine receivers
+      let receiverIds: string[] = [];
+      let callerNameStr = "User";
+
+      if (conversation.type === "private" && conversation.participants) {
+        const otherId = conversation.participants.find(id => id !== currentUserId);
+        if (otherId) receiverIds = [otherId];
+        callerNameStr = conversation.participantNames?.find((n, i) => conversation.participants?.[i] === currentUserId) || "User";
+      } else if (conversation.type === "group" && conversation.memberIds) {
+        receiverIds = conversation.memberIds.filter(id => id !== currentUserId);
+        // We'll use the group name as the caller name for clarity in ringing UI
+        callerNameStr = conversation.name || "Group";
+      }
+
+      // If no receivers, fallback to direct join
+      if (receiverIds.length === 0) {
+        await sendMessage(conversationId, `Memulai panggilan ${isVideo ? "video" : "suara"} grup...`, 'call');
+        await joinCallDirectly(isVideo);
+        return;
+      }
+
       // Set local state to show "Calling..." screen
       setPendingCall({ isVideo });
 
       // Create ringing document in active_calls
       await setDoc(doc(db, "active_calls", conversationId), {
         callerId: currentUserId,
-        callerName: conversation.participantNames?.find((n, i) => conversation.participants?.[i] === currentUserId) || "User",
-        receiverId: receiverId,
+        callerName: callerNameStr,
+        receiverIds: receiverIds,
         isVideo: isVideo,
         status: "ringing",
         timestamp: new Date().getTime()

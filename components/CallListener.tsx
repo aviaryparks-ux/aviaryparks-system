@@ -17,7 +17,7 @@ export default function CallListener() {
 
     const q = query(
       collection(db, "active_calls"),
-      where("receiverId", "==", user.uid),
+      where("receiverIds", "array-contains", user.uid),
       where("status", "==", "ringing")
     );
 
