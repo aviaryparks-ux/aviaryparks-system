@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server';
 import { decryptSession } from '@/lib/crypto';
 
 // ✅ HARUS DI SINI (atas)
-const publicRoutes = ['/login', '/profile'];
+const publicRoutes = ['/login', '/profile', '/api/agora/token'];
 
 const adminRoutes = [
   '/dashboard',

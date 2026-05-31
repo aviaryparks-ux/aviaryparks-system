@@ -12,10 +12,16 @@ import {
   removeMemberFromGroup,
 } from "@/lib/chat/firebase";
 import { searchUsers } from "@/lib/chat/firebase";
+import { storage, db } from "@/lib/firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { doc, getDoc, onSnapshot, setDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import type { Conversation, Message, ChatUser } from "@/types/chat";
 import toast from "react-hot-toast";
-import { Send, Users, Search, Info, X } from "lucide-react";
+import { Send, Users, Search, Info, X, Paperclip, Image as ImageIcon, FileText, Download, Phone, Video, Smile } from "lucide-react";
 import Link from "next/link";
+import imageCompression from "browser-image-compression";
+import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
+import { AgoraCallRoom } from "@/components/AgoraCallRoom";
 
 export default function ChatRoomPage() {
   const params = useParams();
@@ -29,6 +35,14 @@ export default function ChatRoomPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<ChatUser[]>([]);
   const [isSending, setIsSending] = useState(false);
+  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [otherUserOnline, setOtherUserOnline] = useState(false);
+  const [activeCall, setActiveCall] = useState<{ channel: string; token: string; isVideo: boolean; uid: number } | null>(null);
+  const [pendingCall, setPendingCall] = useState<{ isVideo: boolean } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const currentUserId = typeof window !== "undefined"
@@ -55,6 +69,47 @@ export default function ChatRoomPage() {
   }, [conversationId]);
 
   useEffect(() => {
+    // Listen to active_calls to see if our pending call gets accepted/declined
+    if (pendingCall) {
+      const unsub = onSnapshot(doc(db, "active_calls", conversationId), (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.status === "accepted") {
+            // They accepted! Join the call
+            joinCallDirectly(pendingCall.isVideo);
+            setPendingCall(null);
+          } else if (data.status === "declined" || data.status === "ended") {
+            if (data.status === "declined") {
+              toast.error("Panggilan ditolak.");
+            }
+            setPendingCall(null);
+            // Optionally delete document
+            deleteDoc(doc(db, "active_calls", conversationId)).catch(()=>{});
+          }
+        }
+      });
+      return () => unsub();
+    }
+  }, [pendingCall, conversationId]);
+
+  useEffect(() => {
+    // Auto-join if directed from CallListener (accepted incoming call)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("autoJoin") === "true") {
+      // Find if we are currently accepting a call
+      const checkIncoming = async () => {
+        const docSnap = await getDoc(doc(db, "active_calls", conversationId));
+        if (docSnap.exists() && docSnap.data().status === "accepted") {
+           joinCallDirectly(docSnap.data().isVideo);
+           // Clear URL params
+           window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      };
+      checkIncoming();
+    }
+  }, [conversationId]);
+
+  useEffect(() => {
     if (!conversationId) return;
 
     const unsub = subscribeToMessages(conversationId, (msgs) => {
@@ -64,6 +119,22 @@ export default function ChatRoomPage() {
 
     return unsub;
   }, [conversationId]);
+
+  useEffect(() => {
+    // Listen to other user's presence if private chat
+    if (conversation?.type === "private" && conversation.participants?.length === 2) {
+      const otherUserId = conversation.participants.find(id => id !== currentUserId);
+      if (otherUserId) {
+        const userRef = doc(db, "users", otherUserId);
+        const unsubUser = onSnapshot(userRef, (docSnap) => {
+          if (docSnap.exists()) {
+            setOtherUserOnline(docSnap.data().isActive === true);
+          }
+        });
+        return () => unsubUser();
+      }
+    }
+  }, [conversation, currentUserId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -100,6 +171,107 @@ export default function ChatRoomPage() {
       toast.error("Gagal mengirim pesan: " + error.message);
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleStartCall = async (isVideo: boolean) => {
+    if (!currentUserId || !conversationId || !conversation) return;
+    
+    // Determine receiver
+    let receiverId = "";
+    if (conversation.type === "private" && conversation.participants) {
+      receiverId = conversation.participants.find(id => id !== currentUserId) || "";
+    } else {
+      toast.error("Group calling not fully supported for ringing yet. Joining directly.");
+      await joinCallDirectly(isVideo);
+      return;
+    }
+
+    try {
+      // Set local state to show "Calling..." screen
+      setPendingCall({ isVideo });
+
+      // Create ringing document in active_calls
+      await setDoc(doc(db, "active_calls", conversationId), {
+        callerId: currentUserId,
+        callerName: conversation.participantNames?.find((n, i) => conversation.participants?.[i] === currentUserId) || "User",
+        receiverId: receiverId,
+        isVideo: isVideo,
+        status: "ringing",
+        timestamp: new Date().getTime()
+      });
+
+      // Also send chat message for history
+      await sendMessage(conversationId, `Memulai panggilan ${isVideo ? "video" : "suara"}...`, 'call');
+
+    } catch (e: any) {
+      setPendingCall(null);
+      toast.error("Gagal memulai panggilan: " + e.message);
+    }
+  };
+
+  const joinCallDirectly = async (isVideo: boolean) => {
+    const channelName = conversationId;
+    try {
+      const randomUid = Math.floor(Math.random() * 65500) + 1;
+      const res = await fetch('/api/agora/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelName, uid: randomUid })
+      });
+      const data = await res.json();
+      
+      if (data.token) {
+        setActiveCall({
+          channel: channelName,
+          token: data.token,
+          uid: data.uid ? Number(data.uid) : randomUid,
+          isVideo
+        });
+      } else {
+        toast.error("Gagal mendapatkan token: " + data.error);
+      }
+    } catch (e: any) {
+      toast.error("Gagal bergabung ke panggilan: " + e.message);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, isImage: boolean) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsSending(true);
+    setShowAttachmentMenu(false);
+    
+    try {
+      let fileToUpload = file;
+      if (isImage) {
+        const options = {
+          maxSizeMB: 1,
+          maxWidthOrHeight: 1200,
+          useWebWorker: true,
+        };
+        fileToUpload = await imageCompression(file, options);
+      }
+
+      const fileName = `chat/${isImage ? 'images' : 'files'}/${conversationId}_${Date.now()}_${file.name}`;
+      const storageRef = ref(storage, fileName);
+      
+      const snapshot = await uploadBytes(storageRef, fileToUpload);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+
+      if (isImage) {
+        await sendMessage(conversationId, downloadURL, "image", downloadURL);
+      } else {
+        // use imageUrl to store original file name
+        await sendMessage(conversationId, downloadURL, "file", file.name);
+      }
+    } catch (error: any) {
+      toast.error(`Gagal mengirim ${isImage ? 'gambar' : 'file'}: ` + error.message);
+    } finally {
+      setIsSending(false);
+      // Reset input
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -165,12 +337,21 @@ export default function ChatRoomPage() {
         </Link>
         <div className="flex-1">
           <h2 className="font-bold text-slate-800">{getDisplayName(conversation)}</h2>
-          {conversation.type === "group" && (
+          {conversation.type === "group" ? (
             <p className="text-xs text-slate-500">
               {conversation.memberIds?.length || 0} anggota
             </p>
+          ) : (
+            <p className={`text-xs ${otherUserOnline ? "text-emerald-500 font-medium" : "text-slate-400"}`}>
+              {otherUserOnline ? "Online" : "Offline"}
+            </p>
           )}
         </div>
+
+        <button onClick={() => handleStartCall(false)} className="p-2 hover:bg-slate-100 rounded-lg text-emerald-600 transition-colors">
+          <Phone className="w-5 h-5" />
+        </button>
+
         <button
           onClick={() => setShowInfo(true)}
           className="p-2 hover:bg-slate-100 rounded-lg"
@@ -207,12 +388,30 @@ export default function ChatRoomPage() {
                         : "bg-slate-100 text-slate-800 rounded-bl-md"
                     }`}
                   >
-                    {msg.type === "image" && msg.imageUrl ? (
+                    {msg.type === "image" && msg.text ? (
                       <img
-                        src={msg.imageUrl}
+                        src={msg.text}
                         alt="Image"
-                        className="max-w-full rounded-lg"
+                        className="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                        onClick={() => setPreviewImage(msg.text)}
                       />
+                    ) : msg.type === "call" ? (
+                      <div className="flex flex-col items-center gap-3 p-2 min-w-[150px]">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <Phone className="w-5 h-5" />
+                          <span>{msg.text}</span>
+                        </div>
+                      </div>
+                    ) : msg.type === "file" ? (
+                      <a 
+                        href={msg.text}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`flex items-center gap-2 p-2 rounded-lg ${isMe ? "bg-emerald-700/50 hover:bg-emerald-700" : "bg-slate-200 hover:bg-slate-300"} transition-colors`}
+                      >
+                        <FileText className="w-5 h-5 flex-shrink-0" />
+                        <span className="text-sm truncate max-w-[200px] underline">{msg.imageUrl || "File"}</span>
+                      </a>
                     ) : (
                       <p className="text-sm">{msg.text}</p>
                     )}
@@ -233,22 +432,85 @@ export default function ChatRoomPage() {
       </div>
 
       {/* Input */}
-      <div className="p-4 border-t border-slate-200">
-        <div className="flex gap-2">
+      <div className="p-4 border-t border-slate-200 relative">
+        <div className="flex gap-2 items-center">
+          <div className="relative">
+            <button
+              onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
+              className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded-full transition-colors"
+            >
+              <Paperclip className="w-5 h-5" />
+            </button>
+            
+            {/* Attachment Menu */}
+            {showAttachmentMenu && (
+              <div className="absolute bottom-full left-0 mb-2 bg-white shadow-xl rounded-xl border border-slate-100 overflow-hidden min-w-[160px] animate-fade-in-up">
+                <button 
+                  onClick={() => imageInputRef.current?.click()}
+                  className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-slate-50 text-slate-700 text-sm"
+                >
+                  <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-500">
+                    <ImageIcon className="w-4 h-4" />
+                  </div>
+                  Gambar
+                </button>
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-slate-50 text-slate-700 text-sm"
+                >
+                  <div className="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center text-orange-500">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  Dokumen
+                </button>
+              </div>
+            )}
+          </div>
+          
+          <input type="file" accept="image/*" className="hidden" ref={imageInputRef} onChange={(e) => handleFileUpload(e, true)} />
+          <input type="file" className="hidden" ref={fileInputRef} onChange={(e) => handleFileUpload(e, false)} />
+
+          <button
+            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+            className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded-full transition-colors"
+          >
+            <Smile className="w-5 h-5" />
+          </button>
+
+          {/* Emoji Picker Menu */}
+          {showEmojiPicker && (
+            <div className="absolute bottom-full left-0 mb-2 z-50 animate-fade-in-up">
+              <EmojiPicker 
+                onEmojiClick={(emojiData: EmojiClickData) => {
+                  setNewMessage(prev => prev + emojiData.emoji);
+                }} 
+              />
+            </div>
+          )}
+
           <input
             type="text"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
             placeholder="Ketik pesan..."
-            className="flex-1 border border-slate-200 rounded-full px-4 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            className="flex-1 border border-slate-200 rounded-full px-4 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-slate-50"
           />
           <button
             onClick={handleSendMessage}
-            disabled={!newMessage.trim() || isSending}
-            className="w-10 h-10 bg-emerald-600 text-white rounded-full flex items-center justify-center hover:bg-emerald-700 disabled:opacity-50"
+            disabled={!newMessage.trim() && !isSending}
+            className="w-10 h-10 bg-emerald-600 text-white rounded-full flex items-center justify-center hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-transform active:scale-95"
           >
-            <Send className="w-4 h-4" />
+            {isSending ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Send className="w-4 h-4 -ml-0.5" />
+            )}
           </button>
         </div>
       </div>
@@ -364,6 +626,79 @@ export default function ChatRoomPage() {
         </div>
       )}
 
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4 backdrop-blur-sm"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div className="absolute top-4 right-4 flex gap-4">
+            <a 
+              href={previewImage}
+              target="_blank"
+              rel="noreferrer"
+              className="p-2 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors"
+            >
+              <Download className="w-6 h-6" />
+            </a>
+            <button 
+              className="p-2 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors"
+              onClick={() => setPreviewImage(null)}
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          <img 
+            src={previewImage} 
+            alt="Preview" 
+            className="max-w-full max-h-[90vh] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+
+      {/* Pending Call Screen */}
+      {pendingCall && (
+        <div className="fixed inset-0 z-50 bg-slate-900 flex flex-col items-center justify-center p-4">
+          <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl animate-pulse">
+            <span className="text-4xl text-white font-bold">
+              {conversation?.name ? conversation.name[0].toUpperCase() : "?"}
+            </span>
+          </div>
+          <h2 className="text-3xl text-white font-bold mb-2">{conversation?.name || "Unknown"}</h2>
+          <p className="text-emerald-400 text-lg mb-12">Menunggu diangkat...</p>
+          
+          <button 
+            onClick={async () => {
+              setPendingCall(null);
+              try {
+                await updateDoc(doc(db, "active_calls", conversationId), { status: "ended" });
+              } catch(e) {}
+            }}
+            className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
+          >
+            <Phone className="w-8 h-8 text-white fill-white rotate-[135deg]" />
+          </button>
+        </div>
+      )}
+
+      {/* Active Call Modal */}
+      {activeCall && (
+        <AgoraCallRoom 
+          channelName={activeCall.channel}
+          appId="cce1fd6074a541e9ae816a873da217f1"
+          token={activeCall.token}
+          uid={activeCall.uid}
+          isVideoCall={activeCall.isVideo}
+          onEndCall={async () => {
+            setActiveCall(null);
+            try {
+               await updateDoc(doc(db, "active_calls", conversationId), { status: "ended" });
+            } catch(e) {}
+          }}
+        />
+      )}
+
       <style jsx>{`
         @keyframes slide-in-right {
           from {
@@ -373,8 +708,21 @@ export default function ChatRoomPage() {
             transform: translateX(0);
           }
         }
+        @keyframes fade-in-up {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
         .animate-slide-in-right {
           animation: slide-in-right 0.2s ease-out;
+        }
+        .animate-fade-in-up {
+          animation: fade-in-up 0.2s ease-out;
         }
       `}</style>
     </div>

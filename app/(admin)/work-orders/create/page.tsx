@@ -177,16 +177,18 @@ export default function CreateWorkOrderPage() {
       return;
     }
     if (!selectedArea) {
-      setError("Mohon pilih Lokasi / Area");
+      setError("Mohon pilih atau isi Lokasi / Area");
       return;
     }
-    if (!selectedItem && !isManualItem) {
-      setError("Mohon pilih Barang Inventory");
-      return;
-    }
-    if (isManualItem && !manualItemName) {
-      setError("Mohon isi nama barang (Manual)");
-      return;
+    if (template && template.areas.length > 0) {
+      if (!selectedItem && !isManualItem) {
+        setError("Mohon pilih Barang Inventory");
+        return;
+      }
+      if (isManualItem && !manualItemName) {
+        setError("Mohon isi nama barang (Manual)");
+        return;
+      }
     }
     if (woType === "urgent" && (!dueDate || !dueTime)) {
       setError("SLA (tanggal & waktu deadline) wajib diisi untuk WO Urgent");
@@ -522,7 +524,7 @@ export default function CreateWorkOrderPage() {
               </div>
 
             {/* Area & Inventory Dropdowns */}
-            {template && template.areas.length > 0 && (
+            {template && template.areas.length > 0 ? (
               <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-5 mt-4 p-5 bg-orange-50/50 rounded-2xl border border-orange-100/50">
                 <div>
                   <label className="block text-sm font-bold text-orange-900 mb-2">Lokasi Area</label>
@@ -578,6 +580,32 @@ export default function CreateWorkOrderPage() {
                     )}
                   </div>
                 )}
+              </div>
+            ) : (
+              <div className="col-span-1 md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-5 mt-4 pt-4 border-t border-slate-100">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Lokasi / Area <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={selectedArea}
+                    onChange={e => setSelectedArea(e.target.value)}
+                    className="w-full border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800"
+                    placeholder="Contoh: Lobby Utama"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Barang (Opsional)</label>
+                  <input
+                    type="text"
+                    value={selectedItem}
+                    onChange={e => {
+                      setSelectedItem(e.target.value);
+                      setIsManualItem(false); // so it uses selectedItem directly
+                    }}
+                    className="w-full border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800"
+                    placeholder="Contoh: AC Daikin 2PK"
+                  />
+                </div>
               </div>
             )}
           </div>

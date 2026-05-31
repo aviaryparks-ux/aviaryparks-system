@@ -81,9 +81,25 @@ export function subscribeToConversations(
     for (const docSnap of snapshot.docs) {
       const convDoc = await getDoc(doc(db, "conversations", docSnap.id));
       if (convDoc.exists()) {
+        const convData = convDoc.data();
+        let participantNames = convData.participantNames || [];
+        
+        // Fix missing participant names for old private chats
+        const isNamesInvalid = !participantNames || participantNames.length < 2 || participantNames.some((n: any) => !n || n === "Unknown");
+        if (convData.type === "private" && convData.participants && convData.participants.length === 2 && isNamesInvalid) {
+          const names = [];
+          for (const pUid of convData.participants) {
+            const uDoc = await getDoc(doc(db, "users", pUid));
+            names.push(uDoc.exists() ? (uDoc.data().name || uDoc.data().email || "Unknown") : "Unknown");
+          }
+          participantNames = names;
+        }
+
         conversations.push({
           id: convDoc.id,
-          ...convDoc.data(),
+          ...convData,
+          participantNames,
+          unreadCount: docSnap.data().unreadCount || 0,
         } as Conversation);
       }
     }
@@ -101,12 +117,23 @@ export function subscribeToConversations(
 
 /**
  * Get group conversations only
+ * Fetches all groups from the conversations collection so Admins can see all chats.
  */
 export function subscribeToGroupConversations(
   callback: (conversations: Conversation[]) => void
 ): () => void {
-  return subscribeToConversations((convs) => {
-    callback(convs.filter((c) => c.type === "group"));
+  const q = query(
+    collection(db, "conversations"),
+    where("type", "==", "group"),
+    orderBy("updatedAt", "desc")
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    const conversations = snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data(),
+    })) as Conversation[];
+    callback(conversations);
   });
 }
 
@@ -129,7 +156,21 @@ export async function getConversation(
 ): Promise<Conversation | null> {
   const docSnap = await getDoc(doc(db, "conversations", conversationId));
   if (docSnap.exists()) {
-    return { id: docSnap.id, ...docSnap.data() } as Conversation;
+    const convData = docSnap.data();
+    let participantNames = convData.participantNames || [];
+
+    // Fix missing participant names for old private chats
+    const isNamesInvalid = !participantNames || participantNames.length < 2 || participantNames.some((n: any) => !n || n === "Unknown");
+    if (convData.type === "private" && convData.participants && convData.participants.length === 2 && isNamesInvalid) {
+      const names = [];
+      for (const pUid of convData.participants) {
+        const uDoc = await getDoc(doc(db, "users", pUid));
+        names.push(uDoc.exists() ? (uDoc.data().name || uDoc.data().email || "Unknown") : "Unknown");
+      }
+      participantNames = names;
+    }
+
+    return { id: docSnap.id, ...convData, participantNames } as Conversation;
   }
   return null;
 }
@@ -348,7 +389,7 @@ export function subscribeToMessages(
 export async function sendMessage(
   conversationId: string,
   text: string,
-  type: "text" | "image" = "text",
+  type: "text" | "image" | "file" | "call" = "text",
   imageUrl?: string
 ): Promise<void> {
   const currentUserId = getCurrentUserId();
@@ -374,7 +415,10 @@ export async function sendMessage(
   await addDoc(collection(db, "messages"), messageData);
 
   // Update conversation's lastMessage
-  const lastMessageText = type === "image" ? "[Gambar]" : text;
+  let lastMessageText = text;
+  if (type === "image") lastMessageText = "[Gambar]";
+  if (type === "file") lastMessageText = `\uD83D\uDCC4 ${imageUrl || 'File'}`; // We use imageUrl as fileName
+
   await updateDoc(doc(db, "conversations", conversationId), {
     lastMessage: {
       text: lastMessageText.length > 50
@@ -387,12 +431,33 @@ export async function sendMessage(
     updatedAt: serverTimestamp(),
   });
 
-  // Update user's user_conversations
-  await setDoc(
-    doc(db, "user_conversations", currentUserId, "conversations", conversationId),
-    { lastMessage: text, updatedAt: serverTimestamp() },
-    { merge: true }
-  );
+  // Update user_conversations for all members
+  const convDoc = await getDoc(doc(db, "conversations", conversationId));
+  if (convDoc.exists()) {
+    const data = convDoc.data();
+    let members: string[] = [];
+    if (data.type === "private") {
+      members = data.participants || [];
+    } else {
+      members = data.memberIds || [];
+    }
+    
+    // We can't use batch here if there are many, but Promise.all is fine
+    const updatePromises = members.map((memberId: string) => {
+      const isSender = memberId === currentUserId;
+      return setDoc(
+        doc(db, "user_conversations", memberId, "conversations", conversationId),
+        {
+          lastMessage: lastMessageText,
+          updatedAt: serverTimestamp(),
+          ...(!isSender ? { unreadCount: increment(1) } : {})
+        },
+        { merge: true }
+      );
+    });
+    
+    await Promise.all(updatePromises);
+  }
 }
 
 /**
@@ -439,33 +504,35 @@ export async function markAsRead(conversationId: string): Promise<void> {
 export async function searchUsers(searchQuery: string): Promise<ChatUser[]> {
   if (!searchQuery.trim()) return [];
 
-  const snapshot = await getDocs(
-    query(
-      collection(db, "users"),
-      where("isActive", "==", true),
-      orderBy("name")
-    )
-  );
+  try {
+    const snapshot = await getDocs(
+      query(collection(db, "users"))
+    );
 
-  const lowerQuery = searchQuery.toLowerCase();
-  return snapshot.docs
-    .map((doc) => ({
-      uid: doc.id,
-      name: doc.data().name || "",
-      email: doc.data().email || "",
-      photoUrl: doc.data().photoUrl,
-      role: doc.data().role || "",
-      department: doc.data().department || "",
-      section: doc.data().section || "",
-      division: doc.data().division || "",
-      isActive: doc.data().isActive ?? true,
-    }))
-    .filter(
-      (user) =>
-        user.name.toLowerCase().includes(lowerQuery) ||
-        user.email.toLowerCase().includes(lowerQuery)
-    )
-    .slice(0, 20);
+    const lowerQuery = searchQuery.toLowerCase();
+    return snapshot.docs
+      .map((doc) => ({
+        uid: doc.id,
+        name: doc.data().name || "",
+        email: doc.data().email || "",
+        photoUrl: doc.data().photoUrl,
+        role: doc.data().role || "",
+        department: doc.data().department || "",
+        section: doc.data().section || "",
+        division: doc.data().division || "",
+        isActive: doc.data().isActive ?? true,
+      }))
+      .filter(
+        (user) =>
+          user.name.toLowerCase().includes(lowerQuery) ||
+          user.email.toLowerCase().includes(lowerQuery)
+      )
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, 10);
+  } catch (error) {
+    console.error("Error searching users:", error);
+    return [];
+  }
 }
 
 /**
@@ -540,4 +607,71 @@ export function subscribeToUnreadCount(
     });
     callback(total);
   });
+}
+
+/**
+ * Delete a conversation (creator/admin only)
+ * Removes: conversation doc, all messages, all user_conversations references
+ */
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const conv = await getConversation(conversationId);
+  if (!conv) throw new Error("Percakapan tidak ditemukan");
+
+  const currentUserId = getCurrentUserId();
+
+  if (conv.type === "private") {
+    // For private chats, ONLY delete it from the current user's list (like WhatsApp)
+    await deleteDoc(
+      doc(db, "user_conversations", currentUserId, "conversations", conversationId)
+    );
+    return;
+  }
+
+  // For groups (if admin), delete completely for everyone
+  const messagesSnapshot = await getDocs(
+    query(
+      collection(db, "messages"),
+      where("conversationId", "==", conversationId)
+    )
+  );
+  const deleteBatch: Promise<void>[] = [];
+  messagesSnapshot.docs.forEach((docSnap) => {
+    deleteBatch.push(deleteDoc(doc(db, "messages", docSnap.id)));
+  });
+  await Promise.all(deleteBatch);
+
+  const memberIds = conv.memberIds || [];
+  for (const uid of memberIds) {
+    try {
+      await deleteDoc(
+        doc(db, "user_conversations", uid, "conversations", conversationId)
+      );
+    } catch {
+      // Ignore if already removed
+    }
+  }
+
+  await deleteDoc(doc(db, "conversations", conversationId));
+}
+
+/**
+ * Remove conversation from current user's list only (archive/hide)
+ */
+export async function archiveConversation(conversationId: string): Promise<void> {
+  const currentUserId = getCurrentUserId();
+  if (!currentUserId) throw new Error("User tidak ditemukan");
+
+  // Remove from user's conversation list
+  await deleteDoc(
+    doc(db, "user_conversations", currentUserId, "conversations", conversationId)
+  );
+
+  // If group, also remove from memberIds
+  const conv = await getConversation(conversationId);
+  if (conv && conv.type === "group") {
+    await updateDoc(doc(db, "conversations", conversationId), {
+      memberIds: arrayRemove(currentUserId),
+      updatedAt: serverTimestamp(),
+    });
+  }
 }

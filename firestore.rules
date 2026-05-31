@@ -255,5 +255,11 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && isSuperAdmin();
     }
 
+    // ==================== CALL SIGNALING ====================
+    match /active_calls/{callId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
   }
 }

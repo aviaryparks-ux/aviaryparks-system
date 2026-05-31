@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
+import { subscribeToUnreadCount } from "@/lib/chat/firebase";
+import { useEffect, useState } from "react";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -16,6 +18,13 @@ export default function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) 
   const pathname = usePathname();
   const { user } = useAuth();
   const { can } = usePermissions();
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = subscribeToUnreadCount(setUnreadChatCount);
+    return () => unsub();
+  }, [user]);
 
   const isActivePath = (path: string) => {
     if (path === "/dashboard") return pathname === path;
@@ -171,13 +180,21 @@ export default function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) 
                       title={collapsed ? item.name : undefined}
                     >
                       {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-1/2 bg-emerald-500 rounded-r-full"></div>}
-                      <span className={`w-5 h-5 flex items-center justify-center flex-shrink-0 transition-all duration-300 ${isActive ? "text-emerald-600" : "text-slate-400 group-hover:text-emerald-500"}`}>
+                      <span className={`w-5 h-5 flex items-center justify-center flex-shrink-0 transition-all duration-300 relative ${isActive ? "text-emerald-600" : "text-slate-400 group-hover:text-emerald-500"}`}>
                         {item.icon}
+                        {item.path === "/chat" && unreadChatCount > 0 && collapsed && (
+                          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+                        )}
                       </span>
                       
                       {!collapsed && (
-                        <span className="flex-1 text-[13px] tracking-wide">
+                        <span className="flex-1 text-[13px] tracking-wide flex justify-between items-center">
                           {item.name}
+                          {item.path === "/chat" && unreadChatCount > 0 && (
+                            <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                              {unreadChatCount}
+                            </span>
+                          )}
                         </span>
                       )}
                     </Link>

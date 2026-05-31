@@ -245,31 +245,27 @@ export default function AttendancePage() {
   const [deleteOption, setDeleteOption] = useState<"checkin" | "checkout" | "all">("all");
 
   // 🔥 STATE FILTER - DEFAULT TANGGAL HARI INI
+  const getTodayLocalStr = () => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   const [tempDept, setTempDept] = useState("ALL");
   const [tempJabatan, setTempJabatan] = useState("ALL");
   const [tempEmployees, setTempEmployees] = useState<string[]>([]);
-  const [tempStartDate, setTempStartDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split("T")[0];
-  });
-  const [tempEndDate, setTempEndDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split("T")[0];
-  });
+  const [tempStartDate, setTempStartDate] = useState(getTodayLocalStr);
+  const [tempEndDate, setTempEndDate] = useState(getTodayLocalStr);
   const [tempStatus, setTempStatus] = useState("ALL");
 
   const [dept, setDept] = useState("ALL");
   const [jabatan, setJabatan] = useState("ALL");
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [isEmployeeModalOpen, setIsEmployeeModalOpen] = useState(false);
-  const [startDate, setStartDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split("T")[0];
-  });
-  const [endDate, setEndDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split("T")[0];
-  });
+  const [startDate, setStartDate] = useState(getTodayLocalStr);
+  const [endDate, setEndDate] = useState(getTodayLocalStr);
   const [status, setStatus] = useState("ALL");
   const [showTodayOnly, setShowTodayOnly] = useState(true);
   const [isFilterOpen, setIsFilterOpen] = useState(true);
@@ -437,8 +433,7 @@ export default function AttendancePage() {
 
   // 🔥 FUNGSI UNTUK MENAMPILKAN HARI INI
   const setTodayFilter = () => {
-    const today = new Date();
-    const todayStr = today.toISOString().split("T")[0];
+    const todayStr = getTodayLocalStr();
     setTempStartDate(todayStr);
     setTempEndDate(todayStr);
     setDept("ALL");
@@ -503,8 +498,7 @@ export default function AttendancePage() {
     setSelectedEmployees([]);
     setStatus("ALL");
     // Reset ke hari ini
-    const today = new Date();
-    const todayStr = today.toISOString().split("T")[0];
+    const todayStr = getTodayLocalStr();
     setTempStartDate(todayStr);
     setTempEndDate(todayStr);
     setStartDate(todayStr);

@@ -69,10 +69,13 @@ export default function MODReportListPage() {
   // Count checked questions
   const getReportStats = (report: Report) => {
     let total = 0, checked = 0, problems = 0;
-    report.areaAnswers?.forEach((area: any) => {
+    const areaData = report.areaAnswers || (report as any).areas || [];
+    areaData.forEach((area: any) => {
       area.questions?.forEach((q: any) => {
-        total++;
-        if (q.isChecked) checked++;
+        if (q.actionRequired || q.needNote || q.needPhoto) {
+          total++;
+          if (q.isChecked) checked++;
+        }
       });
     });
     if (report.problems) problems = report.problems.length;
@@ -167,7 +170,7 @@ export default function MODReportListPage() {
                 <Link key={r.id} href={`/manager-on-duty/report/${r.id}`} className="block rounded-xl bg-white border border-slate-200 hover:border-emerald-300 hover:shadow-md transition-all overflow-hidden group">
                   <div className="p-4 flex flex-col sm:flex-row sm:items-center gap-4">
                     <div className="w-16 h-16 rounded-xl bg-slate-50 border border-slate-100 flex flex-col items-center justify-center shrink-0 group-hover:bg-emerald-50 group-hover:border-emerald-100 transition-colors">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{getDayName(r.dayOfWeek as any).substring(0,3)}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{(getDayName(r.dayOfWeek as any) || new Date(r.date).toLocaleDateString('id-ID', {weekday: 'short'})).substring(0,3)}</span>
                       <span className="text-xl font-bold text-slate-700">{new Date(r.date).getDate()}</span>
                     </div>
                     <div className="flex-1 min-w-0">
@@ -180,7 +183,7 @@ export default function MODReportListPage() {
                           {r.status === "draft" ? "Draft" : r.status === "submitted" ? "Submitted" : "Reviewed"}
                         </span>
                       </div>
-                      <p className="text-[13px] text-slate-500 mb-2">Disubmit oleh <span className="font-medium text-slate-700">{r.submittedByName}</span></p>
+                        <p className="text-[13px] text-slate-500 mb-2">Disubmit oleh <span className="font-medium text-slate-700">{r.submittedByName || (r as any).userName}</span></p>
                       <div className="flex flex-wrap gap-4 text-xs font-medium">
                         <span className="flex items-center gap-1 text-slate-600">
                           <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>

@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import TopNav from "@/components/layout/TopNav";
 import Sidebar from "@/components/layout/Sidebar";
 import LoadingScreen from "@/components/ui/LoadingScreen";
+import CallListener from "@/components/CallListener";
 
 export default function AdminLayout({
   children,
@@ -41,6 +42,7 @@ export default function AdminLayout({
 
   return (
     <div className="flex h-screen bg-[#f8fafc] print:bg-white overflow-hidden print:overflow-visible print:h-auto print:block">
+      <CallListener />
       {/* Sidebar - Desktop */}
       <div className="hidden md:block flex-shrink-0 z-20 print:hidden">
         <Sidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />

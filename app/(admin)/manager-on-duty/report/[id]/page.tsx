@@ -51,6 +51,7 @@ type Report = {
   status: string;
   generalNotes?: string;
   areaAnswers?: AreaAnswer[];
+  areas?: AreaAnswer[];
   problems?: ProblemFound[];
   reviewedBy?: string;
   reviewedByName?: string;
@@ -137,9 +138,10 @@ export default function MODReportDetailPage() {
 
   // Stats
   let total = 0, checked = 0, needsAction = 0;
-  report.areaAnswers?.forEach(area => {
+  const areaData = report.areaAnswers || report.areas || [];
+  areaData.forEach(area => {
     area.questions?.forEach(q => {
-      if (q.actionRequired) {
+      if (q.actionRequired || q.needNote || q.needPhoto) {
         total++;
         if (q.isChecked) checked++;
         else needsAction++;
@@ -181,9 +183,9 @@ export default function MODReportDetailPage() {
           <div className="mt-4 pt-4 border-t flex justify-between items-center flex-wrap gap-4">
             <div>
               <p className="text-xs text-gray-500">Di-submit oleh</p>
-              <p className="font-semibold">{report.submittedByName}</p>
+              <p className="font-semibold">{report.submittedByName || (report as any).userName}</p>
               <p className="text-xs text-gray-400">
-                {report.submittedAt?.toDate()?.toLocaleString("id-ID") || "-"}
+                {(report.submittedAt || (report as any).createdAt || (report as any).updatedAt)?.toDate()?.toLocaleString("id-ID") || "-"}
               </p>
             </div>
             <div className="text-center">
@@ -198,7 +200,7 @@ export default function MODReportDetailPage() {
         </div>
 
         {/* Checklist */}
-        {report.areaAnswers?.map((area, ai) => (
+        {(report.areaAnswers || report.areas)?.map((area, ai) => (
           <div key={ai} className="rounded-xl bg-white shadow-md border overflow-hidden">
             <div className="bg-emerald-50 p-4 border-b flex items-center gap-2">
               <span className="w-8 h-8 rounded-full bg-emerald-200 text-emerald-700 flex items-center justify-center font-bold">{ai + 1}</span>

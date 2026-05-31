@@ -1,0 +1,1 @@
+const admin = require("firebase-admin"); const serviceAccount = require("../../../serviceAccountKey.json"); if (!admin.apps.length) { admin.initializeApp({ credential: admin.credential.cert(serviceAccount) }); } admin.firestore().collection("mod_schedules").limit(1).get().then(s => console.log(s.docs[0]?.data())).catch(console.error);

@@ -27,6 +27,7 @@ export type WorkOrderStatus =
   | "open"
   | "in_progress"
   | "pending_approval"
+  | "pending" // Tunda
   | "completed"
   | "cancelled";
 
@@ -110,6 +111,9 @@ export interface WorkOrder {
   assignedToDivision?: string;
   assignedToUser?: string;
   assignedToUserName?: string;
+  helpers?: string[]; // Petugas bantuan
+  actionNotes?: string; // Catatan pengerjaan/penundaan
+  actionPhotoUrl?: string; // Foto bukti tindakan
 
   // Area & Inventory (Optional)
   locationArea?: string;
@@ -192,6 +196,7 @@ export const getWOStatusColor = (status: WorkOrderStatus): string => {
   const colors: Record<WorkOrderStatus, string> = {
     open: "bg-red-100 text-red-600",
     in_progress: "bg-yellow-100 text-yellow-600",
+    pending: "bg-orange-100 text-orange-600",
     pending_approval: "bg-blue-100 text-blue-600",
     completed: "bg-green-100 text-green-600",
     cancelled: "bg-gray-100 text-gray-600"
@@ -204,6 +209,7 @@ export const getWOStatusLabel = (status: WorkOrderStatus): string => {
   const labels: Record<WorkOrderStatus, string> = {
     open: "Buka",
     in_progress: "Sedang Dikerjakan",
+    pending: "Ditunda",
     pending_approval: "Menunggu Persetujuan",
     completed: "Selesai",
     cancelled: "Dibatalkan"

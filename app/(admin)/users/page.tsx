@@ -40,6 +40,8 @@ type User = {
   company?: string;
   location?: string;
   joinDate?: string;
+  phone?: string;
+  phoneNumber?: string;
   photoUrl?: string;
   isActive: boolean;
   bankName?: string;
@@ -87,6 +89,7 @@ export default function UsersPage() {
   const [company, setCompany] = useState("");
   const [location, setLocation] = useState("");
   const [joinDate, setJoinDate] = useState("");
+  const [phone, setPhone] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [isActive, setIsActive] = useState(true);
   const [bankName, setBankName] = useState("");
@@ -175,7 +178,7 @@ export default function UsersPage() {
           dailyRate: dailyRate ? Number(dailyRate) : null,
           company: normalizedCompany,
           location: normalizedLocation,
-          joinDate, isActive,
+          joinDate, phone, isActive,
           bankName: normalizedBankName,
           bankAccountNumber,
           bankAccountName,
@@ -202,7 +205,7 @@ export default function UsersPage() {
           dailyRate: dailyRate ? Number(dailyRate) : null,
           company: normalizedCompany,
           location: normalizedLocation,
-          joinDate, photoUrl,
+          joinDate, phone, photoUrl,
           isActive: true,
           bankName: normalizedBankName,
           bankAccountNumber,
@@ -217,7 +220,7 @@ export default function UsersPage() {
         }
       }
       resetForm();
-      // loadUsers(); // Using onSnapshot
+      loadUsers();
       setShowForm(false);
     } catch (error: any) {
       toast.error(error.message);
@@ -243,7 +246,7 @@ export default function UsersPage() {
       await updateDoc(doc(db, "users", user.id), {
         isActive: !user.isActive,
       });
-      // loadUsers(); // Using onSnapshot
+      loadUsers();
       toast.success(`Status user berhasil diubah menjadi ${!user.isActive ? "aktif" : "nonaktif"}`);
     } catch (error: any) {
       toast.error(error.message);
@@ -256,7 +259,7 @@ export default function UsersPage() {
     
     try {
       await deleteDoc(doc(db, "users", user.id));
-      // loadUsers(); // Using onSnapshot
+      loadUsers();
       toast.success("✅ User berhasil dihapus");
     } catch (error: any) {
       toast.error(error.message);
@@ -281,6 +284,7 @@ export default function UsersPage() {
     setCompany(user.company || "");
     setLocation(user.location || "");
     setJoinDate(user.joinDate || "");
+    setPhone(user.phone || user.phoneNumber || "");
     setIsActive(user.isActive !== undefined ? user.isActive : true);
     setBankName(user.bankName || "");
     setBankAccountNumber(user.bankAccountNumber || "");
@@ -303,6 +307,7 @@ export default function UsersPage() {
     setCompany("");
     setLocation("");
     setJoinDate("");
+    setPhone("");
     setIsActive(true);
     setBankName("");
     setBankAccountNumber("");
@@ -788,6 +793,13 @@ export default function UsersPage() {
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   />
                 )}
+                <input
+                  placeholder="No. Telepon / HP"
+                  type="tel"
+                  value={phone || ""}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                />
                 <div>
                   <select
                     value={role || ""}

@@ -9,10 +9,12 @@ import {
   getOrCreatePrivateConversation,
   searchUsers,
   subscribeToUnreadCount,
+  deleteConversation,
+  archiveConversation,
 } from "@/lib/chat/firebase";
 import type { Conversation, ChatUser } from "@/types/chat";
 import toast from "react-hot-toast";
-import { MessageSquare, Users, Plus, Search } from "lucide-react";
+import { MessageSquare, Users, Plus, Search, Trash2, LogOut } from "lucide-react";
 
 export default function ChatPage() {
   const [activeTab, setActiveTab] = useState<"groups" | "private">("groups");
@@ -125,6 +127,30 @@ export default function ChatPage() {
     return "Chat";
   };
 
+  const handleDeleteConversation = async (e: React.MouseEvent, convId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm("Hapus percakapan ini beserta semua pesan? Tindakan ini tidak bisa dibatalkan.")) return;
+    try {
+      await deleteConversation(convId);
+      toast.success("Percakapan berhasil dihapus");
+    } catch (error: any) {
+      toast.error("Gagal menghapus: " + error.message);
+    }
+  };
+
+  const handleArchiveConversation = async (e: React.MouseEvent, convId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm("Keluar & arsipkan percakapan ini dari daftar Anda?")) return;
+    try {
+      await archiveConversation(convId);
+      toast.success("Percakapan diarsipkan");
+    } catch (error: any) {
+      toast.error("Gagal mengarsipkan: " + error.message);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -210,13 +236,13 @@ export default function ChatPage() {
                   {conv.type === "group" ? (
                     <Users className="w-6 h-6" />
                   ) : (
-                    getDisplayName(conv, "")[0]?.toUpperCase() || "?"
+                    getDisplayName(conv, currentUserId)[0]?.toUpperCase() || "?"
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start">
                     <h3 className="font-semibold text-slate-800 truncate">
-                      {getDisplayName(conv, "")}
+                      {getDisplayName(conv, currentUserId)}
                     </h3>
                     {conv.lastMessage && (
                       <span className="text-xs text-slate-400">
@@ -234,11 +260,31 @@ export default function ChatPage() {
                   <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded">
                     {conv.memberIds?.length || 0}
                   </span>
-                ) : conv.lastMessage && conv.lastMessage.senderId !== currentUserId ? (
-                  <span className="text-xs bg-red-500 text-white px-2 py-1 rounded-full font-bold">
-                    NEW
-                  </span>
                 ) : null}
+                
+                {(conv.unreadCount ?? 0) > 0 && (
+                  <span className="text-xs bg-red-500 text-white px-2 py-1 rounded-full font-bold ml-2">
+                    {conv.unreadCount}
+                  </span>
+                )}
+                <div className="flex items-center gap-1 shrink-0 ml-2">
+                  <button
+                    onClick={(e) => handleArchiveConversation(e, conv.id)}
+                    title="Arsipkan / Keluar"
+                    className="p-1.5 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                  {(conv.createdBy === currentUserId || conv.type === "private") && (
+                    <button
+                      onClick={(e) => handleDeleteConversation(e, conv.id)}
+                      title="Hapus Permanen"
+                      className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               </a>
             ))}
           </div>

@@ -24,6 +24,7 @@ export interface Conversation {
   createdAt: FirebaseTimestamp;
   updatedAt: FirebaseTimestamp;
   lastMessage?: LastMessage;
+  unreadCount?: number;
   // For private chats
   participants?: string[];
   participantNames?: string[];
@@ -42,7 +43,7 @@ export interface Message {
   senderName: string;
   senderPhotoUrl?: string;
   text: string;
-  type: "text" | "image";
+  type: "text" | "image" | "file" | "call";
   imageUrl?: string;
   timestamp: FirebaseTimestamp;
   isRead: boolean;

@@ -709,3 +709,15 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(135deg, #047857, #059669);
 }
+
+/* Fix for Agora Video Track size */
+div[id^="agora-video-"], div[id^="video_track_"] {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+div[id^="agora-video-"] video, div[id^="video_track_"] video {
+  object-fit: cover !important;
+  width: 100% !important;
+  height: 100% !important;
+}

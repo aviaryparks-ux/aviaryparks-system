@@ -7,6 +7,9 @@ import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { NotificationIcon } from "@/components/icons/MenuIcons";
 
+import { subscribeToNotifications, markAllNotificationsAsRead, markNotificationAsRead } from "@/lib/notifications/firebase";
+import { AppNotification } from "@/types/notification";
+
 interface TopNavProps {
   onMobileMenuClick?: () => void;
 }
@@ -20,10 +23,7 @@ export default function TopNav({ onMobileMenuClick }: TopNavProps) {
   const userDropdownRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
 
-  const [notifications, setNotifications] = useState([
-    { id: 1, title: "Pengajuan baru", message: "Handi mengajukan cuti", isRead: false, time: "5 menit lalu" },
-    { id: 2, title: "Koreksi absensi", message: "Koreksi menunggu approval", isRead: false, time: "1 jam lalu" },
-  ]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
@@ -40,6 +40,37 @@ export default function TopNav({ onMobileMenuClick }: TopNavProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    const unsub = subscribeToNotifications(setNotifications);
+    return () => unsub();
+  }, [user]);
+
+  const handleMarkAllRead = async () => {
+    await markAllNotificationsAsRead();
+  };
+
+  const handleNotificationClick = async (notif: AppNotification) => {
+    if (!notif.isRead) {
+      await markNotificationAsRead(notif.id);
+    }
+    if (notif.link) {
+      router.push(notif.link);
+      setIsNotificationOpen(false);
+    }
+  };
+
+  const formatTime = (timestamp: any) => {
+    if (!timestamp) return "";
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    if (diff < 60000) return "Baru saja";
+    if (diff < 3600000) return `${Math.floor(diff / 60000)} menit lalu`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)} jam lalu`;
+    return `${Math.floor(diff / 86400000)} hari lalu`;
+  };
+
   const getPageTitle = (path: string) => {
     if (path === "/dashboard") return "Dashboard";
     if (path.includes("/manager-on-duty")) return "Manager on Duty";
@@ -54,6 +85,12 @@ export default function TopNav({ onMobileMenuClick }: TopNavProps) {
       if (path.split("/").length > 2) return "Detail Memo";
       return "Internal Memo";
     }
+    if (path === "/chat") return "Chat";
+    if (path.startsWith("/chat/")) return "Chat";
+    if (path.includes("/org-chart")) return "Struktur Organisasi";
+    if (path.includes("/settings")) return "Pengaturan";
+    if (path.includes("/articles")) return "Artikel & Pengumuman";
+    if (path.includes("/work-orders")) return "Work Orders";
     return path.split("/").pop()?.replace(/-/g, " ").replace(/\b\w/g, l => l.toUpperCase()) || "Page";
   };
 
@@ -135,15 +172,32 @@ export default function TopNav({ onMobileMenuClick }: TopNavProps) {
               <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
                 <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                   <h3 className="font-semibold text-slate-800">Notifikasi</h3>
-                  <button onClick={() => setNotifications([])} className="text-xs text-emerald-600 font-medium">Tandai dibaca</button>
+                  <button onClick={handleMarkAllRead} className="text-xs text-emerald-600 font-medium">Tandai dibaca</button>
                 </div>
                 <div className="max-h-64 overflow-y-auto">
-                  {notifications.map(n => (
-                    <div key={n.id} className="p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer">
-                      <p className="text-sm font-medium text-slate-800">{n.title}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{n.message}</p>
-                    </div>
-                  ))}
+                  {notifications.length === 0 ? (
+                    <div className="p-8 text-center text-slate-500 text-sm">Belum ada notifikasi</div>
+                  ) : (
+                    notifications.map(n => (
+                      <div 
+                        key={n.id} 
+                        onClick={() => handleNotificationClick(n)}
+                        className={`p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer ${!n.isRead ? 'bg-emerald-50/30' : ''}`}
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <p className={`text-sm ${!n.isRead ? 'font-semibold text-emerald-800' : 'font-medium text-slate-800'}`}>
+                            {n.title}
+                          </p>
+                          <span className="text-[10px] text-slate-400 whitespace-nowrap ml-2">
+                            {formatTime(n.createdAt)}
+                          </span>
+                        </div>
+                        <p className={`text-xs ${!n.isRead ? 'text-slate-600' : 'text-slate-500'} line-clamp-2`}>
+                          {n.message}
+                        </p>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             )}
