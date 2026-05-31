@@ -182,7 +182,8 @@ export default function ChatRoomPage() {
     if (conversation.type === "private" && conversation.participants) {
       receiverId = conversation.participants.find(id => id !== currentUserId) || "";
     } else {
-      toast.error("Group calling not fully supported for ringing yet. Joining directly.");
+      // For groups, we just join directly and drop a message so others can see a call started
+      await sendMessage(conversationId, `Memulai panggilan ${isVideo ? "video" : "suara"} grup...`, 'call');
       await joinCallDirectly(isVideo);
       return;
     }
