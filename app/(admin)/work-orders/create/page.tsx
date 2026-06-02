@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { db, storage } from "@/lib/firebase";
-import { collection, addDoc, getDocs, query, orderBy, getDoc, doc } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, orderBy, getDoc, doc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import imageCompression from "browser-image-compression";
 import { useAuth } from "@/contexts/AuthContext";
@@ -356,6 +356,34 @@ export default function CreateWorkOrderPage() {
       }
 
       const docRef = await addDoc(collection(db, "work_orders"), data);
+
+      if (isManualItem && manualItemName && template && selectedArea) {
+        try {
+          const areaIndex = template.areas.findIndex(a => a.name === selectedArea);
+          if (areaIndex !== -1) {
+            const existingItem = template.areas[areaIndex].items.find(
+              i => i.name.toLowerCase() === manualItemName.toLowerCase()
+            );
+            
+            if (!existingItem) {
+              const updatedTemplate = { ...template };
+              updatedTemplate.areas[areaIndex].items.push({
+                id: Math.random().toString(36).substr(2, 9),
+                name: manualItemName
+              });
+              
+              const templateRef = doc(db, "wo_inventory_templates", "default");
+              await updateDoc(templateRef, {
+                areas: updatedTemplate.areas,
+                updatedAt: new Date(),
+                updatedBy: user.uid
+              });
+            }
+          }
+        } catch (templateErr) {
+          console.error("Error updating template:", templateErr);
+        }
+      }
 
       if (woType === "project" && approvers.length > 0) {
         const firstApproverId = approvers[0].uid;
