@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, limit, where, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LoadingScreen from "@/components/ui/LoadingScreen";
@@ -185,11 +185,27 @@ export default function DashboardPage() {
     setError(null);
 
     try {
+      // Fetch each collection ONCE with limits/filters, then pass to sub-functions
+      const yearStart = Timestamp.fromDate(new Date(selectedYear, 0, 1));
+      const yearEnd = Timestamp.fromDate(new Date(selectedYear, 11, 31, 23, 59, 59));
+
+      const [usersSnap, attendanceSnap, requestsSnap, shiftsSnap] = await Promise.all([
+        getDocs(query(collection(db, "users"), limit(500))),
+        getDocs(query(
+          collection(db, "attendance"),
+          where("date", ">=", yearStart),
+          where("date", "<=", yearEnd),
+          orderBy("date", "desc")
+        )),
+        getDocs(query(collection(db, "attendance_requests"), orderBy("createdAt", "desc"), limit(200))),
+        getDocs(collection(db, "shifts")),
+      ]);
+
       await Promise.all([
-        loadStats(),
-        loadMonthlyData(),
-        loadDepartmentData(),
-        loadShiftDistribution(),
+        loadStats(usersSnap, attendanceSnap, requestsSnap, shiftsSnap),
+        loadMonthlyData(attendanceSnap, usersSnap),
+        loadDepartmentData(usersSnap, attendanceSnap),
+        loadShiftDistribution(shiftsSnap, attendanceSnap),
         loadRecentActivities(),
       ]);
     } catch (err: any) {
@@ -200,17 +216,15 @@ export default function DashboardPage() {
     }
   }
 
-  async function loadStats() {
+  async function loadStats(
+    usersSnap: any,
+    attendanceSnap: any,
+    requestsSnap: any,
+    shiftsSnap: any
+  ) {
     try {
-      const [usersSnap, attendanceSnap, requestsSnap, shiftsSnap] = await Promise.all([
-        getDocs(collection(db, "users")),
-        getDocs(collection(db, "attendance")),
-        getDocs(collection(db, "attendance_requests")),
-        getDocs(collection(db, "shifts")),
-      ]);
-
       let totalUsers = 0;
-      usersSnap.forEach(doc => {
+      usersSnap.forEach((doc: any) => {
         const role = doc.data().role;
         if (role === "employee" || role === "spv" || role === "staff") {
           totalUsers++;
@@ -219,7 +233,7 @@ export default function DashboardPage() {
 
       const today = new Date().toISOString().split("T")[0];
       let todayAttendance = 0;
-      attendanceSnap.forEach(doc => {
+      attendanceSnap.forEach((doc: any) => {
         const data = doc.data();
         if (data.date?.toDate) {
           const dateStr = data.date.toDate().toISOString().split("T")[0];
@@ -230,7 +244,7 @@ export default function DashboardPage() {
       });
 
       let pending = 0, approved = 0, rejected = 0;
-      requestsSnap.forEach(doc => {
+      requestsSnap.forEach((doc: any) => {
         const status = doc.data().status;
         if (status === "pending") pending++;
         else if (status === "approved") approved++;
@@ -238,17 +252,16 @@ export default function DashboardPage() {
       });
 
       let activeShifts = 0;
-      shiftsSnap.forEach(doc => {
+      shiftsSnap.forEach((doc: any) => {
         if (doc.data().isActive === true) activeShifts++;
       });
 
-      // FIX: Calculate attendance rate based on unique days per user
+      // Calculate attendance rate based on unique days per user (last 30 days)
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      // Count unique user-day combinations
       const userDaysMap = new Map<string, Set<string>>();
-      attendanceSnap.forEach(doc => {
+      attendanceSnap.forEach((doc: any) => {
         const data = doc.data();
         if (data.date?.toDate && data.date.toDate() >= thirtyDaysAgo && data.checkIn) {
           const dateStr = data.date.toDate().toISOString().split("T")[0];
@@ -260,7 +273,6 @@ export default function DashboardPage() {
         }
       });
 
-      // Calculate total possible attendance days (users x 30 days)
       const totalPossibleDays = totalUsers * 30;
       let totalActualDays = 0;
       userDaysMap.forEach((daysSet) => {
@@ -285,12 +297,10 @@ export default function DashboardPage() {
     }
   }
 
-  async function loadMonthlyData() {
+  async function loadMonthlyData(attendanceSnap: any, usersSnap: any) {
     try {
-      const attendanceSnap = await getDocs(collection(db, "attendance"));
-      const usersSnap = await getDocs(collection(db, "users"));
       const userMap: Record<string, string> = {};
-      usersSnap.forEach(doc => {
+      usersSnap.forEach((doc: any) => {
         userMap[doc.id] = doc.data().name || "Unknown";
       });
 
@@ -305,7 +315,7 @@ export default function DashboardPage() {
         alphaCountPerUser[monthNames[i]] = {};
       }
 
-      attendanceSnap.forEach(doc => {
+      attendanceSnap.forEach((doc: any) => {
         const data = doc.data();
         if (data.date?.toDate) {
           const date = data.date.toDate();
@@ -390,12 +400,11 @@ export default function DashboardPage() {
     }
   }
 
-  async function loadDepartmentData() {
+  async function loadDepartmentData(usersSnap: any, attendanceSnap: any) {
     try {
-      const usersSnap = await getDocs(collection(db, "users"));
       const deptMap: Record<string, { total: number; hadir: number }> = {};
 
-      usersSnap.forEach(doc => {
+      usersSnap.forEach((doc: any) => {
         const data = doc.data();
         const role = data.role;
         const dept = data.department;
@@ -412,11 +421,10 @@ export default function DashboardPage() {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const attendanceSnap = await getDocs(collection(db, "attendance"));
-      attendanceSnap.forEach(doc => {
+      attendanceSnap.forEach((doc: any) => {
         const data = doc.data();
         if (data.date?.toDate && data.date.toDate() >= thirtyDaysAgo && data.checkIn) {
-          const userDoc = usersSnap.docs.find(u => u.id === data.uid);
+          const userDoc = usersSnap.docs.find((u: any) => u.id === data.uid);
           const role = userDoc?.data()?.role;
           const dept = userDoc?.data()?.department;
 
@@ -445,13 +453,12 @@ export default function DashboardPage() {
     }
   }
 
-  async function loadShiftDistribution() {
+  async function loadShiftDistribution(shiftsSnap: any, attendanceSnap: any) {
     try {
-      const shiftsSnap = await getDocs(collection(db, "shifts"));
       const distribution: ShiftDistribution[] = [];
       let index = 0;
 
-      shiftsSnap.forEach(doc => {
+      shiftsSnap.forEach((doc: any) => {
         const data = doc.data();
         if (data.isActive !== false && data.name !== "Day Off" && data.name !== "PHC") {
           distribution.push({
@@ -467,8 +474,7 @@ export default function DashboardPage() {
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const shiftCount: Record<string, number> = {};
 
-      const attendanceSnap = await getDocs(collection(db, "attendance"));
-      attendanceSnap.forEach(doc => {
+      attendanceSnap.forEach((doc: any) => {
         const data = doc.data();
         if (data.date?.toDate && data.date.toDate() >= thirtyDaysAgo && data.shift?.name) {
           const shiftName = data.shift.name;

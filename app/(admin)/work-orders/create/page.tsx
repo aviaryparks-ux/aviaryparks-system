@@ -47,8 +47,10 @@ export default function CreateWorkOrderPage() {
   const [manualItemName, setManualItemName] = useState("");
 
   // SLA (for Urgent)
-  const [dueDate, setDueDate] = useState("");
-  const [dueTime, setDueTime] = useState("");
+  const [responseDueDate, setResponseDueDate] = useState("");
+  const [responseDueTime, setResponseDueTime] = useState("");
+  const [resolutionDueDate, setResolutionDueDate] = useState("");
+  const [resolutionDueTime, setResolutionDueTime] = useState("");
 
   // Milestones (for Project)
   const [milestones, setMilestones] = useState<Milestone[]>([]);
@@ -59,7 +61,13 @@ export default function CreateWorkOrderPage() {
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([]);
   const [estimatedBudget, setEstimatedBudget] = useState(0);
   const [newBudgetDesc, setNewBudgetDesc] = useState("");
-  const [newBudgetAmount, setNewBudgetAmount] = useState(0);
+  const [newBudgetQty, setNewBudgetQty] = useState(1);
+  const [newBudgetPrice, setNewBudgetPrice] = useState(0);
+
+  // Approvers (for Project)
+  const [approvers, setApprovers] = useState<{ role: string; name: string; uid: string }[]>([]);
+  const [newApproverRole, setNewApproverRole] = useState("");
+  const [selectedApproverId, setSelectedApproverId] = useState("");
 
   // Photos
   const [photos, setPhotos] = useState<WorkOrderPhoto[]>([]);
@@ -90,6 +98,7 @@ export default function CreateWorkOrderPage() {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [showIMPreview, setShowIMPreview] = useState(false);
 
   useEffect(() => {
     loadUsers();
@@ -140,19 +149,39 @@ export default function CreateWorkOrderPage() {
   };
 
   const addBudgetItem = () => {
-    if (!newBudgetDesc.trim() || newBudgetAmount <= 0) return;
+    if (!newBudgetDesc.trim() || newBudgetQty <= 0 || newBudgetPrice <= 0) return;
+    const estimatedCost = newBudgetQty * newBudgetPrice;
     setBudgetItems(prev => [...prev, {
       id: Math.random().toString(36).substr(2, 9),
       description: newBudgetDesc,
       category: assignedToDept || "General",
-      estimatedCost: newBudgetAmount,
+      qty: newBudgetQty,
+      unitPrice: newBudgetPrice,
+      estimatedCost: estimatedCost,
       actualCost: 0
     }]);
+    setEstimatedBudget(prev => prev + estimatedCost);
     setNewBudgetDesc("");
-    setNewBudgetAmount(0);
+    setNewBudgetQty(1);
+    setNewBudgetPrice(0);
+  };
+
+  const addApprover = () => {
+    if (!newApproverRole.trim() || !selectedApproverId) return;
+    const usr = users.find(u => u.id === selectedApproverId);
+    if (!usr) return;
+    setApprovers(prev => [...prev, { role: newApproverRole, name: usr.name, uid: usr.id }]);
+    setNewApproverRole("");
+    setSelectedApproverId("");
+  };
+
+  const removeApprover = (idx: number) => {
+    setApprovers(prev => prev.filter((_, i) => i !== idx));
   };
 
   const removeBudgetItem = (id: string) => {
+    const item = budgetItems.find(b => b.id === id);
+    if (item) setEstimatedBudget(prev => prev - item.estimatedCost);
     setBudgetItems(prev => prev.filter(b => b.id !== id));
   };
 
@@ -164,39 +193,52 @@ export default function CreateWorkOrderPage() {
   const handleSubmit = async () => {
     if (!user) return;
 
+    const showError = (msg: string) => {
+      setError(msg);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
     if (!title.trim()) {
-      setError("Judul tidak boleh kosong");
+      showError("Judul tidak boleh kosong");
       return;
     }
     if (!assignedToDept) {
-      setError("Pilih departemen tujuan");
+      showError("Pilih departemen tujuan");
       return;
     }
     if (!photoFile) {
-      setError("Mohon upload foto bukti terlebih dahulu");
+      showError("Mohon upload foto bukti terlebih dahulu");
       return;
     }
     if (!selectedArea) {
-      setError("Mohon pilih atau isi Lokasi / Area");
+      showError("Mohon pilih atau isi Lokasi / Area");
       return;
     }
     if (template && template.areas.length > 0) {
       if (!selectedItem && !isManualItem) {
-        setError("Mohon pilih Barang Inventory");
+        showError("Mohon pilih Barang Inventory");
         return;
       }
       if (isManualItem && !manualItemName) {
-        setError("Mohon isi nama barang (Manual)");
+        showError("Mohon isi nama barang (Manual)");
         return;
       }
     }
-    if (woType === "urgent" && (!dueDate || !dueTime)) {
-      setError("SLA (tanggal & waktu deadline) wajib diisi untuk WO Urgent");
+    if (woType === "urgent" && (!responseDueDate || !responseDueTime || !resolutionDueDate || !resolutionDueTime)) {
+      showError("Batas Waktu Respons dan Batas Waktu Penyelesaian wajib diisi untuk WO Urgent");
       return;
     }
-    if (woType === "project" && milestones.length === 0) {
-      setError("Minimal 1 milestone untuk WO Project");
-      return;
+    if (woType === "project") {
+      if (approvers.length === 0) {
+        showError("Minimal 1 penyetuju (approver) harus ditambahkan untuk Project WO");
+        return;
+      }
+      
+      // Tampilkan Preview IM terlebih dahulu jika belum
+      if (!showIMPreview) {
+        setShowIMPreview(true);
+        return;
+      }
     }
 
     setSaving(true);
@@ -219,7 +261,7 @@ export default function CreateWorkOrderPage() {
           uploadedPhotoUrl = await getDownloadURL(snapshot.ref);
         } catch (error) {
           console.error("Error compressing/uploading image:", error);
-          setError("Gagal memproses dan mengupload foto");
+          showError("Gagal memproses dan mengupload foto");
           setSaving(false);
           return;
         }
@@ -227,8 +269,8 @@ export default function CreateWorkOrderPage() {
 
       // Calculate SLA hours
       let slaHours = 0;
-      if (woType === "urgent" && dueDate && dueTime) {
-        const dueDateTime = new Date(`${dueDate}T${dueTime}`);
+      if (woType === "urgent" && resolutionDueDate && resolutionDueTime) {
+        const dueDateTime = new Date(`${resolutionDueDate}T${resolutionDueTime}`);
         const now = new Date();
         slaHours = Math.max(0, Math.round((dueDateTime.getTime() - now.getTime()) / (1000 * 60 * 60)));
       }
@@ -241,7 +283,7 @@ export default function CreateWorkOrderPage() {
         title,
         description,
         type: woType,
-        status: "open",
+        status: woType === "project" ? "pending_approval" : "open",
         priority,
         createdBy: user.uid,
         createdByName: user.name,
@@ -272,31 +314,183 @@ export default function CreateWorkOrderPage() {
       // Type-specific fields
       if (woType === "urgent") {
         data.sla = {
-          dueDate,
-          dueTime,
-          slaHours,
-          isOverdue: false
+          dueDate: resolutionDueDate, // backward compatible
+          dueTime: resolutionDueTime, // backward compatible
+          slaHours, // backward compatible
+          isOverdue: false, // backward compatible
+          responseDueDate,
+          responseDueTime,
+          resolutionDueDate,
+          resolutionDueTime,
+          totalPausedMinutes: 0
         };
       } else {
+        // Project WO
+        const steps = [
+          {
+            id: "step_0",
+            step: 0,
+            role: "Pemohon / Dibuat Oleh",
+            approverId: user?.uid,
+            approverName: user?.name,
+            status: "approved",
+            actionAt: new Date(),
+            signatureUrl: user?.signatureUrl || "", // get signature from user profile if exists
+          },
+          ...approvers.map((a, i) => ({
+          id: Math.random().toString(36).substr(2, 9),
+          step: i + 1,
+          role: a.role,
+          approverName: a.name,
+          approverId: a.uid,
+          status: "pending",
+          actionAt: null
+        })),];
+
         data.milestones = milestones;
         data.budget = budgetItems;
         data.estimatedBudget = estimatedBudget;
         data.actualBudget = 0;
-        data.approvalSteps = defaultApprovalSteps();
-        data.currentApprovalStep = 0;
+        data.approvalSteps = steps;
+        data.currentApprovalStep = 1;
       }
 
-      await addDoc(collection(db, "work_orders"), data);
+      const docRef = await addDoc(collection(db, "work_orders"), data);
+
+      if (woType === "project" && approvers.length > 0) {
+        const firstApproverId = approvers[0].uid;
+        await addDoc(collection(db, "notifications"), {
+          userId: firstApproverId,
+          title: "✍️ Permintaan Persetujuan Project",
+          body: `${user.name} meminta persetujuan Anda untuk Internal Memo Project: ${title}`,
+          type: "approval_request",
+          data: {
+            woId: docRef.id,
+          },
+          isRead: false,
+          createdAt: new Date(),
+        });
+      }
 
       alert("✅ Work Order berhasil dibuat!");
       router.push("/work-orders");
     } catch (err) {
       console.error("Error creating WO:", err);
-      setError("Gagal membuat Work Order: " + (err as Error).message);
+      showError("Gagal membuat Work Order: " + (err as Error).message);
     } finally {
       setSaving(false);
     }
   };
+
+  if (showIMPreview) {
+    return (
+      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
+        <div className="max-w-4xl mx-auto py-8">
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+            <div className="p-6 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-slate-800">Preview Internal Memo</h2>
+              <button onClick={() => setShowIMPreview(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300">
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-12 overflow-y-auto bg-white flex-1" style={{ fontFamily: "Arial, sans-serif" }}>
+              <div className="text-center mb-8 flex flex-col items-center">
+                <img src="/images/logo.png" alt="Aviary Park" className="w-48 mb-4 object-contain" />
+                <h1 className="text-3xl font-black text-slate-800 tracking-wider">AVIARY PARK INDONESIA</h1>
+                <p className="text-sm font-medium text-slate-500 uppercase tracking-[0.2em] mt-1">A Butterfly Sanctuary</p>
+              </div>
+
+              <h2 className="text-3xl font-bold text-slate-300 mb-8 border-b-2 border-slate-200 pb-4">INTEROFFICE MEMO</h2>
+
+              <div className="grid grid-cols-[100px_10px_1fr] gap-y-3 text-sm font-medium text-slate-800 mb-8">
+                <div>Dari</div><div>:</div><div className="uppercase">{user?.name}</div>
+                <div>Kepada</div><div>:</div><div className="uppercase">{assignedToDept} {assignedToDivision ? `- ${assignedToDivision}` : ""}</div>
+                <div>Tanggal</div><div>:</div><div>{new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</div>
+                <div>Perihal</div><div>:</div><div className="font-bold uppercase">{title}</div>
+              </div>
+
+              <div className="border-t border-slate-300 pt-6 min-h-[150px]">
+                <p className="whitespace-pre-wrap text-slate-700 leading-relaxed mb-6">{description || "-"}</p>
+                
+                <p className="font-bold mb-2 text-slate-800">Rincian Estimasi Budget:</p>
+                <table className="w-full text-sm border-collapse mb-4 border border-slate-300">
+                  <thead className="bg-slate-100">
+                    <tr>
+                      <th className="border border-slate-300 p-2 text-left">Deskripsi</th>
+                      <th className="border border-slate-300 p-2 text-center">Qty</th>
+                      <th className="border border-slate-300 p-2 text-right">Harga Satuan</th>
+                      <th className="border border-slate-300 p-2 text-right">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {budgetItems.map(b => (
+                      <tr key={b.id}>
+                        <td className="border border-slate-300 p-2">{b.description}</td>
+                        <td className="border border-slate-300 p-2 text-center">{b.qty}</td>
+                        <td className="border border-slate-300 p-2 text-right">Rp {(b.unitPrice || 0).toLocaleString("id-ID")}</td>
+                        <td className="border border-slate-300 p-2 text-right">Rp {b.estimatedCost.toLocaleString("id-ID")}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-slate-50 font-bold">
+                      <td colSpan={3} className="border border-slate-300 p-2 text-right">Total Estimasi Budget</td>
+                      <td className="border border-slate-300 p-2 text-right text-purple-700">Rp {estimatedBudget.toLocaleString("id-ID")}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-16 flex justify-between px-10 gap-8">
+                <div className="text-center w-48 flex flex-col justify-end h-40 relative">
+                  <p className="text-sm font-medium mb-auto">Dibuat Oleh,</p>
+                  {user?.signatureUrl ? (
+                    <div className="h-20 w-full flex items-center justify-center relative">
+                      <img src={user.signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                    </div>
+                  ) : (
+                    <div className="h-20 flex items-center justify-center"></div>
+                  )}
+                  <div className="border-t border-slate-800 pt-2 mt-2 w-full">
+                    <p className="font-bold text-sm">{user?.name}</p>
+                    <p className="text-xs text-slate-500 mt-1">{user?.role || "Pemohon"}</p>
+                  </div>
+                </div>
+                
+                {approvers.map((appr, idx) => (
+                  <div key={idx} className="text-center w-48 flex flex-col justify-end h-40 relative">
+                    <p className="text-sm font-medium mb-auto">Disetujui Oleh,</p>
+                    <div className="h-20 w-full flex items-center justify-center text-gray-300 italic text-xs">
+                      (Menunggu Persetujuan)
+                    </div>
+                    <div className="border-t border-slate-800 pt-2 mt-2 w-full">
+                      <p className="font-bold text-sm">{appr.name}</p>
+                      <p className="text-xs text-slate-500 mt-1">{appr.role}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-4">
+              <button
+                onClick={() => setShowIMPreview(false)}
+                className="px-6 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-100 transition-colors"
+              >
+                Kembali Edit
+              </button>
+              <button
+                onClick={() => handleSubmit()}
+                disabled={saving}
+                className="px-6 py-3 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 transition-colors flex items-center gap-2"
+              >
+                {saving ? "Mengirim..." : "Kirim Pengajuan Resmi"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </ProtectedRoute>
+    );
+  }
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
@@ -620,46 +814,66 @@ export default function CreateWorkOrderPage() {
               SLA (Service Level Agreement)
             </h2>
             <p className="text-sm text-slate-500 mb-6 font-medium relative z-10">
-              Tentukan deadline penyelesaian. WO otomatis ditandai overdue jika lewat waktu.
+              Tentukan batas waktu (deadline) respons teknisi dan batas penyelesaian pekerjaan.
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 relative z-10">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Tanggal Deadline <span className="text-red-500">*</span></label>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={e => setDueDate(e.target.value)}
-                  className="w-full border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-red-500 text-slate-800"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Waktu Deadline <span className="text-red-500">*</span></label>
-                <input
-                  type="time"
-                  value={dueTime}
-                  onChange={e => setDueTime(e.target.value)}
-                  className="w-full border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-red-500 text-slate-800"
-                />
-              </div>
-            </div>
-            {dueDate && dueTime && (
-              <div className="mt-5 p-4 bg-red-50 rounded-xl border border-red-100 relative z-10 flex items-center gap-3">
-                <span className="text-2xl">🚨</span>
-                <div>
-                  <p className="text-xs font-bold text-red-800 uppercase tracking-wider mb-0.5">Batas Waktu</p>
-                  <p className="text-sm font-bold text-red-700">
-                    {new Date(`${dueDate}T${dueTime}`).toLocaleString("id-ID", {
-                      weekday: "long",
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit"
-                    })}
-                  </p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
+              {/* Response SLA */}
+              <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200">
+                <h3 className="font-bold text-yellow-800 mb-3 flex items-center gap-2">
+                  <span>⏱️</span> Batas Waktu Respons
+                </h3>
+                <p className="text-xs text-yellow-700 mb-4 font-medium">Batas teknisi mengklik "Mulai Kerja"</p>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Tanggal <span className="text-red-500">*</span></label>
+                    <input
+                      type="date"
+                      value={responseDueDate}
+                      onChange={e => setResponseDueDate(e.target.value)}
+                      className="w-full border-0 bg-white rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 text-slate-800 shadow-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Waktu <span className="text-red-500">*</span></label>
+                    <input
+                      type="time"
+                      value={responseDueTime}
+                      onChange={e => setResponseDueTime(e.target.value)}
+                      className="w-full border-0 bg-white rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-yellow-500 text-slate-800 shadow-sm"
+                    />
+                  </div>
                 </div>
               </div>
-            )}
+
+              {/* Resolution SLA */}
+              <div className="bg-red-50 p-4 rounded-xl border border-red-200">
+                <h3 className="font-bold text-red-800 mb-3 flex items-center gap-2">
+                  <span>🏁</span> Batas Waktu Penyelesaian
+                </h3>
+                <p className="text-xs text-red-700 mb-4 font-medium">Batas teknisi mengklik "Selesai"</p>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Tanggal <span className="text-red-500">*</span></label>
+                    <input
+                      type="date"
+                      value={resolutionDueDate}
+                      onChange={e => setResolutionDueDate(e.target.value)}
+                      className="w-full border-0 bg-white rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-red-500 text-slate-800 shadow-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Waktu <span className="text-red-500">*</span></label>
+                    <input
+                      type="time"
+                      value={resolutionDueTime}
+                      onChange={e => setResolutionDueTime(e.target.value)}
+                      className="w-full border-0 bg-white rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-red-500 text-slate-800 shadow-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -742,13 +956,9 @@ export default function CreateWorkOrderPage() {
 
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-600 mb-1">Total Estimated Budget (Rp)</label>
-              <input
-                type="number"
-                value={estimatedBudget}
-                onChange={e => setEstimatedBudget(Number(e.target.value))}
-                className="w-full border rounded-lg px-4 py-3"
-                placeholder="0"
-              />
+              <div className="w-full border rounded-lg px-4 py-3 bg-gray-50 text-gray-700 font-bold">
+                Rp {estimatedBudget.toLocaleString("id-ID")}
+              </div>
             </div>
 
             {/* Budget items */}
@@ -757,7 +967,7 @@ export default function CreateWorkOrderPage() {
                 <div key={b.id} className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
                   <div className="flex-1">
                     <p className="font-medium text-sm">{b.description}</p>
-                    <p className="text-xs text-gray-500">Rp {b.estimatedCost.toLocaleString("id-ID")}</p>
+                    <p className="text-xs text-gray-500">{b.qty} x Rp {(b.unitPrice || 0).toLocaleString("id-ID")} = Rp {b.estimatedCost.toLocaleString("id-ID")}</p>
                   </div>
                   <button
                     type="button"
@@ -771,27 +981,104 @@ export default function CreateWorkOrderPage() {
             </div>
 
             {/* Add budget item */}
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
               <input
                 type="text"
                 value={newBudgetDesc}
                 onChange={e => setNewBudgetDesc(e.target.value)}
-                placeholder="Deskripsi item..."
-                className="flex-1 border rounded-lg px-3 py-2 text-sm"
+                placeholder="Nama Barang / Kebutuhan..."
+                className="w-full border rounded-lg px-3 py-2 text-sm"
               />
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  value={newBudgetQty || ""}
+                  onChange={e => setNewBudgetQty(Number(e.target.value))}
+                  placeholder="Qty"
+                  className="w-20 border rounded-lg px-3 py-2 text-sm"
+                />
+                <input
+                  type="number"
+                  value={newBudgetPrice || ""}
+                  onChange={e => setNewBudgetPrice(Number(e.target.value))}
+                  placeholder="Harga Satuan (Rp)"
+                  className="flex-1 border rounded-lg px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={addBudgetItem}
+                  className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600"
+                >
+                  Tambah
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Approvers Section (Project) */}
+        {woType === "project" && (
+          <div className="rounded-xl bg-white p-5 shadow-md border border-indigo-100">
+            <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
+              <span className="text-xl">✍️</span>
+              <span>Penyetuju (Approvals)</span>
+            </h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Tambahkan pihak yang harus menyetujui (Internal Memo). Dibuat Oleh (Pemohon) otomatis disetujui.
+            </p>
+
+            {/* Approvers list */}
+            <div className="space-y-2 mb-4">
+              <div className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <div className="flex-1">
+                  <p className="font-medium text-sm text-gray-700">Dibuat Oleh (Pemohon)</p>
+                  <p className="text-xs text-gray-500">{user?.name} (Otomatis)</p>
+                </div>
+                <div className="text-xs font-bold text-green-600">Auto-Approve</div>
+              </div>
+              
+              {approvers.map((appr, idx) => (
+                <div key={idx} className="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
+                  <div className="flex-1">
+                    <p className="font-medium text-sm text-indigo-900">{appr.role}</p>
+                    <p className="text-xs text-indigo-700">{appr.name}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeApprover(idx)}
+                    className="p-1 text-red-500 hover:bg-red-100 rounded"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Add approver */}
+            <div className="flex gap-2">
               <input
-                type="number"
-                value={newBudgetAmount || ""}
-                onChange={e => setNewBudgetAmount(Number(e.target.value))}
-                placeholder="Amount"
-                className="w-32 border rounded-lg px-3 py-2 text-sm"
+                type="text"
+                value={newApproverRole}
+                onChange={e => setNewApproverRole(e.target.value)}
+                placeholder="Peran (Cth: Keuangan)"
+                className="w-1/3 border rounded-lg px-3 py-2 text-sm"
               />
+              <select
+                value={selectedApproverId}
+                onChange={e => setSelectedApproverId(e.target.value)}
+                className="flex-1 border rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="">-- Pilih User --</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>{u.name} ({u.jabatan || u.role})</option>
+                ))}
+              </select>
               <button
                 type="button"
-                onClick={addBudgetItem}
-                className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600"
+                onClick={addApprover}
+                className="px-4 py-2 bg-indigo-500 text-white rounded-lg text-sm hover:bg-indigo-600"
               >
-                ➕
+                Tambah
               </button>
             </div>
           </div>
@@ -827,6 +1114,7 @@ export default function CreateWorkOrderPage() {
           </div>
         </div>
       </div>
+
     </ProtectedRoute>
   );
 }

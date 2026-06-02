@@ -114,7 +114,7 @@ export default function UsersPage() {
 
   const loadDepartments = async () => {
     try {
-      const snap = await getDocs(collection(db, "departments"));
+      const snap = await getDocs(query(collection(db, "departments"), limit(100)));
       const arr = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setDepartmentsList(arr);
     } catch (err) {
@@ -125,7 +125,7 @@ export default function UsersPage() {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const snap = await getDocs(collection(db, "users"));
+      const snap = await getDocs(query(collection(db, "users"), limit(500)));
       const arr: User[] = [];
       snap.forEach((doc) => {
         arr.push({ id: doc.id, ...doc.data() } as User);

@@ -14,16 +14,18 @@ export function usePermissions() {
   useEffect(() => {
     if (authLoading) return;
 
-    // Super admin always has access to everything
-    if (user?.role === "super_admin") {
-      setLoading(false);
-      return; // We handle this in the `can` function
-    }
-
     if (!user || !user.role) {
       setPermissions({});
       setLoading(false);
       return;
+    }
+
+    const normalizedRole = user.role.toLowerCase().replace(/\s+/g, '_');
+
+    // Super admin always has access to everything
+    if (normalizedRole === "super_admin") {
+      setLoading(false);
+      return; // We handle this in the `can` function
     }
 
     // Subscribe to the role's permissions
@@ -53,7 +55,8 @@ export function usePermissions() {
     if (authLoading || loading) return false;
     
     // Super admin bypasses all checks
-    if (user?.role === "super_admin") return true;
+    const normalizedRole = user?.role?.toLowerCase().replace(/\s+/g, '_');
+    if (normalizedRole === "super_admin") return true;
 
     // 1. Check User-Level Overrides First (Highest Priority)
     // We assume user.customPermissions is a Record<string, boolean>

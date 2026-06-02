@@ -58,7 +58,8 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
-    const userRole = (userData as any).role || 'employee';
+    const rawUserRole = (userData as any).role || 'employee';
+    const userRole = rawUserRole.toLowerCase().replace(/\s+/g, '_');
 
     // ✅ MOBILE BEBAS
     if (mobileRoutes.some(route => pathname.startsWith(route))) {

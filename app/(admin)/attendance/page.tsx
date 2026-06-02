@@ -8,7 +8,7 @@ import { id } from "date-fns/locale";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import PageHeader from "@/components/ui/PageHeader";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot, query, orderBy, doc, getDoc, updateDoc, deleteDoc, setDoc, Timestamp, getDocs, where } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, doc, getDoc, updateDoc, deleteDoc, setDoc, Timestamp, getDocs, where, limit } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -290,7 +290,8 @@ export default function AttendancePage() {
   // Load users
   useEffect(() => {
     setUsersLoading(true);
-    const unsub = onSnapshot(collection(db, "users"), (snap) => {
+    const qUsers = query(collection(db, "users"), limit(500));
+    const unsub = onSnapshot(qUsers, (snap) => {
       const obj: Record<string, User> = {};
       snap.forEach((doc) => { obj[doc.id] = doc.data() as User; });
       setUsers(obj);
@@ -304,7 +305,7 @@ export default function AttendancePage() {
   useEffect(() => {
     if (usersLoading) return;
     setCorrectionsLoading(true);
-    const q = query(collection(db, "attendance_requests"), orderBy("createdAt", "desc"));
+    const q = query(collection(db, "attendance_requests"), orderBy("createdAt", "desc"), limit(200));
     const unsub = onSnapshot(q, (snap) => {
       const obj: Record<string, CorrectionRequest> = {};
       snap.forEach((doc) => {
@@ -333,7 +334,7 @@ export default function AttendancePage() {
   useEffect(() => {
     if (usersLoading || correctionsLoading) return;
     setLoading(true);
-    const q = query(collection(db, "attendance"), orderBy("date", "desc"));
+    const q = query(collection(db, "attendance"), orderBy("date", "desc"), limit(200));
     const unsub = onSnapshot(q, (snap) => {
       const arr: Attendance[] = [];
       snap.forEach((doc) => {

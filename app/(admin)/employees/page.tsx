@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, query, getDocs, orderBy } from "firebase/firestore";
+import { collection, query, getDocs, orderBy, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import Link from "next/link";
 import PageHeader from "@/components/ui/PageHeader";
@@ -31,7 +31,7 @@ export default function EmployeesPage() {
 
   const fetchEmployees = async () => {
     try {
-      const q = query(collection(db, "users"), orderBy("name"));
+      const q = query(collection(db, "users"), orderBy("name"), limit(500));
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map(doc => ({
         id: doc.id,

@@ -8,7 +8,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { NotificationIcon } from "@/components/icons/MenuIcons";
 
 import { subscribeToNotifications, markAllNotificationsAsRead, markNotificationAsRead } from "@/lib/notifications/firebase";
+import { subscribeToUnreadCount } from "@/lib/chat/firebase";
 import { AppNotification } from "@/types/notification";
+import { playNotificationSound, playMessageSound } from "@/lib/sounds";
 
 interface TopNavProps {
   onMobileMenuClick?: () => void;
@@ -24,8 +26,12 @@ export default function TopNav({ onMobileMenuClick }: TopNavProps) {
   const notificationRef = useRef<HTMLDivElement>(null);
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const prevNotifCountRef = useRef<number | null>(null);
+  const prevChatCountRef = useRef<number | null>(null);
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const unreadNotifCount = notifications.filter(n => !n.isRead).length;
+  const totalUnreadCount = unreadNotifCount + unreadChatCount;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -42,13 +48,30 @@ export default function TopNav({ onMobileMenuClick }: TopNavProps) {
 
   useEffect(() => {
     if (!user) return;
-    const unsub = subscribeToNotifications(setNotifications);
-    return () => unsub();
+    const unsub = subscribeToNotifications((notifs) => {
+      const newUnread = notifs.filter(n => !n.isRead).length;
+      if (prevNotifCountRef.current !== null && newUnread > prevNotifCountRef.current) {
+        playNotificationSound();
+      }
+      prevNotifCountRef.current = newUnread;
+      setNotifications(notifs);
+    });
+
+    const unsubChat = subscribeToUnreadCount((count) => {
+      if (prevChatCountRef.current !== null && count > prevChatCountRef.current) {
+        playMessageSound();
+      }
+      prevChatCountRef.current = count;
+      setUnreadChatCount(count);
+    });
+
+    return () => { unsub(); unsubChat(); };
   }, [user]);
 
   const handleMarkAllRead = async () => {
     await markAllNotificationsAsRead();
   };
+
 
   const handleNotificationClick = async (notif: AppNotification) => {
     if (!notif.isRead) {
@@ -160,9 +183,9 @@ export default function TopNav({ onMobileMenuClick }: TopNavProps) {
               className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors rounded-full hover:bg-slate-100"
             >
               <NotificationIcon />
-              {unreadCount > 0 && (
+              {totalUnreadCount > 0 && (
                 <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-[#f8fafc]">
-                  {unreadCount}
+                  {totalUnreadCount > 99 ? "99+" : totalUnreadCount}
                 </span>
               )}
             </button>
@@ -171,7 +194,12 @@ export default function TopNav({ onMobileMenuClick }: TopNavProps) {
             {isNotificationOpen && (
               <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
                 <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                  <h3 className="font-semibold text-slate-800">Notifikasi</h3>
+                  <div>
+                    <h3 className="font-semibold text-slate-800">Notifikasi</h3>
+                    {unreadChatCount > 0 && (
+                      <p className="text-xs text-slate-500 mt-0.5">💬 {unreadChatCount} pesan chat belum dibaca</p>
+                    )}
+                  </div>
                   <button onClick={handleMarkAllRead} className="text-xs text-emerald-600 font-medium">Tandai dibaca</button>
                 </div>
                 <div className="max-h-64 overflow-y-auto">
@@ -199,6 +227,17 @@ export default function TopNav({ onMobileMenuClick }: TopNavProps) {
                     ))
                   )}
                 </div>
+                {unreadChatCount > 0 && (
+                  <div className="p-3 border-t border-slate-100 bg-slate-50/50">
+                    <Link
+                      href="/chat"
+                      onClick={() => setIsNotificationOpen(false)}
+                      className="flex items-center justify-center gap-2 text-sm text-emerald-600 font-medium hover:text-emerald-700"
+                    >
+                      💬 Lihat {unreadChatCount} pesan chat belum dibaca →
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
           </div>

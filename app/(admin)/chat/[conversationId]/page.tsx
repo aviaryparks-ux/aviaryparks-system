@@ -41,6 +41,8 @@ export default function ChatRoomPage() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [otherUserOnline, setOtherUserOnline] = useState(false);
+  const [showMentionMenu, setShowMentionMenu] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
   const [activeCall, setActiveCall] = useState<{ channel: string; token: string; isVideo: boolean; uid: number } | null>(null);
   const [pendingCall, setPendingCall] = useState<{ isVideo: boolean } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -165,9 +167,22 @@ export default function ChatRoomPage() {
     if (!newMessage.trim() || isSending) return;
 
     setIsSending(true);
+
+    let mentions: string[] = [];
+    if (conversation?.type === "group" && conversation.memberIds) {
+      for (let i = 0; i < conversation.memberIds.length; i++) {
+        const memberId = conversation.memberIds[i];
+        const memberName = conversation.memberNames?.[i];
+        if (memberName && newMessage.includes(`@${memberName}`) && memberId !== currentUserId) {
+          mentions.push(memberId);
+        }
+      }
+    }
+
     try {
-      await sendMessage(conversationId, newMessage.trim());
+      await sendMessage(conversationId, newMessage.trim(), "text", undefined, mentions);
       setNewMessage("");
+      setShowMentionMenu(false);
     } catch (error: any) {
       toast.error("Gagal mengirim pesan: " + error.message);
     } finally {
@@ -190,6 +205,15 @@ export default function ChatRoomPage() {
       // Determine receivers
       let receiverIds: string[] = [];
       let callerNameStr = "User";
+      let callerAvatarStr = "";
+      
+      try {
+        const cached = localStorage.getItem("attendance_user_cache");
+        if (cached) {
+          const { data } = JSON.parse(cached);
+          if (data?.photoUrl) callerAvatarStr = data.photoUrl;
+        }
+      } catch {}
 
       if (conversation.type === "private" && conversation.participants) {
         const otherId = conversation.participants.find(id => id !== currentUserId);
@@ -197,8 +221,10 @@ export default function ChatRoomPage() {
         callerNameStr = conversation.participantNames?.find((n, i) => conversation.participants?.[i] === currentUserId) || "User";
       } else if (conversation.type === "group" && conversation.memberIds) {
         receiverIds = conversation.memberIds.filter(id => id !== currentUserId);
-        // We'll use the group name as the caller name for clarity in ringing UI
         callerNameStr = conversation.name || "Group";
+        if (conversation.avatarUrl) {
+          callerAvatarStr = conversation.avatarUrl;
+        }
       }
 
       // If no receivers, fallback to direct join
@@ -215,6 +241,7 @@ export default function ChatRoomPage() {
       await setDoc(doc(db, "active_calls", conversationId), {
         callerId: currentUserId,
         callerName: callerNameStr,
+        callerAvatar: callerAvatarStr,
         receiverIds: receiverIds,
         isVideo: isVideo,
         status: "ringing",
@@ -338,6 +365,17 @@ export default function ChatRoomPage() {
     return "Chat";
   };
 
+  const renderMessageText = (text: string, isMe: boolean) => {
+    if (!text.includes("@")) return text;
+    const parts = text.split(/(?=\s)|(?<=\s)/);
+    return parts.map((part, i) => {
+      if (part.trim().startsWith("@") && part.trim().length > 1) {
+        return <span key={i} className={`font-bold ${isMe ? 'text-emerald-200' : 'text-blue-600'}`}>{part}</span>;
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
   const isAdmin = conversation?.admins?.includes(currentUserId);
 
   if (!conversation) {
@@ -433,7 +471,7 @@ export default function ChatRoomPage() {
                         <span className="text-sm truncate max-w-[200px] underline">{msg.imageUrl || "File"}</span>
                       </a>
                     ) : (
-                      <p className="text-sm">{msg.text}</p>
+                      <p className="text-sm whitespace-pre-wrap">{renderMessageText(msg.text, isMe)}</p>
                     )}
                     <p
                       className={`text-[10px] mt-1 ${
@@ -485,6 +523,44 @@ export default function ChatRoomPage() {
                 </button>
               </div>
             )}
+            {/* Mention Menu */}
+            {(() => {
+              if (!showMentionMenu || conversation?.type !== "group") return null;
+              
+              const filteredMembers = conversation.memberIds?.map((uid, idx) => ({
+                uid,
+                name: conversation.memberNames?.[idx] || ""
+              })).filter(m => m.uid !== currentUserId && m.name.toLowerCase().includes(mentionQuery)) || [];
+
+              if (filteredMembers.length === 0) return null;
+
+              return (
+                <div className="absolute bottom-full left-0 mb-2 w-64 bg-white shadow-xl rounded-xl border border-slate-100 overflow-hidden z-50">
+                  {filteredMembers.map(({ uid, name }) => (
+                    <button
+                      key={uid}
+                      onClick={() => {
+                        const input = document.querySelector('input[type="text"]') as HTMLInputElement;
+                        const cursor = input?.selectionStart || newMessage.length;
+                        const textBefore = newMessage.substring(0, cursor);
+                        const textAfter = newMessage.substring(cursor);
+                        const lastAt = textBefore.lastIndexOf("@");
+                        const newText = textBefore.substring(0, lastAt) + `@${name} ` + textAfter;
+                        setNewMessage(newText);
+                        setShowMentionMenu(false);
+                        input?.focus();
+                      }}
+                      className="w-full px-4 py-2 text-left hover:bg-slate-50 text-sm flex items-center gap-2"
+                    >
+                      <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 text-xs font-bold">
+                        {name[0]?.toUpperCase()}
+                      </div>
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
           
           <input type="file" accept="image/*" className="hidden" ref={imageInputRef} onChange={(e) => handleFileUpload(e, true)} />
@@ -511,7 +587,24 @@ export default function ChatRoomPage() {
           <input
             type="text"
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              setNewMessage(val);
+              
+              const cursor = e.target.selectionStart || 0;
+              const textBefore = val.substring(0, cursor);
+              const lastAt = textBefore.lastIndexOf("@");
+              
+              if (lastAt !== -1 && (lastAt === 0 || textBefore[lastAt - 1] === " ")) {
+                const query = textBefore.substring(lastAt + 1);
+                if (!query.includes(" ")) {
+                  setShowMentionMenu(true);
+                  setMentionQuery(query.toLowerCase());
+                  return;
+                }
+              }
+              setShowMentionMenu(false);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -678,29 +771,42 @@ export default function ChatRoomPage() {
       )}
 
       {/* Pending Call Screen */}
-      {pendingCall && (
-        <div className="fixed inset-0 z-50 bg-slate-900 flex flex-col items-center justify-center p-4">
-          <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl animate-pulse">
-            <span className="text-4xl text-white font-bold">
-              {conversation?.name ? conversation.name[0].toUpperCase() : "?"}
-            </span>
+      {pendingCall && (() => {
+        const displayName = getDisplayName(conversation);
+        const avatarLetter = displayName ? displayName[0].toUpperCase() : "?";
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900 flex flex-col items-center justify-center p-4">
+            {/* Avatar with animated pulse rings */}
+            <div className="relative w-32 h-32 mx-auto mb-8">
+              <div className="absolute inset-0 rounded-full bg-emerald-500/20 animate-ping" />
+              <div className="absolute inset-[-8px] rounded-full border-2 border-emerald-500/30 animate-pulse" />
+              <div className="relative w-32 h-32 rounded-full bg-slate-700 border-2 border-emerald-500 flex items-center justify-center overflow-hidden">
+                <span className="text-5xl text-white font-bold">{avatarLetter}</span>
+              </div>
+            </div>
+
+            <h2 className="text-3xl text-white font-bold mb-2">{displayName}</h2>
+            <p className="text-emerald-400 text-lg mb-16 flex items-center gap-2">
+              {pendingCall.isVideo ? <Video className="w-5 h-5" /> : <Phone className="w-5 h-5" />}
+              Menunggu diangkat...
+            </p>
+
+            <button
+              onClick={async () => {
+                setPendingCall(null);
+                try {
+                  await updateDoc(doc(db, "active_calls", conversationId), { status: "ended" });
+                } catch(e) {}
+              }}
+              className="w-20 h-20 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center shadow-2xl transition-transform hover:scale-105 active:scale-95"
+            >
+              <Phone className="w-9 h-9 text-white fill-white rotate-[135deg]" />
+            </button>
+            <p className="text-slate-500 text-sm mt-4">Tekan untuk batalkan</p>
           </div>
-          <h2 className="text-3xl text-white font-bold mb-2">{conversation?.name || "Unknown"}</h2>
-          <p className="text-emerald-400 text-lg mb-12">Menunggu diangkat...</p>
-          
-          <button 
-            onClick={async () => {
-              setPendingCall(null);
-              try {
-                await updateDoc(doc(db, "active_calls", conversationId), { status: "ended" });
-              } catch(e) {}
-            }}
-            className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
-          >
-            <Phone className="w-8 h-8 text-white fill-white rotate-[135deg]" />
-          </button>
-        </div>
-      )}
+        );
+      })()}
+
 
       {/* Active Call Modal */}
       {activeCall && (

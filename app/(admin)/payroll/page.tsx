@@ -13,6 +13,7 @@ import {
   doc,
   setDoc,
   serverTimestamp,
+  limit
 } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LoadingScreen from "@/components/ui/LoadingScreen";
@@ -173,7 +174,7 @@ export default function PayrollPage() {
 
   const loadUsers = async () => {
     try {
-      const usersSnap = await getDocs(collection(db, "users"));
+      const usersSnap = await getDocs(query(collection(db, "users"), limit(500)));
       const usersMap = new Map<string, User>();
       const deptSet = new Set<string>();
       const empList: { uid: string; name: string; department: string }[] = [];

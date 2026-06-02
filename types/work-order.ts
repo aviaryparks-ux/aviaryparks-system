@@ -46,10 +46,27 @@ export interface WorkOrderPhoto {
 
 // For Urgent WO - SLA tracking
 export interface SLATracking {
-  dueDate: string; // ISO date
-  dueTime: string; // HH:mm
-  slaHours: number;
-  isOverdue: boolean;
+  // Legacy fields (kept for backward compatibility with older data)
+  dueDate?: string; // ISO date
+  dueTime?: string; // HH:mm
+  slaHours?: number;
+  isOverdue?: boolean;
+  
+  // New Response SLA
+  responseDueDate?: string; 
+  responseDueTime?: string;
+  responseAcknowledgedAt?: any; // When status becomes "in_progress"
+  
+  // New Resolution SLA
+  resolutionDueDate?: string;
+  resolutionDueTime?: string;
+  resolutionCompletedAt?: any; // When status becomes "completed"
+  
+  // Pause Tracking
+  pauseStartedAt?: any; // Timestamp when status became "pending"
+  totalPausedMinutes?: number; // Total accumulated paused time
+  
+  // Common tracking
   completedAt?: any;
   acknowledgedBy?: string;
   acknowledgedByName?: string;
@@ -73,6 +90,8 @@ export interface BudgetItem {
   id: string;
   description: string;
   category: string;
+  qty?: number;
+  unitPrice?: number;
   estimatedCost: number;
   actualCost: number;
   receiptUrl?: string;
@@ -87,6 +106,7 @@ export interface ApprovalStep {
   status: ApprovalStatus;
   notes?: string;
   actionAt?: any;
+  signatureUrl?: string;
 }
 
 // Main Work Order interface
@@ -159,6 +179,8 @@ export interface WorkOrder {
 export interface WorkUpdate {
   id: string;
   text: string;
+  status?: string;
+  photoUrl?: string;
   updatedBy: string;
   updatedByName: string;
   updatedAt: any;

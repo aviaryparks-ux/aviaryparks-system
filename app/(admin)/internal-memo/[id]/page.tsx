@@ -190,6 +190,8 @@ export default function MemoDetailPage() {
           <div className="col-span-9 md:col-span-10">: {memo.memoNumber}</div>
           <div className="col-span-3 md:col-span-2 text-slate-600">Perihal</div>
           <div className="col-span-9 md:col-span-10 font-bold">: {memo.subject}</div>
+          <div className="col-span-3 md:col-span-2 text-slate-600 mt-2">Tanggal</div>
+          <div className="col-span-9 md:col-span-10 mt-2">: {formatDate(memo.createdAt)}</div>
         </div>
 
         <div className="border-t-2 border-slate-200 pt-8 min-h-[300px]">

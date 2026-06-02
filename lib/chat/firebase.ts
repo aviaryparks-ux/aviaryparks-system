@@ -128,11 +128,24 @@ export function subscribeToGroupConversations(
     orderBy("updatedAt", "desc")
   );
 
-  return onSnapshot(q, (snapshot) => {
-    const conversations = snapshot.docs.map((docSnap) => ({
-      id: docSnap.id,
-      ...docSnap.data(),
-    })) as Conversation[];
+  return onSnapshot(q, async (snapshot) => {
+    const currentUserId = getCurrentUserId();
+    const conversations = await Promise.all(snapshot.docs.map(async (docSnap) => {
+      let unreadCount = 0;
+      if (currentUserId) {
+        try {
+          const ucSnap = await getDoc(doc(db, "user_conversations", currentUserId, "conversations", docSnap.id));
+          if (ucSnap.exists()) {
+            unreadCount = ucSnap.data().unreadCount || 0;
+          }
+        } catch (e) {}
+      }
+      return {
+        id: docSnap.id,
+        ...docSnap.data(),
+        unreadCount,
+      } as Conversation;
+    }));
     callback(conversations);
   });
 }
@@ -145,6 +158,47 @@ export function subscribeToPrivateConversations(
 ): () => void {
   return subscribeToConversations((convs) => {
     callback(convs.filter((c) => c.type === "private"));
+  });
+}
+
+/**
+ * Get total unread message count
+ */
+export function subscribeToUnreadCount(
+  callback: (count: number) => void
+): () => void {
+  const currentUserId = getCurrentUserId();
+  if (!currentUserId) {
+    callback(0);
+    return () => {};
+  }
+
+  const userConvsRef = collection(
+    db,
+    "user_conversations",
+    currentUserId,
+    "conversations"
+  );
+
+  return onSnapshot(userConvsRef, async (snapshot) => {
+    let total = 0;
+    for (const docSnap of snapshot.docs) {
+      const count = (docSnap.data().unreadCount || 0) as number;
+      if (count > 0) {
+        try {
+          const convDoc = await getDoc(doc(db, "conversations", docSnap.id));
+          if (convDoc.exists()) {
+            total += count;
+          } else {
+            // Auto-clean up ghost conversation
+            deleteDoc(docSnap.ref).catch(() => {});
+          }
+        } catch (e) {
+          total += count; // Fallback
+        }
+      }
+    }
+    callback(total);
   });
 }
 
@@ -170,7 +224,21 @@ export async function getConversation(
       participantNames = names;
     }
 
-    return { id: docSnap.id, ...convData, participantNames } as Conversation;
+    // Fix missing member names for old group chats
+    let memberNames = convData.memberNames || [];
+    const isMemberNamesInvalid = convData.memberIds && convData.memberIds.length > 0 && 
+      (!memberNames || memberNames.length < convData.memberIds.length || memberNames.some((n: any) => !n || n === "Unknown"));
+      
+    if (convData.type === "group" && isMemberNamesInvalid) {
+      const names = [];
+      for (const pUid of convData.memberIds) {
+        const uDoc = await getDoc(doc(db, "users", pUid));
+        names.push(uDoc.exists() ? (uDoc.data().name || uDoc.data().email || "Unknown") : "Unknown");
+      }
+      memberNames = names;
+    }
+
+    return { id: docSnap.id, ...convData, participantNames, memberNames } as Conversation;
   }
   return null;
 }
@@ -187,20 +255,21 @@ export async function createGroupChat(
   const conversationRef = doc(collection(db, "conversations"));
   const now = serverTimestamp();
 
-  const conversation = {
+  const conversation: Record<string, any> = {
     type: "group",
     name: payload.name,
-    description: payload.description,
-    avatarUrl: payload.avatarUrl,
     createdBy: currentUserId,
     createdAt: now,
     updatedAt: now,
     memberIds: [...payload.memberIds, currentUserId],
     memberNames: [...payload.memberNames, currentUserName],
-    departmentId: payload.departmentId,
     isAutoCreated: payload.isAutoCreated ?? false,
     admins: [currentUserId],
   };
+
+  if (payload.description !== undefined) conversation.description = payload.description;
+  if (payload.avatarUrl !== undefined) conversation.avatarUrl = payload.avatarUrl;
+  if (payload.departmentId !== undefined) conversation.departmentId = payload.departmentId;
 
   await setDoc(conversationRef, conversation);
 
@@ -390,7 +459,8 @@ export async function sendMessage(
   conversationId: string,
   text: string,
   type: "text" | "image" | "file" | "call" = "text",
-  imageUrl?: string
+  imageUrl?: string,
+  mentions?: string[]
 ): Promise<void> {
   const currentUserId = getCurrentUserId();
   const currentUserName = getCurrentUserName();
@@ -409,6 +479,10 @@ export async function sendMessage(
   // Only add imageUrl if provided
   if (imageUrl) {
     messageData.imageUrl = imageUrl;
+  }
+  
+  if (mentions && mentions.length > 0) {
+    messageData.mentions = mentions;
   }
 
   // Add message
@@ -581,33 +655,6 @@ export async function getUserById(uid: string): Promise<ChatUser | null> {
   return null;
 }
 
-/**
- * Get total unread message count
- */
-export function subscribeToUnreadCount(
-  callback: (count: number) => void
-): () => void {
-  const currentUserId = getCurrentUserId();
-  if (!currentUserId) {
-    callback(0);
-    return () => {};
-  }
-
-  const userConvsRef = collection(
-    db,
-    "user_conversations",
-    currentUserId,
-    "conversations"
-  );
-
-  return onSnapshot(userConvsRef, (snapshot) => {
-    let total = 0;
-    snapshot.docs.forEach((doc) => {
-      total += (doc.data().unreadCount || 0) as number;
-    });
-    callback(total);
-  });
-}
 
 /**
  * Delete a conversation (creator/admin only)

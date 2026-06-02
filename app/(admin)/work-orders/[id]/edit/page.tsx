@@ -47,7 +47,8 @@ export default function EditWorkOrderPage() {
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([]);
   const [estimatedBudget, setEstimatedBudget] = useState(0);
   const [newBudgetDesc, setNewBudgetDesc] = useState("");
-  const [newBudgetAmount, setNewBudgetAmount] = useState(0);
+  const [newBudgetQty, setNewBudgetQty] = useState(1);
+  const [newBudgetPrice, setNewBudgetPrice] = useState(0);
 
   // Users for assignee dropdown
   const [users, setUsers] = useState<any[]>([]);
@@ -105,11 +106,12 @@ export default function EditWorkOrderPage() {
         return;
       }
 
-      // Only owner or admin can edit
+      // Only owner, admin, or current approver can edit
       const isAdmin = user?.role === "super_admin" || user?.role === "admin" || user?.role === "hr";
       const isOwner = data.createdBy === user?.uid;
+      const isCurrentApprover = data.status === "pending_approval" && data.approvalSteps && data.currentApprovalStep !== undefined && data.currentApprovalStep < data.approvalSteps.length && data.approvalSteps[data.currentApprovalStep].approverId === user?.uid;
       
-      if (!isAdmin && !isOwner) {
+      if (!isAdmin && !isOwner && !isCurrentApprover) {
         setError("Anda tidak memiliki akses untuk mengedit Work Order ini.");
         setLoading(false);
         return;
@@ -161,19 +163,26 @@ export default function EditWorkOrderPage() {
   };
 
   const addBudgetItem = () => {
-    if (!newBudgetDesc.trim() || newBudgetAmount <= 0) return;
+    if (!newBudgetDesc.trim() || newBudgetQty <= 0 || newBudgetPrice <= 0) return;
+    const estimatedCost = newBudgetQty * newBudgetPrice;
     setBudgetItems(prev => [...prev, {
       id: Math.random().toString(36).substr(2, 9),
       description: newBudgetDesc,
       category: assignedToDept || "General",
-      estimatedCost: newBudgetAmount,
+      qty: newBudgetQty,
+      unitPrice: newBudgetPrice,
+      estimatedCost: estimatedCost,
       actualCost: 0
     }]);
+    setEstimatedBudget(prev => prev + estimatedCost);
     setNewBudgetDesc("");
-    setNewBudgetAmount(0);
+    setNewBudgetQty(1);
+    setNewBudgetPrice(0);
   };
 
   const removeBudgetItem = (id: string) => {
+    const item = budgetItems.find(b => b.id === id);
+    if (item) setEstimatedBudget(prev => prev - item.estimatedCost);
     setBudgetItems(prev => prev.filter(b => b.id !== id));
   };
 
@@ -509,13 +518,9 @@ export default function EditWorkOrderPage() {
             
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-600 mb-1">Total Estimated Budget (Rp)</label>
-              <input
-                type="number"
-                value={estimatedBudget}
-                onChange={e => setEstimatedBudget(Number(e.target.value))}
-                className="w-full border rounded-lg px-4 py-3"
-                placeholder="0"
-              />
+              <div className="w-full border rounded-lg px-4 py-3 bg-gray-50 text-gray-700 font-bold">
+                Rp {estimatedBudget.toLocaleString("id-ID")}
+              </div>
             </div>
 
             {/* Budget items */}
@@ -524,7 +529,7 @@ export default function EditWorkOrderPage() {
                 <div key={b.id} className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
                   <div className="flex-1">
                     <p className="font-medium text-sm">{b.description}</p>
-                    <p className="text-xs text-gray-500">Rp {b.estimatedCost.toLocaleString("id-ID")}</p>
+                    <p className="text-xs text-gray-500">{b.qty} x Rp {(b.unitPrice || 0).toLocaleString("id-ID")} = Rp {b.estimatedCost.toLocaleString("id-ID")}</p>
                   </div>
                   <button
                     type="button"
@@ -538,28 +543,37 @@ export default function EditWorkOrderPage() {
             </div>
 
             {/* Add budget item */}
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
               <input
                 type="text"
                 value={newBudgetDesc}
                 onChange={e => setNewBudgetDesc(e.target.value)}
-                placeholder="Deskripsi item..."
-                className="flex-1 border rounded-lg px-3 py-2 text-sm"
+                placeholder="Nama Barang / Kebutuhan..."
+                className="w-full border rounded-lg px-3 py-2 text-sm"
               />
-              <input
-                type="number"
-                value={newBudgetAmount || ""}
-                onChange={e => setNewBudgetAmount(Number(e.target.value))}
-                placeholder="Amount"
-                className="w-32 border rounded-lg px-3 py-2 text-sm"
-              />
-              <button
-                type="button"
-                onClick={addBudgetItem}
-                className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600"
-              >
-                ➕
-              </button>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  value={newBudgetQty || ""}
+                  onChange={e => setNewBudgetQty(Number(e.target.value))}
+                  placeholder="Qty"
+                  className="w-20 border rounded-lg px-3 py-2 text-sm"
+                />
+                <input
+                  type="number"
+                  value={newBudgetPrice || ""}
+                  onChange={e => setNewBudgetPrice(Number(e.target.value))}
+                  placeholder="Harga Satuan (Rp)"
+                  className="flex-1 border rounded-lg px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={addBudgetItem}
+                  className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600"
+                >
+                  Tambah
+                </button>
+              </div>
             </div>
           </div>
         )}

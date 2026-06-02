@@ -7,7 +7,8 @@ import {
   updateDoc,
   doc,
   writeBatch,
-  getDocs
+  getDocs,
+  limit
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { AppNotification } from "../../types/notification";
@@ -43,7 +44,8 @@ export function subscribeToNotifications(
   const q = query(
     notificationsRef,
     where("userId", "==", currentUserId),
-    orderBy("createdAt", "desc")
+    orderBy("createdAt", "desc"),
+    limit(50)
   );
 
   return onSnapshot(

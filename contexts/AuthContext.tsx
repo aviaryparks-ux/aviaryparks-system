@@ -15,10 +15,11 @@ type User = {
   role: string;
   photoUrl?: string;
   department?: string;
-  jabatan?: string;      // ← TAMBAHKAN
-  joinDate?: string;     // ← TAMBAHKAN
-  phone?: string;        // ← TAMBAHKAN
-  address?: string;      // ← TAMBAHKAN
+  jabatan?: string;      
+  joinDate?: string;     
+  phone?: string;        
+  address?: string;      
+  signatureUrl?: string; 
   customPermissions?: Record<string, boolean>;
 };
 
@@ -68,10 +69,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               role: data.role || 'employee',
               photoUrl: data.photoUrl || undefined,
               department: data.department || '',
-              jabatan: data.jabatan || '',        // ← TAMBAHKAN
-              joinDate: data.joinDate || '',       // ← TAMBAHKAN
-              phone: data.phone || '',             // ← TAMBAHKAN
-              address: data.address || '',         // ← TAMBAHKAN
+              jabatan: data.jabatan || '',        
+              joinDate: data.joinDate || '',       
+              phone: data.phone || '',             
+              address: data.address || '',         
+              signatureUrl: data.signatureUrl || undefined,
             };
             setUser(userData);
             
