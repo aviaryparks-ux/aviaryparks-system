@@ -19,16 +19,9 @@ export default function LoginPage() {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [rememberMe, setRememberMe] = useState(false);
 
-  // Mouse parallax effect untuk background
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePosition({ x: e.clientX, y: e.clientY });
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, []);
+  // Removed parallax for split screen
 
   const login = async () => {
     if (!email || !password) {
@@ -137,279 +130,260 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      {/* ==================== BACKGROUND IMAGE dengan Parallax ==================== */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-transform duration-300 ease-out"
-        style={{
-          backgroundImage: "url('/images/login-bg.webp')",
-          transform: `translate(${mousePosition.x * 0.02}px, ${mousePosition.y * 0.02}px) scale(1.05)`
-        }}
-      />
+    <div className="min-h-screen w-full flex flex-col md:flex-row bg-white font-sans overflow-hidden">
       
-      {/* ==================== OVERLAY GRADIENT ==================== */}
-      <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-green-900/40 to-black/60" />
-
-      {/* ==================== ANIMATED PARTICLES / ORBS ==================== */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-20 left-10 w-64 h-64 bg-green-500/20 rounded-full blur-3xl animate-float" />
-        <div className="absolute bottom-20 right-10 w-80 h-80 bg-emerald-500/15 rounded-full blur-3xl animate-float-delayed" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-teal-500/5 rounded-full blur-3xl animate-pulse-slow" />
-      </div>
-
-      {/* ==================== KONTEN LOGIN ==================== */}
-      <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md">
-          {/* Logo dan Title dengan animasi */}
-          <div className="text-center mb-4 animate-fade-down">
-            <div className="flex justify-center">
-              <div className="relative group">
-                <div className="absolute inset-0 bg-green-500/30 rounded-full blur-xl group-hover:blur-2xl transition-all duration-500" />
-                <Image
-                  src="/images/avira-hris.png"
-                  alt="Logo"
-                  width={300}
-                  height={300}
-                  className="relative w-72 h-72 object-contain"
-                />
-              </div>
-            </div>
-            <p className="text-green-300 text-sm tracking-wide">Empowering People, Growing Together</p>
+      {/* ==================== LEFT SIDE: IMAGE & LOGO ==================== */}
+      <div className="w-full md:w-1/2 relative min-h-[40vh] md:min-h-screen flex flex-col items-center justify-center p-8">
+        {/* Background Image */}
+        <div 
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: "url('/images/login-bg.webp')" }}
+        />
+        {/* Gradient Overlay to make logo text readable if needed */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/10" />
+        
+        <div className="relative z-10 flex flex-col items-center text-center mt-[-20px]">
+          {/* Logo */}
+          <div className="mb-4">
+            <Image
+              src="/images/myaviary-logo.png"
+              alt="MyAviary Logo"
+              width={400}
+              height={400}
+              className="w-56 sm:w-72 h-auto drop-shadow-2xl"
+            />
           </div>
-
-          {/* Form Card - Glassmorphism Premium */}
-          <div className="relative group">
-            {/* Gradient border animasi */}
-            <div className="absolute -inset-0.5 bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 rounded-2xl blur opacity-30 group-hover:opacity-100 transition duration-1000 group-hover:duration-200 animate-gradient" />
-            
-            {/* Card Content */}
-            <div className="relative bg-white/10 backdrop-blur-xl rounded-2xl p-8 border border-white/20 shadow-2xl">
-              {!showForgotPassword ? (
-                <>
-                  <h2 className="text-2xl font-semibold text-white text-center mb-2">Welcome Back</h2>
-                  <p className="text-white/60 text-center text-sm mb-8">Sign in to your account</p>
-
-                  <form onSubmit={(e) => { e.preventDefault(); login(); }} className="space-y-5">
-                    <div className="group/input">
-                      <label className="block text-sm font-medium text-white/80 mb-1.5">Email Address</label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <svg className="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
-                          </svg>
-                        </div>
-                        <input
-                          type="email"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          onKeyPress={handleKeyPress}
-                          className="w-full pl-10 pr-4 py-3 rounded-xl bg-white/5 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300"
-                          placeholder="admin@aviarypark.com"
-                          disabled={loading}
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="group/input">
-                      <label className="block text-sm font-medium text-white/80 mb-1.5">Password</label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <svg className="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                          </svg>
-                        </div>
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          onKeyPress={handleKeyPress}
-                          className="w-full pl-10 pr-12 py-3 rounded-xl bg-white/5 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300"
-                          placeholder="••••••••"
-                          disabled={loading}
-                          required
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-white/40 hover:text-white/60 transition-colors"
-                        >
-                          {showPassword ? (
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          ) : (
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                            </svg>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setShowForgotPassword(true)}
-                        className="text-sm text-green-300 hover:text-green-200 transition-colors"
-                      >
-                        Forgot password?
-                      </button>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className={`relative w-full py-3 rounded-xl text-white font-semibold transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50 overflow-hidden group/btn ${
-                        loading
-                          ? "bg-gray-500 cursor-not-allowed"
-                          : "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500"
-                      }`}
-                    >
-                      <span className="relative z-10 flex items-center justify-center gap-2">
-                        {loading ? (
-                          <>
-                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            Processing...
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-                            </svg>
-                            Sign In
-                            <svg className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                            </svg>
-                          </>
-                        )}
-                      </span>
-                    </button>
-                  </form>
-                </>
-              ) : (
-                <>
-                  <h2 className="text-2xl font-semibold text-white text-center mb-2">Reset Password</h2>
-                  <p className="text-white/60 text-center text-sm mb-8">
-                    Enter your email and we'll send you a link to reset your password
-                  </p>
-
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-white/80 mb-1.5">Email Address</label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <svg className="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
-                          </svg>
-                        </div>
-                        <input
-                          type="email"
-                          className="w-full pl-10 pr-4 py-3 rounded-xl bg-white/5 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300"
-                          value={resetEmail}
-                          onChange={(e) => setResetEmail(e.target.value)}
-                          disabled={resetLoading}
-                          placeholder="your@email.com"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={handleResetPassword}
-                      disabled={resetLoading}
-                      className={`w-full py-3 rounded-xl text-white font-semibold transition-all flex items-center justify-center gap-2 ${
-                        resetLoading
-                          ? "bg-gray-500 cursor-not-allowed"
-                          : "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500"
-                      }`}
-                    >
-                      {resetLoading ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          Sending...
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                          </svg>
-                          Send Reset Link
-                        </>
-                      )}
-                    </button>
-
-                    <div className="text-center">
-                      <button
-                        onClick={() => {
-                          setShowForgotPassword(false);
-                          setResetEmail("");
-                        }}
-                        className="text-sm text-green-300 hover:text-green-200 transition-colors"
-                      >
-                        ← Back to Login
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <div className="mt-8 pt-6 border-t border-white/10 text-center">
-                <p className="text-white/40 text-xs">Secure access for authorized personnel only</p>
-                <p className="text-white/30 text-xs mt-1">AviaryParks System</p>
-              </div>
-            </div>
-          </div>
+          
+          <p className="text-white/90 text-base mt-2 font-medium drop-shadow-md bg-black/20 px-4 py-1.5 rounded-full backdrop-blur-sm">Empowering People, Growing Together</p>
         </div>
       </div>
 
-      {/* ==================== STYLES ==================== */}
-      <style jsx>{`
-        @keyframes float {
-          0%, 100% { transform: translate(0, 0); }
-          50% { transform: translate(30px, -30px); }
-        }
-        @keyframes float-delayed {
-          0%, 100% { transform: translate(0, 0); }
-          50% { transform: translate(-30px, 30px); }
-        }
-        @keyframes gradient {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-        @keyframes fade-down {
-          from {
-            opacity: 0;
-            transform: translateY(-20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        @keyframes pulse-slow {
-          0%, 100% { opacity: 0.3; transform: scale(1); }
-          50% { opacity: 0.5; transform: scale(1.1); }
-        }
-        .animate-float {
-          animation: float 15s ease-in-out infinite;
-        }
-        .animate-float-delayed {
-          animation: float-delayed 18s ease-in-out infinite;
-        }
-        .animate-gradient {
-          background-size: 200% 200%;
-          animation: gradient 3s ease infinite;
-        }
-        .animate-fade-down {
-          animation: fade-down 0.6s ease-out;
-        }
-        .animate-pulse-slow {
-          animation: pulse-slow 8s ease-in-out infinite;
-        }
-      `}</style>
+      {/* ==================== RIGHT SIDE: LOGIN FORM ==================== */}
+      <div className="w-full md:w-1/2 p-8 sm:p-14 lg:p-24 bg-white relative flex flex-col justify-center min-h-[60vh] md:min-h-screen">
+        
+        {/* Decorative small leaves corner (Top Right) */}
+        <div className="absolute top-0 right-0 w-32 h-32 opacity-20 pointer-events-none hidden sm:block">
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M100 0C100 0 80 10 70 30C60 50 70 80 70 80C70 80 90 70 100 50V0Z" fill="#2E7D32"/>
+            <path d="M100 40C100 40 85 45 80 60C75 75 85 95 85 95C85 95 100 85 100 70V40Z" fill="#4CAF50"/>
+          </svg>
+        </div>
+
+        <div className="max-w-[420px] w-full mx-auto relative z-10">
+          {!showForgotPassword ? (
+            <>
+              <h2 className="text-4xl font-bold text-gray-800 flex items-center gap-2 mb-3">
+                Welcome Back! <span className="text-green-600">🌿</span>
+              </h2>
+              <p className="text-gray-500 text-base mb-10">Sign in to your account to continue</p>
+
+              <form onSubmit={(e) => { e.preventDefault(); login(); }} className="space-y-6">
+                
+                {/* Email Input */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email Address</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      className="w-full pl-11 pr-4 py-4 rounded-xl border border-gray-200 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                      placeholder="Enter your email address"
+                      disabled={loading}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Password Input */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Password</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    </div>
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      className="w-full pl-11 pr-12 py-4 rounded-xl border border-gray-200 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                      placeholder="Enter your password"
+                      disabled={loading}
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      {showPassword ? (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Remember Me & Forgot Password */}
+                <div className="flex items-center justify-between mt-4">
+                  <label className="flex items-center cursor-pointer">
+                    <div className="relative flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="peer sr-only"
+                      />
+                      <div className="w-5 h-5 bg-white border-2 border-gray-300 rounded peer-checked:bg-green-600 peer-checked:border-green-600 transition-colors flex items-center justify-center">
+                        <svg className={`w-3.5 h-3.5 text-white ${rememberMe ? 'opacity-100' : 'opacity-0'} transition-opacity`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    </div>
+                    <span className="ml-2 text-sm text-gray-600">Remember me</span>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotPassword(true)}
+                    className="text-sm font-semibold text-green-600 hover:text-green-700 transition-colors"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+
+                {/* Sign In Button */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className={`w-full py-4 mt-6 rounded-xl text-white font-semibold text-lg flex items-center justify-center gap-2 transition-all ${
+                    loading
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-[#2E7D32] hover:bg-[#1B5E20] shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+                  }`}
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                      </svg>
+                      Sign In →
+                    </>
+                  )}
+                </button>
+
+              </form>
+            </>
+          ) : (
+            // ==================== FORGOT PASSWORD FORM ====================
+            <div className="animate-fade-down">
+              <button
+                onClick={() => {
+                  setShowForgotPassword(false);
+                  setResetEmail("");
+                }}
+                className="mb-6 text-sm font-semibold text-green-600 hover:text-green-700 flex items-center gap-1 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Login
+              </button>
+
+              <h2 className="text-3xl font-bold text-gray-800 mb-2">Reset Password</h2>
+              <p className="text-gray-500 text-sm mb-8">
+                Enter your email and we'll send you a link to reset your password.
+              </p>
+
+              <div className="space-y-5">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email Address</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <input
+                      type="email"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all"
+                      placeholder="Enter your email address"
+                      disabled={resetLoading}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleResetPassword}
+                  disabled={resetLoading}
+                  className={`w-full py-3 rounded-lg text-white font-semibold flex items-center justify-center gap-2 transition-all ${
+                    resetLoading
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-[#2E7D32] hover:bg-[#1B5E20] shadow-md hover:shadow-lg"
+                  }`}
+                >
+                  {resetLoading ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                      Send Reset Link
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Bottom Security Info Box */}
+          <div className="mt-10 bg-green-50/50 rounded-xl p-4 border border-green-100 flex flex-col items-center justify-center text-center">
+            <div className="flex items-center gap-1.5 text-green-700 mb-1">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <span className="text-xs font-semibold">Secure access for authorized personnel only</span>
+            </div>
+            <p className="text-[11px] text-gray-500">AviaryParks System</p>
+          </div>
+          
+        </div>
+
+        {/* Footer */}
+        <div className="absolute bottom-6 left-0 right-0 text-center z-10 pointer-events-none hidden sm:block">
+          <p className="text-gray-400 text-xs sm:text-sm font-medium">
+            © {new Date().getFullYear()} Aviary Park Indonesia. All rights reserved.
+          </p>
+        </div>
+
+      </div>
     </div>
   );
 }

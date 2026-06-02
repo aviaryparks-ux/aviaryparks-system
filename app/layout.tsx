@@ -22,7 +22,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} h-full`}>
+    <html lang="en" className={`${inter.variable} h-full`} style={{ colorScheme: 'light' }}>
       <body className="min-h-full bg-[#f8fafc] text-slate-800 antialiased font-sans">
         <AuthProvider>
           {children}
