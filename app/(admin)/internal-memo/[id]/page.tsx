@@ -22,6 +22,8 @@ export default function MemoDetailPage() {
   const [actionModal, setActionModal] = useState<{ isOpen: boolean; type: "APPROVE" | "REJECT" | null }>({ isOpen: false, type: null });
   const [actionNote, setActionNote] = useState("");
 
+  const [isDownloading, setIsDownloading] = useState(false);
+
   useEffect(() => {
     if (user && id) {
       fetchMemo();
@@ -155,139 +157,274 @@ export default function MemoDetailPage() {
         <div className="flex gap-3">
           {(memo.status === "APPROVED" || memo.status === "REJECTED") && (
             <button
-              onClick={() => window.print()}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm flex items-center gap-2 print:hidden"
+              onClick={async () => {
+                try {
+                  setIsDownloading(true);
+                  const html2pdf = (await import('html2pdf.js')).default;
+                  const element = document.getElementById('memo-pdf-container');
+                  
+                  // Pastikan elemen benar-benar siap dan terlihat (bisa pakai posisi off-screen agar tidak mengganggu layout utama)
+                  if (element) {
+                    const opt = {
+                      margin: 0,
+                      filename: `Internal_Memo_${memo.memoNumber?.replace(/\//g, '-') || 'Doc'}.pdf`,
+                      image: { type: 'jpeg' as const, quality: 1.0 },
+                      html2canvas: { scale: 2, useCORS: true, letterRendering: true, windowWidth: 800 },
+                      jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
+                    };
+                    
+                    await html2pdf().set(opt).from(element).save();
+                  }
+                } catch (err) {
+                  console.error("PDF generation failed", err);
+                  alert("Gagal membuat PDF");
+                } finally {
+                  setIsDownloading(false);
+                }
+              }}
+              disabled={isDownloading}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm flex items-center gap-2 print:hidden disabled:opacity-50"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
               </svg>
-              Cetak PDF
+              {isDownloading ? "Memproses..." : "Download PDF"}
             </button>
           )}
           <div className="px-4 py-2 rounded-lg font-bold text-sm bg-gray-100 text-gray-700 flex items-center">
             Status: {memo.status}
           </div>
         </div>
-      </div>
+        {/* Hidden Container Khusus PDF Generator */}
+        <div style={{ position: 'fixed', right: '200vw', top: 0 }}>
+          <div id="memo-pdf-container" style={{ width: '794px', minHeight: '1122px', backgroundColor: 'white', position: 'relative' }}>
+            <img src="/kop_surat.png" alt="Kop Surat" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '1122px', objectFit: 'fill', zIndex: 0 }} />
+            
+            <div style={{ position: 'relative', zIndex: 10, padding: '128px 56px 64px 56px' }}>
+              <h1 style={{ fontSize: '30px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: 'center', fontFamily: 'sans-serif', color: '#1e293b', margin: 0 }}>INTEROFFICE MEMO</h1>
+              
+              <table style={{ marginTop: '32px', width: '100%', fontSize: '16px', color: '#1e293b', fontWeight: 500, fontFamily: 'sans-serif', borderCollapse: 'collapse' }}>
+                <tbody>
+                  <tr>
+                    <td style={{ width: '15%', paddingBottom: '8px' }}>Dari</td>
+                    <td style={{ width: '85%', paddingBottom: '8px' }}>: {memo.memoFrom || `${memo.createdBy?.name} (${memo.createdBy?.role})`}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingBottom: '8px' }}>Kepada</td>
+                    <td style={{ paddingBottom: '8px' }}>: {memo.memoTo || "All Staff"}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingBottom: '8px' }}>No IM</td>
+                    <td style={{ paddingBottom: '8px' }}>: {memo.memoNumber}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingBottom: '8px' }}>Perihal</td>
+                    <td style={{ paddingBottom: '8px', fontWeight: 700 }}>: {memo.subject}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingTop: '8px' }}>Tanggal</td>
+                    <td style={{ paddingTop: '8px' }}>: {formatDate(memo.createdAt)}</td>
+                  </tr>
+                </tbody>
+              </table>
 
-      <div className="bg-white p-8 md:p-12 shadow-sm rounded-xl border border-slate-200 mb-8 min-h-[800px] relative print:shadow-none print:border-none print:p-0 print:m-0">
-        <div className="flex justify-center mb-12">
-          <div className="w-64 flex items-center justify-center">
-            <img src="/images/logo.png" alt="Aviary Park" className="w-full h-auto object-contain" />
+              <div style={{ borderTop: '2px solid #1e293b', paddingTop: '24px', marginTop: '24px', minHeight: '300px', color: '#1e293b' }}>
+                <div className="pdf-content" style={{ fontFamily: 'sans-serif', lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: memo.content }} />
+                <style dangerouslySetInnerHTML={{ __html: `
+                  .pdf-content p { margin-bottom: 1em; }
+                  .pdf-content strong { font-weight: bold; }
+                  .pdf-content table { border-collapse: collapse; table-layout: fixed; width: 100%; margin-bottom: 1em; }
+                  .pdf-content table td, .pdf-content table th { border: 1px solid #94a3b8; padding: 8px; vertical-align: top; }
+                  .pdf-content table th { background-color: #f1f5f9; font-weight: bold; text-align: left; }
+                  .pdf-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1em; }
+                  .pdf-content ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 1em; }
+                `}} />
+              </div>
+  
+              {/* Tanda Tangan PDF */}
+              <div style={{ marginTop: '64px', paddingTop: '32px', pageBreakInside: 'avoid' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-around', gap: '32px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: '160px', position: 'relative' }}>
+                     <p style={{ fontSize: '14px', fontWeight: 700, marginBottom: '8px', color: '#1e293b' }}>Dibuat Oleh,</p>
+                     
+                     {memo.createdBy?.signatureUrl ? (
+                       <div style={{ height: '64px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', marginBottom: '8px' }}>
+                         <img src={memo.createdBy.signatureUrl.startsWith('data:') ? memo.createdBy.signatureUrl : `/_next/image?url=${encodeURIComponent(memo.createdBy.signatureUrl)}&w=256&q=75`} alt="Signature" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
+                       </div>
+                     ) : (
+                       <div style={{ height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px' }}></div>
+                     )}
+                     
+                     <p style={{ fontSize: '14px', fontWeight: 700, borderBottom: '1px solid #94a3b8', width: '100%', paddingBottom: '4px', zIndex: 10, position: 'relative', color: '#1e293b', margin: 0 }}>
+                       {memo.createdBy?.name || "Pembuat"}
+                     </p>
+                     <p style={{ fontSize: '12px', marginTop: '4px', textTransform: 'capitalize', color: '#475569', margin: 0 }}>{memo.createdBy?.role || "Staff"}</p>
+                     <p style={{ fontSize: '10px', color: '#64748b', margin: 0 }}>{formatDate(memo.createdAt)}</p>
+                  </div>
+      
+                  {memo.approvalFlow?.map((approver: any, index: number) => (
+                    <div key={index} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: '160px', position: 'relative' }}>
+                      <p style={{ fontSize: '14px', fontWeight: 700, marginBottom: '8px', color: '#1e293b' }}>Disetujui Oleh,</p>
+                      
+                      {approver.status === "APPROVED" && (
+                        <div style={{ position: 'absolute', top: '24px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.9, zIndex: 0 }}>
+                          <div style={{ padding: '4px 12px', border: '2px solid #10b981', color: '#10b981', fontWeight: 700, fontSize: '12px', transform: 'rotate(-12deg)', borderRadius: '4px' }}>
+                            APPROVED
+                          </div>
+                        </div>
+                      )}
+                      {approver.status === "REJECTED" && (
+                        <div style={{ position: 'absolute', top: '24px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.9, zIndex: 0 }}>
+                          <div style={{ padding: '4px 12px', border: '2px solid #ef4444', color: '#ef4444', fontWeight: 700, fontSize: '12px', transform: 'rotate(-12deg)', borderRadius: '4px' }}>
+                            REJECTED
+                          </div>
+                        </div>
+                      )}
+      
+                      {approver.signatureUrl && approver.status === "APPROVED" ? (
+                        <div style={{ height: '64px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', zIndex: 10, marginBottom: '8px' }}>
+                          <img src={approver.signatureUrl.startsWith('data:') ? approver.signatureUrl : `/_next/image?url=${encodeURIComponent(approver.signatureUrl)}&w=256&q=75`} alt="Signature" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
+                        </div>
+                      ) : (
+                        <div style={{ height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, marginBottom: '8px' }}></div>
+                      )}
+      
+                      <p style={{ fontSize: '14px', fontWeight: 700, borderBottom: '1px solid #94a3b8', width: '100%', paddingBottom: '4px', zIndex: 10, position: 'relative', color: '#1e293b', margin: 0 }}>
+                        {approver.approverName}
+                      </p>
+                      <p style={{ fontSize: '12px', marginTop: '4px', textTransform: 'capitalize', color: '#475569', margin: 0 }}>{approver.approverRole}</p>
+                      <p style={{ fontSize: '10px', color: '#64748b', margin: 0 }}>
+                        {approver.approvedAt ? formatDate(approver.approvedAt) : "Belum diproses"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+      </div>
 
-        <div className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-black text-slate-400 uppercase tracking-widest">INTEROFFICE MEMO</h1>
-        </div>
+      {/* Tampilan Visual (Biasa) */}
+      <div className="bg-white shadow-sm rounded-xl border border-slate-200 mb-8 relative print:hidden overflow-hidden w-full max-w-[794px] mx-auto" style={{ minHeight: '1122px' }}>
+        <img src="/kop_surat.png" alt="Kop Surat" className="absolute top-0 left-0 w-full z-0 pointer-events-none" style={{ height: '1122px', objectFit: 'fill' }} />
 
-        <div className="grid grid-cols-12 gap-y-2 mb-8 text-sm md:text-base text-slate-800 font-medium">
-          <div className="col-span-3 md:col-span-2 text-slate-600">Dari</div>
-          <div className="col-span-9 md:col-span-10">: {memo.memoFrom || `${memo.createdBy?.name} (${memo.createdBy?.role})`}</div>
-          <div className="col-span-3 md:col-span-2 text-slate-600">Kepada</div>
-          <div className="col-span-9 md:col-span-10">: {memo.memoTo || "All Staff"}</div>
-          <div className="col-span-3 md:col-span-2 text-slate-600">No IM</div>
-          <div className="col-span-9 md:col-span-10">: {memo.memoNumber}</div>
-          <div className="col-span-3 md:col-span-2 text-slate-600">Perihal</div>
-          <div className="col-span-9 md:col-span-10 font-bold">: {memo.subject}</div>
-          <div className="col-span-3 md:col-span-2 text-slate-600 mt-2">Tanggal</div>
-          <div className="col-span-9 md:col-span-10 mt-2">: {formatDate(memo.createdAt)}</div>
-        </div>
-
-        <div className="border-t-2 border-slate-200 pt-8 min-h-[300px]">
-          <div 
-            className="text-slate-800 prose prose-sm sm:prose lg:prose-base max-w-none font-sans leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: memo.content }}
-          />
-          <style dangerouslySetInnerHTML={{ __html: `
-            .prose table { border-collapse: collapse; table-layout: fixed; width: 100%; margin: 0; }
-            .prose table td, .prose table th { border: 1px solid #cbd5e1; padding: 8px; vertical-align: top; }
-            .prose table th { background-color: #f1f5f9; font-weight: bold; text-align: left; }
-            .prose ul { list-style-type: disc; padding-left: 1.5rem; }
-            .prose ol { list-style-type: decimal; padding-left: 1.5rem; }
-          `}} />
-        </div>
-
-        <div className="mt-20 pt-8">
-          <div className="flex flex-wrap justify-around gap-8">
-            <div className="flex flex-col items-center justify-end h-40 text-center w-48 relative">
-               <p className="text-sm font-bold text-slate-600 mb-auto">Dibuat Oleh,</p>
-               {memo.createdBy?.signatureUrl ? (
-                 <div className="h-20 w-full flex items-center justify-center relative">
-                   <img src={memo.createdBy.signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
-                 </div>
-               ) : (
-                 <div className="h-20 flex items-center justify-center"></div>
-               )}
-               <div className="w-full border-t border-slate-800 pt-2 mt-2">
-                 <p className="font-bold text-slate-800 text-sm truncate">{memo.createdBy?.name}</p>
-                 <p className="text-xs text-slate-500 capitalize">{memo.createdBy?.role}</p>
-                 <p className="text-[10px] text-slate-400 mt-1 font-medium">{formatDate(memo.createdAt)}</p>
-               </div>
-            </div>
-
-            {memo.approvalFlow?.map((approver: any, index: number) => {
-              const label = approver.actionType === "Mengetahui" ? "Diketahui Oleh," : "Disetujui Oleh,";
-              return (
-                <div key={index} className="flex flex-col items-center justify-end h-40 text-center w-48 relative">
-                   <p className="text-sm font-bold text-slate-600 mb-auto">{label}</p>
-                   {approver.signatureUrl ? (
-                     <div className="h-20 w-full flex items-center justify-center relative">
-                       {approver.status === "APPROVED" && (
-                         <div className="absolute top-0 right-0 transform rotate-12 opacity-80 border-2 border-green-600 text-green-600 px-1 py-0.5 text-[8px] font-black uppercase rounded">
-                           Approved
-                         </div>
-                       )}
-                       <img src={approver.signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
-                     </div>
-                   ) : (
-                     <div className="h-20 w-full flex items-center justify-center text-gray-300 italic text-xs">
-                       {approver.status === "REJECTED" ? (
-                         <span className="text-red-500 font-bold">DITOLAK</span>
-                       ) : (
-                         <span className="text-gray-400">Menunggu Tanda Tangan</span>
-                       )}
-                     </div>
-                   )}
-                    <div className="w-full border-t border-slate-800 pt-2 mt-2">
-                      <p className="font-bold text-slate-800 text-sm truncate">{approver.approverName}</p>
-                      <p className="text-xs text-slate-500 capitalize">{approver.approverRole}</p>
-                      {approver.approvedAt && (
-                        <p className="text-[10px] text-slate-400 mt-1 font-medium">{formatDate(approver.approvedAt)}</p>
-                      )}
+        <div className="relative z-10 px-10 md:px-14 pt-32 pb-16">
+          <div className="mb-6">
+            <h1 className="text-3xl font-black text-slate-800 uppercase tracking-widest text-center font-sans">INTEROFFICE MEMO</h1>
+          </div>
+  
+          <div className="grid grid-cols-12 gap-y-2 mb-8 text-sm md:text-base text-slate-800 font-medium font-sans">
+            <div className="col-span-3 md:col-span-2">Dari</div>
+            <div className="col-span-9 md:col-span-10">: {memo.memoFrom || `${memo.createdBy?.name} (${memo.createdBy?.role})`}</div>
+            <div className="col-span-3 md:col-span-2">Kepada</div>
+            <div className="col-span-9 md:col-span-10">: {memo.memoTo || "All Staff"}</div>
+            <div className="col-span-3 md:col-span-2">No IM</div>
+            <div className="col-span-9 md:col-span-10">: {memo.memoNumber}</div>
+            <div className="col-span-3 md:col-span-2">Perihal</div>
+            <div className="col-span-9 md:col-span-10 font-bold">: {memo.subject}</div>
+            <div className="col-span-3 md:col-span-2 mt-2">Tanggal</div>
+            <div className="col-span-9 md:col-span-10 mt-2">: {formatDate(memo.createdAt)}</div>
+          </div>
+  
+          <div className="border-t-2 border-slate-800 pt-6 min-h-[300px]">
+            <div 
+              className="text-slate-800 prose prose-sm md:prose-base max-w-none font-sans leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: memo.content }}
+            />
+            <style dangerouslySetInnerHTML={{ __html: `
+              .prose table { border-collapse: collapse; table-layout: fixed; width: 100%; margin: 0; }
+              .prose table td, .prose table th { border: 1px solid #94a3b8; padding: 8px; vertical-align: top; }
+              .prose table th { background-color: #f1f5f9; font-weight: bold; text-align: left; }
+              .prose ul { list-style-type: disc; padding-left: 1.5rem; }
+              .prose ol { list-style-type: decimal; padding-left: 1.5rem; }
+            `}} />
+          </div>
+  
+          <div className="mt-16 pt-8">
+            <div className="flex flex-wrap justify-around gap-8">
+              <div className="flex flex-col items-center justify-end h-32 text-center w-40 relative">
+                 <p className="text-sm font-bold text-slate-800 mb-auto">Dibuat Oleh,</p>
+                 {memo.createdBy?.signatureUrl ? (
+                   <div className="h-16 w-full flex items-center justify-center relative">
+                     <img src={memo.createdBy.signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                   </div>
+                 ) : (
+                   <div className="h-16 flex items-center justify-center"></div>
+                 )}
+                 <p className="text-sm font-bold text-slate-800 border-b border-slate-400 w-full pb-1 z-10 relative">
+                   {memo.createdBy?.name || "Pembuat"}
+                 </p>
+                 <p className="text-xs text-slate-600 mt-1 capitalize">{memo.createdBy?.role || "Staff"}</p>
+                 <p className="text-[10px] text-slate-500">{formatDate(memo.createdAt)}</p>
+              </div>
+  
+              {memo.approvalFlow?.map((approver: any, index: number) => (
+                <div key={index} className="flex flex-col items-center justify-end h-32 text-center w-40 relative">
+                  <p className="text-sm font-bold text-slate-800 mb-auto">Disetujui Oleh,</p>
+                  
+                  {approver.status === "APPROVED" && (
+                    <div className="absolute top-8 w-full flex items-center justify-center opacity-90 z-0">
+                      <div className="px-3 py-1 border-2 border-emerald-500 text-emerald-500 font-bold text-xs transform -rotate-12 rounded">
+                        APPROVED
+                      </div>
                     </div>
+                  )}
+                  {approver.status === "REJECTED" && (
+                    <div className="absolute top-8 w-full flex items-center justify-center opacity-90 z-0">
+                      <div className="px-3 py-1 border-2 border-red-500 text-red-500 font-bold text-xs transform -rotate-12 rounded">
+                        REJECTED
+                      </div>
+                    </div>
+                  )}
+  
+                  {approver.signatureUrl && approver.status === "APPROVED" ? (
+                    <div className="h-16 w-full flex items-center justify-center relative z-10">
+                      <img src={approver.signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                    </div>
+                  ) : (
+                    <div className="h-16 flex items-center justify-center z-10"></div>
+                  )}
+  
+                  <p className="text-sm font-bold text-slate-800 border-b border-slate-400 w-full pb-1 z-10 relative">
+                    {approver.approverName}
+                  </p>
+                  <p className="text-xs text-slate-600 mt-1 capitalize">{approver.approverRole}</p>
+                  <p className="text-[10px] text-slate-500">
+                    {approver.approvedAt ? formatDate(approver.approvedAt) : "Belum diproses"}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* CONSOLIDATED NOTES SECTION */}
+      {memo.approvalFlow?.some((a: any) => a.note || a.rejectReason) && (
+        <div className="mt-8 pt-6 border-t border-slate-200">
+          <h3 className="text-sm font-bold text-slate-800 mb-4">Catatan Persetujuan / Penolakan:</h3>
+          <div className="flex flex-col gap-3">
+            {memo.approvalFlow.map((approver: any, index: number) => {
+              const noteContent = approver.note || approver.rejectReason;
+              if (!noteContent) return null;
+              
+              return (
+                <div key={`note-${index}`} className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex flex-col gap-2 w-full max-w-2xl">
+                  <p className="text-sm font-bold text-slate-700 flex items-center justify-between">
+                    <span>{approver.approverName} <span className="text-slate-500 font-normal">({approver.approverRole})</span></span>
+                    {approver.status === "APPROVED" && <span className="text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded-full text-xs">Disetujui</span>}
+                    {approver.status === "REJECTED" && <span className="text-red-600 font-medium bg-red-50 px-2 py-0.5 rounded-full text-xs">Ditolak</span>}
+                  </p>
+                  <p className={`text-base font-medium italic leading-relaxed whitespace-pre-wrap ${approver.status === "REJECTED" ? "text-red-600" : "text-slate-700"}`}>
+                    "{noteContent}"
+                  </p>
                 </div>
               );
             })}
           </div>
         </div>
-
-        {/* CONSOLIDATED NOTES SECTION */}
-        {memo.approvalFlow?.some((a: any) => a.note || a.rejectReason) && (
-          <div className="mt-12 pt-6 border-t border-slate-200">
-            <h3 className="text-sm font-bold text-slate-800 mb-4">Catatan Persetujuan / Penolakan:</h3>
-            <div className="flex flex-col gap-3">
-              {memo.approvalFlow.map((approver: any, index: number) => {
-                const noteContent = approver.note || approver.rejectReason;
-                if (!noteContent) return null;
-                
-                return (
-                  <div key={`note-${index}`} className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex flex-col gap-2 w-full max-w-2xl">
-                    <p className="text-sm font-bold text-slate-700 flex items-center justify-between">
-                      <span>{approver.approverName} <span className="text-slate-500 font-normal">({approver.approverRole})</span></span>
-                      {approver.status === "APPROVED" && <span className="text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded-full text-xs">Disetujui</span>}
-                      {approver.status === "REJECTED" && <span className="text-red-600 font-medium bg-red-50 px-2 py-0.5 rounded-full text-xs">Ditolak</span>}
-                    </p>
-                    <p className={`text-base font-medium italic leading-relaxed whitespace-pre-wrap ${approver.status === "REJECTED" ? "text-red-600" : "text-slate-700"}`}>
-                      "{noteContent}"
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
+      )}
 
       {isCurrentApprover() && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] p-4 z-50 print:hidden">

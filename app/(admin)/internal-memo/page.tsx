@@ -145,22 +145,22 @@ export default function InternalMemoPage() {
               ) : (
                 filteredMemos.map((memo) => (
                   <tr key={memo.id} className="hover:bg-slate-50/80 transition-all duration-200 group">
-                    <td className="px-6 py-5 whitespace-nowrap text-sm font-bold text-slate-700">
+                    <td className="px-6 py-5 break-words whitespace-normal text-sm font-bold text-slate-700 max-w-[200px]">
                       {memo.memoNumber || "-"}
                     </td>
-                    <td className="px-6 py-5 text-sm text-slate-600 max-w-xs truncate font-medium group-hover:text-emerald-600 transition-colors">
+                    <td className="px-6 py-5 whitespace-normal text-sm text-slate-600 font-medium group-hover:text-emerald-600 transition-colors min-w-[200px]">
                       {memo.subject}
                     </td>
-                    <td className="px-6 py-5 whitespace-nowrap text-sm text-slate-500">
+                    <td className="px-6 py-5 whitespace-normal text-sm text-slate-500">
                       {memo.createdBy?.name || "Unknown"}
                     </td>
-                    <td className="px-6 py-5 whitespace-nowrap text-sm text-slate-500">
+                    <td className="px-6 py-5 whitespace-normal text-sm text-slate-500">
                       {memo.createdAt?.toDate ? memo.createdAt.toDate().toLocaleDateString("id-ID", { day: 'numeric', month: 'short', year: 'numeric' }) : "-"}
                     </td>
-                    <td className="px-6 py-5 whitespace-nowrap">
+                    <td className="px-6 py-5 whitespace-normal">
                       {getStatusBadge(memo.status)}
                     </td>
-                    <td className="px-6 py-5 whitespace-nowrap text-center">
+                    <td className="px-6 py-5 whitespace-normal text-center">
                       <Link 
                         href={`/internal-memo/${memo.id}`}
                         className="inline-flex items-center justify-center px-4 py-2 border-2 border-transparent text-xs font-bold rounded-lg text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white transition-all duration-300"
