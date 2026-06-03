@@ -4,7 +4,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, getDocs, getDoc, doc, query, orderBy } from "firebase/firestore";
+import { collection, addDoc, getDocs, getDoc, doc, query, orderBy, runTransaction } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { usePermissions } from "@/hooks/usePermissions";
 import RichTextEditor from "@/components/ui/RichTextEditor";
@@ -76,22 +76,7 @@ export default function CreateMemoPage() {
     }
   };
 
-  const generateMemoNumber = () => {
-    const date = new Date();
-    const year = date.getFullYear();
-    const romanMonths = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
-    const romanMonth = romanMonths[date.getMonth()];
-    const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    
-    // Format: 000/AJL/DEPT-IM/ROMAN_MONTH/YYYY
-    // deptPembuat menyesuaikan role user
-    let deptPembuat = user?.role ? user.role.toUpperCase() : 'DEPT';
-    
-    // Kita hapus karakter non-alphanumeric atau spasi dari role jika terlalu panjang (opsional)
-    // deptPembuat = deptPembuat.replace(/[^A-Z]/g, '');
-
-    return `${randomNum}/AJL/${deptPembuat}-IM/${romanMonth}/${year}`;
-  };
+  // memo number string generation will be done inside the transaction to prevent race conditions
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,25 +118,53 @@ export default function CreateMemoPage() {
         approvedAt: null,
       }));
 
-      const newMemo = {
-        memoNumber: generateMemoNumber(),
-        memoTo: memoTo || "All Staff",
-        memoFrom: memoFrom || (user?.role || "Management"),
-        subject,
-        content,
-        createdBy: {
-          uid: user?.uid,
-          name: user?.name,
-          role: user?.role,
-          signatureUrl: creatorSignatureUrl
-        },
-        createdAt: new Date(),
-        status: "PENDING", // Automatically pending
-        approvalFlow,
-        currentApproverIndex: 0,
-      };
+      await runTransaction(db, async (transaction) => {
+        // 1. Get and increment the sequence number safely
+        const counterRef = doc(db, "counters", "internal_memos");
+        const counterDoc = await transaction.get(counterRef);
+        
+        let newCount = 1;
+        if (counterDoc.exists()) {
+          newCount = (counterDoc.data().count || 0) + 1;
+          transaction.update(counterRef, { count: newCount });
+        } else {
+          transaction.set(counterRef, { count: 1 });
+        }
+        
+        const sequenceStr = newCount.toString().padStart(3, '0');
+        
+        // 2. Format the new memo number
+        const date = new Date();
+        const year = date.getFullYear();
+        const romanMonths = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+        const romanMonth = romanMonths[date.getMonth()];
+        let deptPembuat = user?.role ? user.role.toUpperCase() : 'DEPT';
+        
+        const finalMemoNumber = `${sequenceStr}/AJL/${deptPembuat}-IM/${romanMonth}/${year}`;
 
-      await addDoc(collection(db, "internal_memos"), newMemo);
+        // 3. Prepare the memo document
+        const newMemoRef = doc(collection(db, "internal_memos"));
+        const newMemo = {
+          memoNumber: finalMemoNumber,
+          memoTo: memoTo || "All Staff",
+          memoFrom: memoFrom || (user?.role || "Management"),
+          subject,
+          content,
+          createdBy: {
+            uid: user?.uid,
+            name: user?.name,
+            role: user?.role,
+            signatureUrl: creatorSignatureUrl
+          },
+          createdAt: new Date(),
+          status: "PENDING", // Automatically pending
+          approvalFlow,
+          currentApproverIndex: 0,
+        };
+
+        // 4. Save the new memo
+        transaction.set(newMemoRef, newMemo);
+      });
       alert("✅ Memo berhasil dibuat dan dikirim untuk persetujuan!");
       router.push("/internal-memo");
     } catch (error) {
