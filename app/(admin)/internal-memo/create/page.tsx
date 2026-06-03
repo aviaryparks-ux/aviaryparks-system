@@ -78,14 +78,19 @@ export default function CreateMemoPage() {
 
   const generateMemoNumber = () => {
     const date = new Date();
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
     const year = date.getFullYear();
+    const romanMonths = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+    const romanMonth = romanMonths[date.getMonth()];
     const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
     
-    // Format: 000/AJL/DEPT-IM/DD/MM/YYYY
-    const deptPembuat = user?.role ? user.role.toUpperCase() : 'DEPT';
-    return `${randomNum}/AJL/${deptPembuat}-IM/${day}/${month}/${year}`;
+    // Format: 000/AJL/DEPT-IM/ROMAN_MONTH/YYYY
+    // deptPembuat menyesuaikan role user
+    let deptPembuat = user?.role ? user.role.toUpperCase() : 'DEPT';
+    
+    // Kita hapus karakter non-alphanumeric atau spasi dari role jika terlalu panjang (opsional)
+    // deptPembuat = deptPembuat.replace(/[^A-Z]/g, '');
+
+    return `${randomNum}/AJL/${deptPembuat}-IM/${romanMonth}/${year}`;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
