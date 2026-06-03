@@ -138,7 +138,8 @@ export default function CreateMemoPage() {
         const year = date.getFullYear();
         const romanMonths = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
         const romanMonth = romanMonths[date.getMonth()];
-        let deptPembuat = user?.role ? user.role.toUpperCase() : 'DEPT';
+        
+        let deptPembuat = user?.department ? user.department.toUpperCase().replace(/\s+/g, '_') : 'DEPT';
         
         const finalMemoNumber = `${sequenceStr}/AJL/${deptPembuat}-IM/${romanMonth}/${year}`;
 
