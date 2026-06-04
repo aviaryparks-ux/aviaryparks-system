@@ -156,9 +156,13 @@ export default function CreateMemoPage() {
       await addDoc(collection(db, "internal_memos"), newMemo);
       alert("✅ Memo berhasil dibuat dan dikirim untuk persetujuan!");
       router.push("/internal-memo");
-    } catch (error) {
-      console.error("Error creating memo:", error);
-      alert("❌ Gagal membuat memo.");
+    } catch (error: any) {
+      console.error("🔥 Error creating memo:", error);
+      if (error.code === 'permission-denied') {
+        alert("❌ Gagal membuat memo: Permission Denied. Pastikan user memiliki hak akses.");
+      } else {
+        alert("❌ Gagal membuat memo: " + (error.message || "Unknown error"));
+      }
     } finally {
       setIsSubmitting(false);
     }

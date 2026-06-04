@@ -201,7 +201,7 @@ export default function MemoDetailPage() {
             <img src="/kop_surat.png" alt="Kop Surat" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '1122px', objectFit: 'fill', zIndex: 0 }} />
             
             <div style={{ position: 'relative', zIndex: 10, padding: '128px 56px 64px 56px' }}>
-              <h1 style={{ fontSize: '30px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: 'center', fontFamily: 'sans-serif', color: '#1e293b', margin: 0 }}>INTEROFFICE MEMO</h1>
+              <h1 style={{ fontSize: '30px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: 'center', fontFamily: 'sans-serif', color: '#1e293b', margin: 0 }}>INTERNAL MEMO</h1>
               
               <table style={{ marginTop: '32px', width: '100%', fontSize: '16px', color: '#1e293b', fontWeight: 500, fontFamily: 'sans-serif', borderCollapse: 'collapse' }}>
                 <tbody>
@@ -311,7 +311,7 @@ export default function MemoDetailPage() {
 
         <div className="relative z-10 px-10 md:px-14 pt-32 pb-16">
           <div className="mb-6">
-            <h1 className="text-3xl font-black text-slate-800 uppercase tracking-widest text-center font-sans">INTEROFFICE MEMO</h1>
+            <h1 className="text-3xl font-black text-slate-800 uppercase tracking-widest text-center font-sans">INTERNAL MEMO</h1>
           </div>
   
           <div className="grid grid-cols-12 gap-y-2 mb-8 text-sm md:text-base text-slate-800 font-medium font-sans">
