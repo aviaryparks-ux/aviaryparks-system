@@ -4,7 +4,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, getDocs, getDoc, doc, query, orderBy, runTransaction } from "firebase/firestore";
+import { collection, addDoc, getDocs, getDoc, doc, query, orderBy, getCountFromServer } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { usePermissions } from "@/hooks/usePermissions";
 import RichTextEditor from "@/components/ui/RichTextEditor";
@@ -118,54 +118,42 @@ export default function CreateMemoPage() {
         approvedAt: null,
       }));
 
-      await runTransaction(db, async (transaction) => {
-        // 1. Get and increment the sequence number safely
-        const counterRef = doc(db, "counters", "internal_memos");
-        const counterDoc = await transaction.get(counterRef);
-        
-        let newCount = 1;
-        if (counterDoc.exists()) {
-          newCount = (counterDoc.data().count || 0) + 1;
-          transaction.update(counterRef, { count: newCount });
-        } else {
-          transaction.set(counterRef, { count: 1 });
-        }
-        
-        const sequenceStr = newCount.toString().padStart(3, '0');
-        
-        // 2. Format the new memo number
-        const date = new Date();
-        const year = date.getFullYear();
-        const romanMonths = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
-        const romanMonth = romanMonths[date.getMonth()];
-        
-        let deptPembuat = user?.department ? user.department.toUpperCase().replace(/\s+/g, '_') : 'DEPT';
-        
-        const finalMemoNumber = `${sequenceStr}/AJL/${deptPembuat}-IM/${romanMonth}/${year}`;
+      // 1. Get the current count of internal memos safely
+      const snapshot = await getCountFromServer(collection(db, "internal_memos"));
+      const newCount = snapshot.data().count + 1;
+      const sequenceStr = newCount.toString().padStart(3, '0');
+      
+      // 2. Format the new memo number
+      const date = new Date();
+      const year = date.getFullYear();
+      const romanMonths = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+      const romanMonth = romanMonths[date.getMonth()];
+      
+      let deptPembuat = user?.department ? user.department.toUpperCase().replace(/\s+/g, '_') : 'DEPT';
+      
+      const finalMemoNumber = `${sequenceStr}/AJL/${deptPembuat}-IM/${romanMonth}/${year}`;
 
-        // 3. Prepare the memo document
-        const newMemoRef = doc(collection(db, "internal_memos"));
-        const newMemo = {
-          memoNumber: finalMemoNumber,
-          memoTo: memoTo || "All Staff",
-          memoFrom: memoFrom || (user?.role || "Management"),
-          subject,
-          content,
-          createdBy: {
-            uid: user?.uid,
-            name: user?.name,
-            role: user?.role,
-            signatureUrl: creatorSignatureUrl
-          },
-          createdAt: new Date(),
-          status: "PENDING", // Automatically pending
-          approvalFlow,
-          currentApproverIndex: 0,
-        };
+      // 3. Prepare the memo document
+      const newMemo = {
+        memoNumber: finalMemoNumber,
+        memoTo: memoTo || "All Staff",
+        memoFrom: memoFrom || (user?.role || "Management"),
+        subject,
+        content,
+        createdBy: {
+          uid: user?.uid,
+          name: user?.name,
+          role: user?.role,
+          signatureUrl: creatorSignatureUrl
+        },
+        createdAt: new Date(),
+        status: "PENDING", // Automatically pending
+        approvalFlow,
+        currentApproverIndex: 0,
+      };
 
-        // 4. Save the new memo
-        transaction.set(newMemoRef, newMemo);
-      });
+      // 4. Save the new memo
+      await addDoc(collection(db, "internal_memos"), newMemo);
       alert("✅ Memo berhasil dibuat dan dikirim untuk persetujuan!");
       router.push("/internal-memo");
     } catch (error) {
