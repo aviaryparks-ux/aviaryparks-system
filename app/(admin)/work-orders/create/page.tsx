@@ -522,7 +522,7 @@ export default function CreateWorkOrderPage() {
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
-      <div className="max-w-3xl mx-auto space-y-8 p-6 pb-32">
+      <div className="max-w-6xl mx-auto space-y-8 p-6 pb-32">
         {/* Header */}
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-colors shadow-sm shrink-0">
@@ -603,94 +603,104 @@ export default function CreateWorkOrderPage() {
             <span className="w-6 h-6 rounded-md bg-slate-100 text-slate-500 flex items-center justify-center text-xs">2</span>
             Detail Work Order
           </h2>
-          <div className="space-y-5">
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Judul <span className="text-red-500">*</span></label>
-              <input
-                type="text"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                className="w-full border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 placeholder-slate-400 hover:bg-slate-100 focus:bg-white transition-colors"
-                placeholder="Contoh: AC Lobby Bocor"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Deskripsi Lengkap</label>
-              <textarea
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                rows={4}
-                className="w-full border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 placeholder-slate-400 hover:bg-slate-100 focus:bg-white transition-colors resize-none"
-                placeholder="Jelaskan detail masalah atau pekerjaan yang harus dilakukan..."
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Foto Bukti Kerusakan <span className="text-red-500">*</span></label>
-              <div className="flex flex-col gap-3">
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={e => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      setPhotoFile(file);
-                      setPhotoPreview(URL.createObjectURL(file));
-                    }
-                  }}
-                  className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 cursor-pointer"
-                />
-                {photoPreview && (
-                  <div className="relative w-full md:w-64 h-48 rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
-                    <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPhotoFile(null);
-                        setPhotoPreview("");
-                      }}
-                      className="absolute top-2 right-2 bg-white/90 p-1.5 rounded-lg text-red-600 hover:bg-white shadow-sm"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
-                  </div>
-                )}
-                <p className="text-xs text-slate-500">Foto otomatis dikompres untuk hemat storage server.</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Kiri: Info Dasar & Media */}
+            <div className="space-y-6">
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Prioritas</label>
-                <select
-                  value={priority}
-                  onChange={e => setPriority(e.target.value as WorkOrderPriority)}
-                  className="w-full border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 hover:bg-slate-100 focus:bg-white transition-colors font-medium cursor-pointer"
-                >
-                  <option value="low">🟢 Rendah (Low)</option>
-                  <option value="medium">🟡 Sedang (Medium)</option>
-                  <option value="high">🟠 Tinggi (High)</option>
-                  {woType === "urgent" && <option value="critical">🔴 Kritis (Critical)</option>}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Tags / Label</label>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Judul <span className="text-red-500">*</span></label>
                 <input
                   type="text"
-                  value={tags}
-                  onChange={e => setTags(e.target.value)}
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
                   className="w-full border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 placeholder-slate-400 hover:bg-slate-100 focus:bg-white transition-colors"
-                  placeholder="Contoh: AC, Listrik, Kebocoran"
+                  placeholder="Contoh: AC Lobby Bocor"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Deskripsi Lengkap</label>
+                <textarea
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  rows={4}
+                  className="w-full border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 placeholder-slate-400 hover:bg-slate-100 focus:bg-white transition-colors resize-none"
+                  placeholder="Jelaskan detail masalah atau pekerjaan yang harus dilakukan..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Foto Bukti Kerusakan <span className="text-red-500">*</span></label>
+                <div className="flex flex-col gap-3">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setPhotoFile(file);
+                        setPhotoPreview(URL.createObjectURL(file));
+                      }
+                    }}
+                    className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 cursor-pointer"
+                  />
+                  {photoPreview && (
+                    <div className="relative w-full h-48 rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
+                      <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPhotoFile(null);
+                          setPhotoPreview("");
+                        }}
+                        className="absolute top-2 right-2 bg-white/90 p-1.5 rounded-lg text-red-600 hover:bg-white shadow-sm"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+                      </button>
+                    </div>
+                  )}
+                  <p className="text-xs text-slate-500">Foto otomatis dikompres untuk hemat storage server.</p>
+                </div>
               </div>
             </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-4 border-t border-slate-100">
+            {/* Kanan: Klasifikasi & Lokasi */}
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Departemen Tujuan <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Prioritas</label>
+                  <select
+                    value={priority}
+                    onChange={e => setPriority(e.target.value as WorkOrderPriority)}
+                    className="w-full border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 hover:bg-slate-100 focus:bg-white transition-colors font-medium cursor-pointer"
+                  >
+                    <option value="low">🟢 Rendah (Low)</option>
+                    <option value="medium">🟡 Sedang (Medium)</option>
+                    <option value="high">🟠 Tinggi (High)</option>
+                    {woType === "urgent" && <option value="critical">🔴 Kritis (Critical)</option>}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Tags / Label</label>
+                  <input
+                    type="text"
+                    value={tags}
+                    onChange={e => setTags(e.target.value)}
+                    className="w-full border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 placeholder-slate-400 hover:bg-slate-100 focus:bg-white transition-colors"
+                    placeholder="Contoh: AC, Listrik"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-slate-100">
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                  Penugasan Target
+                </h3>
+                
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Departemen Tujuan <span className="text-red-500">*</span></label>
                   <select
                     value={assignedToDept}
                     onChange={e => {
@@ -711,98 +721,105 @@ export default function CreateWorkOrderPage() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Divisi Tujuan</label>
-                  <select
-                    value={assignedToDivision}
-                    onChange={e => setAssignedToDivision(e.target.value)}
-                    className="w-full border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 hover:bg-slate-100 focus:bg-white transition-colors font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={!assignedToDept || divisions.length === 0}
-                  >
-                    <option value="">-- Pilih Divisi (Opsional) --</option>
-                    {divisions.map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Divisi (Opsional)</label>
+                    <select
+                      value={assignedToDivision}
+                      onChange={e => setAssignedToDivision(e.target.value)}
+                      className="w-full border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 hover:bg-slate-100 focus:bg-white transition-colors font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!assignedToDept || divisions.length === 0}
+                    >
+                      <option value="">-- Divisi --</option>
+                      {divisions.map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Tugaskan ke (Opsional)</label>
-                  <select
-                    value={assignedToUser}
-                    onChange={e => setAssignedToUser(e.target.value)}
-                    className="w-full border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 hover:bg-slate-100 focus:bg-white transition-colors font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={!assignedToDept}
-                  >
-                    <option value="">-- Bebas (Siapa saja di Dept) --</option>
-                    {getUsersByDept().map(u => (
-                      <option key={u.id} value={u.id}>{u.name} ({u.jabatan || u.role})</option>
-                    ))}
-                  </select>
-                  {!assignedToDept && (
-                    <p className="text-xs text-slate-500 mt-2 font-medium">Pilih departemen tujuan terlebih dahulu</p>
-                  )}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Staf (Opsional)</label>
+                    <select
+                      value={assignedToUser}
+                      onChange={e => setAssignedToUser(e.target.value)}
+                      className="w-full border-0 bg-slate-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 hover:bg-slate-100 focus:bg-white transition-colors font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!assignedToDept}
+                    >
+                      <option value="">-- Siapa Saja --</option>
+                      {getUsersByDept().map(u => (
+                        <option key={u.id} value={u.id}>{u.name} ({u.jabatan || u.role})</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
-            {/* Area & Inventory Dropdowns */}
-            {template && template.areas.length > 0 ? (
-              <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-5 mt-4 p-5 bg-orange-50/50 rounded-2xl border border-orange-100/50">
-                <div>
-                  <label className="block text-sm font-bold text-orange-900 mb-2">Lokasi Area</label>
-                  <select
-                    value={selectedArea}
-                    onChange={e => {
-                      setSelectedArea(e.target.value);
-                      setSelectedItem("");
-                      setIsManualItem(false);
-                    }}
-                    className="w-full border-0 bg-white rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 hover:bg-slate-50 transition-colors shadow-sm font-medium cursor-pointer"
-                  >
-                    <option value="">-- Pilih Area (Opsional) --</option>
-                    {template.areas.map(area => (
-                      <option key={area.id} value={area.name}>{area.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {selectedArea && (
-                  <div>
-                    <label className="block text-sm font-bold text-orange-900 mb-2">Barang / Inventory</label>
-                    <select
-                      value={isManualItem ? "manual" : selectedItem}
-                      onChange={e => {
-                        const val = e.target.value;
-                        if (val === "manual") {
-                          setIsManualItem(true);
+              {/* Area & Inventory Dropdowns */}
+              {template && template.areas.length > 0 ? (
+                <div className="space-y-4 pt-4 border-t border-slate-100">
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                    <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    Lokasi & Objek Target
+                  </h3>
+                  
+                  <div className="p-5 bg-orange-50/50 rounded-2xl border border-orange-100/50 space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-orange-900 uppercase tracking-wider mb-2">Lokasi Area</label>
+                      <select
+                        value={selectedArea}
+                        onChange={e => {
+                          setSelectedArea(e.target.value);
                           setSelectedItem("");
-                        } else {
                           setIsManualItem(false);
-                          setSelectedItem(val);
-                        }
-                      }}
-                      className="w-full border-0 bg-white rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 hover:bg-slate-50 transition-colors shadow-sm font-medium cursor-pointer mb-3"
-                    >
-                      <option value="">-- Pilih Barang --</option>
-                      {template.areas.find(a => a.name === selectedArea)?.items.map(item => (
-                        <option key={item.id} value={item.name}>{item.name}</option>
-                      ))}
-                      <option value="manual">+ Lainnya (Isi Manual)</option>
-                    </select>
+                        }}
+                        className="w-full border-0 bg-white rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 hover:bg-slate-50 transition-colors shadow-sm font-medium cursor-pointer"
+                      >
+                        <option value="">-- Pilih Area (Opsional) --</option>
+                        {template.areas.map(area => (
+                          <option key={area.id} value={area.name}>{area.name}</option>
+                        ))}
+                      </select>
+                    </div>
 
-                    {isManualItem && (
-                      <input
-                        type="text"
-                        value={manualItemName}
-                        onChange={e => setManualItemName(e.target.value)}
-                        className="w-full border-0 bg-white rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 placeholder-slate-400 shadow-sm"
-                        placeholder="Contoh: AC Ruangan HR"
-                        autoFocus
+                    {selectedArea && (
+                      <div>
+                        <label className="block text-xs font-bold text-orange-900 uppercase tracking-wider mb-2">Barang / Inventory</label>
+                        <select
+                          value={isManualItem ? "manual" : selectedItem}
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (val === "manual") {
+                              setIsManualItem(true);
+                              setSelectedItem("");
+                            } else {
+                              setIsManualItem(false);
+                              setSelectedItem(val);
+                            }
+                          }}
+                          className="w-full border-0 bg-white rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 hover:bg-slate-50 transition-colors shadow-sm font-medium cursor-pointer mb-3"
+                        >
+                          <option value="">-- Pilih Barang --</option>
+                          {template.areas.find(a => a.name === selectedArea)?.items.map(item => (
+                            <option key={item.id} value={item.name}>{item.name}</option>
+                          ))}
+                          <option value="manual">+ Lainnya (Isi Manual)</option>
+                        </select>
+
+                        {isManualItem && (
+                          <input
+                            type="text"
+                            value={manualItemName}
+                            onChange={e => setManualItemName(e.target.value)}
+                            className="w-full border-0 bg-white rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500 text-slate-800 placeholder-slate-400 shadow-sm"
+                            placeholder="Contoh: AC Ruangan HR"
+                            autoFocus
+
                       />
                     )}
                   </div>
                 )}
-              </div>
+                  </div>
+                </div>
             ) : (
               <div className="col-span-1 md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-5 mt-4 pt-4 border-t border-slate-100">
                 <div>
@@ -832,6 +849,7 @@ export default function CreateWorkOrderPage() {
             )}
           </div>
         </div>
+      </div>
 
         {/* SLA Section (Urgent) */}
         {woType === "urgent" && (

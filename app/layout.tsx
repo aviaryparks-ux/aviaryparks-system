@@ -14,6 +14,14 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "AviaryParks System",
   description: "Attendance Management System",
+  appleWebApp: {
+    capable: true,
+    title: "AviaryParks",
+    statusBarStyle: "default",
+  },
+  icons: {
+    apple: "/images/myaviary-logo.png",
+  },
 };
 
 export default function RootLayout({

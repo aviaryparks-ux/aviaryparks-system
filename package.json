@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@dotlottie/react-player": "^1.6.19",
+    "@ducanh2912/next-pwa": "^10.2.9",
     "@heroicons/react": "^2.2.0",
     "@tiptap/extension-table": "^3.23.6",
     "@tiptap/extension-table-cell": "^3.23.6",
