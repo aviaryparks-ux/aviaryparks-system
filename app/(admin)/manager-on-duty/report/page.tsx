@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot, query, orderBy, where } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, where, limit } from "firebase/firestore";
 import { useAuth } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Link from "next/link";
@@ -40,7 +40,8 @@ export default function MODReportListPage() {
       collection(db, "mod_reports"),
       where("date", ">=", startDate),
       where("date", "<=", endDate),
-      orderBy("date", "desc")
+      orderBy("date", "desc"),
+      limit(200)
     );
 
     const unsub = onSnapshot(q, (snap) => {

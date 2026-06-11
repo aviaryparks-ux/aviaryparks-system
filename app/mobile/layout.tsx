@@ -58,9 +58,9 @@ export default function MobileLayout({
   if (!user) return null;
 
   const menuItems = [
-    { name: "Absensi", path: "/mobile/attendance", icon: "📸" },
-    { name: "Koreksi", path: "/mobile/correction", icon: "✏️" },
-    { name: "Riwayat", path: "/mobile/history", icon: "📋" },
+    { name: "Beranda", path: "/mobile/dashboard", icon: "🏠" },
+    { name: "Kehadiran", path: "/mobile/attendance", icon: "📸" },
+    { name: "Tugas", path: "/mobile/tasks", icon: "📋" },
     { name: "Profil", path: "/mobile/profile", icon: "👤" },
   ];
 
@@ -68,7 +68,9 @@ export default function MobileLayout({
   const displayName = userData?.name?.split(" ")[0] || user?.email?.split("@")[0] || "User";
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-green-900 to-green-800 pb-20">
+    <div className="min-h-screen bg-gray-100 sm:py-4 flex justify-center">
+      <div className="w-full max-w-md min-h-screen sm:min-h-[850px] bg-gradient-to-b from-green-900 to-green-800 pb-20 relative sm:rounded-[40px] shadow-2xl overflow-hidden sm:border-8 border-gray-900">
+
       {/* Header */}
       <div className="bg-white/10 backdrop-blur-md sticky top-0 z-10">
         <div className="flex items-center justify-between p-4">
@@ -99,7 +101,7 @@ export default function MobileLayout({
       <div className="p-4">{children}</div>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 safe-bottom">
+      <nav className="fixed bottom-0 left-0 right-0 w-full sm:max-w-md sm:mx-auto bg-white/95 backdrop-blur-md border-t border-gray-200 safe-bottom z-50">
         <div className="flex justify-around py-2">
           {menuItems.map((item) => {
             const isActive = pathname === item.path;
@@ -128,6 +130,7 @@ export default function MobileLayout({
           padding-bottom: env(safe-area-inset-bottom);
         }
       `}</style>
+      </div>
     </div>
   );
 }

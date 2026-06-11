@@ -4,7 +4,6 @@
 import { useState, useEffect } from "react";
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
-import { encryptSession } from "@/lib/crypto";
 import { doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -32,37 +31,26 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await signInWithEmailAndPassword(auth, email.trim(), password.trim());
-      const uid = res.user.uid;
-      const userDoc = await getDoc(doc(db, "users", uid));
+      const idToken = await res.user.getIdToken();
 
-      if (!userDoc.exists()) {
-        toast.error("User not found in database");
-        setLoading(false);
-        return;
-      }
-
-      const userData = userDoc.data();
-      const role = userData.role;
-
-      // Set session cookie (encrypted)
-      const session = encryptSession({
-        uid: uid,
-        email: userData.email,
-        role: role,
+      const apiRes = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken })
       });
-      document.cookie = `__session=${session}; path=/; max-age=86400; SameSite=Lax`;
 
-      toast.success(`Welcome back, ${userData.name}!`);
-
-      // Role yang diizinkan untuk web admin
-      const adminRoles = ["super_admin", "admin", "hr", "spv"];
-      
-      if (adminRoles.includes(role)) {
-        router.push("/dashboard");
-      } else {
-        // Employee, Training, Intern langsung ke mobile PWA
-        router.push("/mobile/attendance");
+      if (!apiRes.ok) {
+        throw new Error("Gagal menginisialisasi sesi aman di server");
       }
+
+      const data = await apiRes.json();
+      
+      const userDoc = await getDoc(doc(db, "users", res.user.uid));
+      const userData = userDoc.exists() ? userDoc.data() : { name: "User" };
+      
+      toast.success(`Welcome back, ${userData.name}!`);
+      router.push(data.redirectUrl);
+
     } catch (e: any) {
       let errorMessage = "";
       switch (e.code) {

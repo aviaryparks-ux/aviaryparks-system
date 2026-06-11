@@ -10,7 +10,8 @@ import {
   where, 
   orderBy, 
   getDocs,
-  Timestamp 
+  Timestamp,
+  limit
 } from "firebase/firestore";
 
 export default function MobileHistoryPage() {
@@ -30,7 +31,8 @@ export default function MobileHistoryPage() {
       const q = query(
         collection(db, "attendance_requests"),
         where("uid", "==", user.uid),
-        orderBy("createdAt", "desc")
+        orderBy("createdAt", "desc"),
+        limit(50)
       );
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));

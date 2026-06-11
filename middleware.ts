@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server';
 import { decryptSession } from '@/lib/crypto';
 
 // ✅ HARUS DI SINI (atas)
-const publicRoutes = ['/login', '/profile', '/api/agora/token'];
+const publicRoutes = ['/login', '/profile', '/api/agora/token', '/api/auth/login'];
 
 const adminRoutes = [
   '/dashboard',
@@ -52,9 +52,12 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
+    console.log("Middleware checking session:", session);
     const userData = decryptSession(session);
+    console.log("Middleware decrypted userData:", userData);
 
     if (!userData || typeof userData !== 'object') {
+      console.log("Middleware redirecting to login because userData is invalid");
       return NextResponse.redirect(new URL('/login', request.url));
     }
 

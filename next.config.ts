@@ -8,6 +8,8 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig: NextConfig = {
+  // Allow LAN testing for Next.js dev server
+  allowedDevOrigins: ["10.90.103.160", "localhost"],
   images: {
     remotePatterns: [
       {

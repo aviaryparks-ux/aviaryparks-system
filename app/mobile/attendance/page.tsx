@@ -19,6 +19,7 @@ import {
 } from "firebase/firestore";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import dynamic from "next/dynamic";
+import imageCompression from "browser-image-compression";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -61,6 +62,7 @@ export default function Page() {
   const [isSaving, setIsSaving] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [isOffline, setIsOffline] = useState(false);
 
   const [scheduledShift, setScheduledShift] = useState<any>(null);
   const [isLoadingShift, setIsLoadingShift] = useState(true);
@@ -84,6 +86,21 @@ export default function Page() {
     "Maybank", "OCBC NISP", "UOB", "Panin Bank", "Bank Mega",
     "Bank Syariah Indonesia", "Bank Jago", "Bank Neo Commerce", "SeaBank", "Lainnya",
   ];
+
+  useEffect(() => {
+    // Offline detection
+    if (typeof window !== "undefined") {
+      setIsOffline(!navigator.onLine);
+      const handleOnline = () => setIsOffline(false);
+      const handleOffline = () => setIsOffline(true);
+      window.addEventListener("online", handleOnline);
+      window.addEventListener("offline", handleOffline);
+      return () => {
+        window.removeEventListener("online", handleOnline);
+        window.removeEventListener("offline", handleOffline);
+      };
+    }
+  }, []);
 
   useEffect(() => {
     loadOffice();
@@ -363,7 +380,7 @@ export default function Page() {
     }
   };
 
-  const takePhoto = () => {
+  const takePhoto = async () => {
     const video = videoRef.current!;
     const canvas = canvasRef.current!;
 
@@ -375,14 +392,34 @@ export default function Page() {
 
     canvas.getContext("2d")!.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const image = canvas.toDataURL("image/jpeg", 0.7);
-
-    setPhotoUri(image);
-
-    stream?.getTracks().forEach(t => t.stop());
-    setShowCamera(false);
-
-    getLocation();
+    try {
+      // Create blob from canvas
+      const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), "image/jpeg", 0.9));
+      
+      // Compress using browser-image-compression
+      const compressedFile = await imageCompression(blob as File, {
+        maxSizeMB: 0.2, // max 200KB
+        maxWidthOrHeight: 720,
+        useWebWorker: true
+      });
+      
+      // Convert back to base64 for easy state handling and upload
+      const reader = new FileReader();
+      reader.readAsDataURL(compressedFile);
+      reader.onloadend = () => {
+        setPhotoUri(reader.result as string);
+        stream?.getTracks().forEach(t => t.stop());
+        setShowCamera(false);
+        getLocation();
+      };
+    } catch (error) {
+      console.error("Compression error:", error);
+      // Fallback
+      setPhotoUri(canvas.toDataURL("image/jpeg", 0.7));
+      stream?.getTracks().forEach(t => t.stop());
+      setShowCamera(false);
+      getLocation();
+    }
   };
 
   const getDistance = (a: any, b: any) => {
@@ -554,6 +591,17 @@ export default function Page() {
           <h1 className="text-2xl font-bold text-gray-800">Absensi Lokasi</h1>
           <p className="text-gray-500 text-sm mt-1">{formattedDate}</p>
         </div>
+
+        {/* OFFLINE BANNER */}
+        {isOffline && (
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-xl p-3 mb-6 text-sm flex items-start gap-2">
+            <span className="text-lg">⚠️</span>
+            <div>
+              <p className="font-bold">Anda sedang Offline (Tidak ada sinyal)</p>
+              <p className="text-xs text-yellow-700 mt-0.5">Absen tetap bisa dilakukan. Data akan terkirim otomatis saat sinyal kembali.</p>
+            </div>
+          </div>
+        )}
 
         {/* Status Absensi */}
         <div className="space-y-3 mb-6">

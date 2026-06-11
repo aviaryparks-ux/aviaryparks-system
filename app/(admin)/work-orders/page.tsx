@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, limit } from "firebase/firestore";
 import { useAuth } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LoadingScreen from "@/components/ui/LoadingScreen";
@@ -31,7 +31,8 @@ export default function WorkOrdersPage() {
   useEffect(() => {
     const q = query(
       collection(db, "work_orders"),
-      orderBy("createdAt", "desc")
+      orderBy("createdAt", "desc"),
+      limit(200)
     );
 
     const unsub = onSnapshot(q, (snap) => {

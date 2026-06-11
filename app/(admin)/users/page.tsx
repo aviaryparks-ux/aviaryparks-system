@@ -95,7 +95,6 @@ export default function UsersPage() {
   const [bankName, setBankName] = useState("");
   const [bankAccountNumber, setBankAccountNumber] = useState("");
   const [bankAccountName, setBankAccountName] = useState("");
-  const [autoLoginAfterAdd, setAutoLoginAfterAdd] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState("ALL");
@@ -146,15 +145,6 @@ export default function UsersPage() {
     return await getDownloadURL(storageRef);
   };
 
-  const autoLogin = async (email: string, password: string) => {
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      console.log("Auto login successful");
-    } catch (error: any) {
-      console.error("Auto login failed:", error.message);
-    }
-  };
-
   const saveUser = async () => {
     if (!name || !email) {
       toast.error("Nama dan email wajib diisi");
@@ -192,12 +182,9 @@ export default function UsersPage() {
           setFormLoading(false);
           return;
         }
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        const uid = cred.user.uid;
-        const photoUrl = await uploadPhoto(uid);
-
-        await setDoc(doc(db, "users", uid), {
-          name, email, role, 
+        
+        const payload = {
+          name, email, password, role,
           department: normalizedDepartment,
           section: section,
           division: division,
@@ -205,19 +192,31 @@ export default function UsersPage() {
           dailyRate: dailyRate ? Number(dailyRate) : null,
           company: normalizedCompany,
           location: normalizedLocation,
-          joinDate, phone, photoUrl,
+          joinDate, phone,
           isActive: true,
           bankName: normalizedBankName,
           bankAccountNumber,
           bankAccountName,
-          createdAt: Timestamp.now(),
+        };
+
+        const res = await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
-        toast.success("✅ User berhasil ditambahkan");
-        
-        if (autoLoginAfterAdd) {
-          await autoLogin(email, password);
-          toast.success("Auto login berhasil");
+
+        const result = await res.json();
+        if (!res.ok) {
+          throw new Error(result.error || 'Gagal menambahkan user');
         }
+
+        const uid = result.uid;
+        const photoUrl = await uploadPhoto(uid);
+        if (photoUrl) {
+          await updateDoc(doc(db, "users", uid), { photoUrl });
+        }
+
+        toast.success("✅ User berhasil ditambahkan");
       }
       resetForm();
       loadUsers();
@@ -258,7 +257,11 @@ export default function UsersPage() {
     if (!confirmed) return;
     
     try {
-      await deleteDoc(doc(db, "users", user.id));
+      const res = await fetch(`/api/users?uid=${user.id}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || 'Gagal menghapus user');
+      }
       loadUsers();
       toast.success("✅ User berhasil dihapus");
     } catch (error: any) {
@@ -429,17 +432,23 @@ export default function UsersPage() {
           continue;
         }
         
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        const uid = cred.user.uid;
-        
-        await setDoc(doc(db, "users", uid), {
-          name, email, role, department, jabatan,
+        const payload = {
+          name, email, password, role, department, jabatan,
           dailyRate: dailyRate ? Number(dailyRate) : null,
           company, location, joinDate,
           isActive: true,
           bankName, bankAccountNumber, bankAccountName,
-          createdAt: Timestamp.now(),
+        };
+
+        const res = await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
+
+        if (!res.ok) {
+          throw new Error('Gagal import baris ini');
+        }
         
         success++;
       } catch (error: any) {
@@ -640,25 +649,6 @@ export default function UsersPage() {
             Template
           </button>
         </div>
-
-        {/* Auto Login Toggle in Form */}
-        {showForm && !editingId && (
-          <div className="rounded-xl bg-white shadow-lg border border-gray-100 overflow-hidden">
-            <div className="px-6 py-3 bg-gray-50 border-b border-gray-100">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoLoginAfterAdd}
-                  onChange={(e) => setAutoLoginAfterAdd(e.target.checked)}
-                  className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                />
-                <span className="text-sm text-gray-700">
-                  🔐 Auto login setelah menambahkan user (langsung login ke akun baru)
-                </span>
-              </label>
-            </div>
-          </div>
-        )}
 
         {/* Import Modal - tetap sama karena sudah pakai toast untuk feedback */}
         {showImportModal && (

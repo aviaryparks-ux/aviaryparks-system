@@ -12,7 +12,7 @@ import {
   removeMemberFromGroup,
 } from "@/lib/chat/firebase";
 import { searchUsers } from "@/lib/chat/firebase";
-import { storage, db } from "@/lib/firebase";
+import { storage, db, auth } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { doc, getDoc, onSnapshot, setDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import type { Conversation, Message, ChatUser } from "@/types/chat";
@@ -260,10 +260,16 @@ export default function ChatRoomPage() {
   const joinCallDirectly = async (isVideo: boolean) => {
     const channelName = conversationId;
     try {
+      const currentUser = auth.currentUser;
+      const idToken = currentUser ? await currentUser.getIdToken() : "";
+      
       const randomUid = Math.floor(Math.random() * 65500) + 1;
       const res = await fetch('/api/agora/token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
         body: JSON.stringify({ channelName, uid: randomUid })
       });
       const data = await res.json();

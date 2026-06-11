@@ -4,7 +4,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, query, orderBy, getDocs, onSnapshot } from "firebase/firestore";
+import { collection, query, orderBy, getDocs, onSnapshot, limit } from "firebase/firestore";
 import Link from "next/link";
 import { usePermissions } from "@/hooks/usePermissions";
 
@@ -19,7 +19,7 @@ export default function InternalMemoPage() {
     if (!user) return;
     
     // Listen to all memos
-    const q = query(collection(db, "internal_memos"), orderBy("createdAt", "desc"));
+    const q = query(collection(db, "internal_memos"), orderBy("createdAt", "desc"), limit(100));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const memosData = snapshot.docs.map(doc => ({
         id: doc.id,

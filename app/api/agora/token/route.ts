@@ -1,11 +1,26 @@
 import { NextResponse } from 'next/server';
 import { RtcTokenBuilder, RtcRole } from 'agora-access-token';
+import { adminAuth } from '@/lib/firebase-admin';
 
 const APP_ID = 'cce1fd6074a541e9ae816a873da217f1';
 const APP_CERTIFICATE = '456051080c814120a0bb249e7672896f';
 
 export async function POST(req: Request) {
   try {
+    // 1. Validasi Keamanan: Verifikasi Firebase ID Token
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized: Missing or invalid token' }, { status: 401 });
+    }
+    
+    const idToken = authHeader.split('Bearer ')[1];
+    try {
+      await adminAuth.verifyIdToken(idToken);
+    } catch (authError) {
+      console.error("Firebase auth error:", authError);
+      return NextResponse.json({ error: 'Unauthorized: Invalid token' }, { status: 401 });
+    }
+
     const { channelName, uid } = await req.json();
 
     if (!channelName) {

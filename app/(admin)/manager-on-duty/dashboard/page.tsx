@@ -9,7 +9,8 @@ import {
   query,
   orderBy,
   where,
-  getDocs
+  getDocs,
+  limit
 } from "firebase/firestore";
 import { useAuth } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -52,7 +53,8 @@ export default function MODDashboardPage() {
     // Load all schedules for recent list
     const allScheduleQuery = query(
       collection(db, "mod_schedules"),
-      orderBy("date", "desc")
+      orderBy("date", "desc"),
+      limit(20)
     );
     const unsubAllSchedules = onSnapshot(allScheduleQuery, (snap) => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as MODSchedule));
@@ -68,7 +70,7 @@ export default function MODDashboardPage() {
 
   useEffect(() => {
     // Load report stats
-    const reportQuery = query(collection(db, "mod_reports"));
+    const reportQuery = query(collection(db, "mod_reports"), limit(100));
     const unsubReports = onSnapshot(reportQuery, (snap) => {
       let submitted = 0;
       let reviewed = 0;

@@ -13,6 +13,7 @@ import {
   Timestamp,
   getDoc,
   setDoc,
+  limit
 } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/contexts/AuthContext";
@@ -119,7 +120,7 @@ export default function AttendanceCorrectionsPage() {
   const rejectedCount = filteredByRole.filter((r) => r.status === "rejected").length;
 
   useEffect(() => {
-    const q = query(collection(db, "attendance_requests"), orderBy("createdAt", "desc"));
+    const q = query(collection(db, "attendance_requests"), orderBy("createdAt", "desc"), limit(200));
     
     const unsub = onSnapshot(q, (snap) => {
       const arr: Request[] = [];
