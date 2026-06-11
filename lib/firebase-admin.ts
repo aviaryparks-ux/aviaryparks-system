@@ -3,6 +3,11 @@ import * as admin from 'firebase-admin';
 const initFirebase = () => {
   if (!admin.apps.length) {
     try {
+      console.log('--- FIREBASE ENV DEBUG ---');
+      console.log('PROJECT_ID:', process.env.FIREBASE_PROJECT_ID ? 'EXISTS' : 'MISSING');
+      console.log('CLIENT_EMAIL:', process.env.FIREBASE_CLIENT_EMAIL ? 'EXISTS' : 'MISSING');
+      console.log('PRIVATE_KEY:', process.env.FIREBASE_PRIVATE_KEY ? 'EXISTS' : 'MISSING');
+      
       // Fix potential quotes from copy-paste
       let pk = process.env.FIREBASE_PRIVATE_KEY || '';
       if (pk.startsWith('"') && pk.endsWith('"')) {
@@ -13,11 +18,12 @@ const initFirebase = () => {
 
       admin.initializeApp({
         credential: admin.credential.cert({
-          projectId: process.env.FIREBASE_PROJECT_ID,
+          projectId: process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
           clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
           privateKey: pk,
         }),
       });
+      console.log('Firebase Admin initialized successfully!');
     } catch (error: any) {
       console.error('Firebase admin initialization error:', error.message);
     }
