@@ -304,17 +304,19 @@ export default function EditWorkOrderPage() {
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
-      <div className="space-y-6 p-6 max-w-4xl mx-auto">
+      <div className="w-full space-y-8 px-4 sm:px-6 lg:px-8 py-8 pb-32">
         {/* Header */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-500 to-orange-600 p-6 text-white shadow-xl">
-          <button onClick={() => router.back()} className="absolute left-4 top-1/2 -translate-y-1/2 p-2 bg-white/20 rounded-lg hover:bg-white/30">
+        <div className="flex items-center gap-4">
+          <button onClick={() => router.back()} className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-colors shadow-sm shrink-0">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <div className="relative z-10 text-center">
-            <h1 className="text-2xl font-bold">✏️ Edit Work Order</h1>
-            <p className="text-orange-100 mt-1">{woData?.woNumber}</p>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Edit Work Order</h1>
+            </div>
+            <p className="text-sm text-slate-500 font-mono mt-1">{woData?.woNumber}</p>
           </div>
         </div>
 
@@ -578,30 +580,32 @@ export default function EditWorkOrderPage() {
           </div>
         )}
 
-        {/* Submit */}
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-3 rounded-xl"
-          >
-             Batal
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={saving}
-            className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {saving ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Menyimpan...
-              </>
-            ) : (
-              <>💾 Simpan Perubahan</>
-            )}
-          </button>
+        {/* Sticky Actions */}
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.05)] z-40 md:pl-64">
+          <div className="w-full flex justify-end gap-3 px-4 sm:px-6 lg:px-8">
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="px-6 py-3 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-colors text-sm"
+            >
+               Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={saving}
+              className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-500/30 transition-all duration-300 transform hover:-translate-y-0.5 disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
+            >
+              {saving ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Menyimpan...
+                </>
+              ) : (
+                <>💾 Simpan Perubahan</>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </ProtectedRoute>

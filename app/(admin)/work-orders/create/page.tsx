@@ -20,6 +20,7 @@ import {
   WOInventoryTemplate,
   WOArea
 } from "@/types/work-order";
+import TransparentSignature from "@/components/ui/TransparentSignature";
 
 export default function CreateWorkOrderPage() {
   const { user } = useAuth();
@@ -473,7 +474,7 @@ export default function CreateWorkOrderPage() {
                   <p className="text-sm font-medium mb-auto">Dibuat Oleh,</p>
                   {user?.signatureUrl ? (
                     <div className="h-20 w-full flex items-center justify-center relative">
-                      <img src={user.signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                      <TransparentSignature src={user.signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain" />
                     </div>
                   ) : (
                     <div className="h-20 flex items-center justify-center"></div>
@@ -522,7 +523,7 @@ export default function CreateWorkOrderPage() {
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
-      <div className="max-w-6xl mx-auto space-y-8 p-6 pb-32">
+      <div className="w-full space-y-8 px-4 sm:px-6 lg:px-8 py-8 pb-32">
         {/* Header */}
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-colors shadow-sm shrink-0">
@@ -1132,7 +1133,7 @@ export default function CreateWorkOrderPage() {
 
         {/* Sticky Actions */}
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.05)] z-40 md:pl-64">
-          <div className="max-w-3xl mx-auto flex gap-3">
+          <div className="w-full flex gap-3 px-4 sm:px-6 lg:px-8">
             <button
               type="button"
               onClick={() => router.back()}

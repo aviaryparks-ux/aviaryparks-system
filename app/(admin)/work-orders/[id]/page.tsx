@@ -730,48 +730,46 @@ export default function WorkOrderDetailPage() {
       </div>
       {/* ------------------ END PRINT LAYOUT ------------------ */}
 
-      <div className="space-y-6 p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto pb-24 print:hidden">
-        {/* Header with Premium Gradient */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 via-teal-600 to-emerald-800 p-8 text-white shadow-2xl shadow-emerald-500/20">
-          {/* Decorative shapes */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
-          <div className="absolute bottom-0 left-0 w-40 h-40 bg-teal-400/20 rounded-full blur-2xl -ml-10 -mb-10"></div>
-          
-          <button onClick={() => router.back()} className="absolute left-6 top-6 p-2.5 bg-white/10 backdrop-blur-md rounded-xl hover:bg-white/20 transition-all duration-300 z-20">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          
-          <div className="relative z-10 text-center mt-2">
-            <div className="flex items-center justify-center gap-3">
-              <span className={`px-3 py-1 rounded-lg text-xs font-bold tracking-wider shadow-sm backdrop-blur-md ${wo.type === "urgent" ? "bg-red-500/20 text-red-50 border border-red-400/30" : "bg-purple-500/20 text-purple-50 border border-purple-400/30"}`}>
-                {wo.type === "urgent" ? "⚡ URGENT" : "📁 PROJECT"}
-              </span>
+      <div className="space-y-6 p-4 sm:p-6 lg:p-8 w-full pb-24 print:hidden">
+        {/* Header */}
+        <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:hidden">
+          <div className="flex items-center gap-4">
+            <button onClick={() => router.back()} className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-colors shadow-sm shrink-0">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold text-slate-800 tracking-tight">{wo.title}</h1>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider ${wo.type === "urgent" ? "bg-red-100 text-red-600 border border-red-200" : "bg-purple-100 text-purple-600 border border-purple-200"}`}>
+                  {wo.type === "urgent" ? "URGENT" : "PROJECT"}
+                </span>
+              </div>
+              <p className="text-sm text-slate-500 font-mono mt-1">{wo.woNumber}</p>
             </div>
-            <h1 className="text-3xl sm:text-4xl font-extrabold mt-4 tracking-tight drop-shadow-md">{wo.title}</h1>
-            <p className="text-emerald-100/80 mt-2 font-mono text-sm tracking-wider bg-black/10 inline-block px-3 py-1 rounded-lg backdrop-blur-sm border border-white/10">{wo.woNumber}</p>
-            <div className="mt-6 flex items-center justify-center gap-3">
-              {canEdit && wo.status !== "completed" && (
-                <button 
-                  onClick={() => router.push(`/work-orders/${woId}/edit`)}
-                  className="px-5 py-2.5 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-xl text-sm font-bold transition-all duration-300 inline-flex items-center gap-2 border border-white/20 shadow-lg hover:-translate-y-0.5 print:hidden"
-                >
-                  ✏️ Edit Work Order
-                </button>
-              )}
-              {wo.type === "project" && ["pending_approval", "open", "in_progress", "completed"].includes(wo.status) && (
-                <button 
-                  onClick={() => window.print()}
-                  className="px-5 py-2.5 bg-emerald-700/80 hover:bg-emerald-600/90 backdrop-blur-md rounded-xl text-sm font-bold transition-all duration-300 inline-flex items-center gap-2 border border-emerald-400/30 shadow-lg hover:-translate-y-0.5 text-white print:hidden"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                  </svg>
-                  Cetak PDF
-                </button>
-              )}
-            </div>
+          </div>
+          
+          <div className="flex flex-wrap gap-3">
+            {canEdit && wo.status !== "completed" && (
+              <button 
+                onClick={() => router.push(`/work-orders/${woId}/edit`)}
+                className="px-4 py-2 bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
+              >
+                ✏️ Edit Work Order
+              </button>
+            )}
+            {wo.type === "project" && ["pending_approval", "open", "in_progress", "completed"].includes(wo.status) && (
+              <button 
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                Cetak PDF
+              </button>
+            )}
           </div>
         </div>
 

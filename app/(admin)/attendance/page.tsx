@@ -305,7 +305,7 @@ export default function AttendancePage() {
   useEffect(() => {
     if (usersLoading) return;
     setCorrectionsLoading(true);
-    const q = query(collection(db, "attendance_requests"), orderBy("createdAt", "desc"), limit(200));
+    const q = query(collection(db, "attendance_requests"), orderBy("createdAt", "desc"), limit(1000));
     const unsub = onSnapshot(q, (snap) => {
       const obj: Record<string, CorrectionRequest> = {};
       snap.forEach((doc) => {
@@ -334,7 +334,36 @@ export default function AttendancePage() {
   useEffect(() => {
     if (usersLoading || correctionsLoading) return;
     setLoading(true);
-    const q = query(collection(db, "attendance"), orderBy("date", "desc"), limit(200));
+    
+    let q;
+    if (startDate && endDate && !showTodayOnly) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      
+      q = query(
+        collection(db, "attendance"),
+        where("date", ">=", Timestamp.fromDate(start)),
+        where("date", "<=", Timestamp.fromDate(end)),
+        orderBy("date", "desc")
+      );
+    } else if (showTodayOnly && startDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(startDate);
+      end.setHours(23, 59, 59, 999);
+      
+      q = query(
+        collection(db, "attendance"),
+        where("date", ">=", Timestamp.fromDate(start)),
+        where("date", "<=", Timestamp.fromDate(end)),
+        orderBy("date", "desc")
+      );
+    } else {
+      q = query(collection(db, "attendance"), orderBy("date", "desc"), limit(2000));
+    }
+    
     const unsub = onSnapshot(q, (snap) => {
       const arr: Attendance[] = [];
       snap.forEach((doc) => {
@@ -376,7 +405,7 @@ export default function AttendancePage() {
       setError(null);
     }, (err) => { console.error("Error loading attendance:", err); setError("Gagal memuat data absensi"); setLoading(false); });
     return () => unsub();
-  }, [users, usersLoading, corrections, correctionsLoading]);
+  }, [users, usersLoading, corrections, correctionsLoading, startDate, endDate, showTodayOnly]);
 
   // Filter data
   const filtered = useMemo(() => {

@@ -170,8 +170,8 @@ export default function WOTemplatePage() {
   if (!template) return null;
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "manager"]}>
-      <div className="max-w-4xl mx-auto space-y-6 p-6 pb-32">
+    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
+      <div className="w-full space-y-6 px-4 sm:px-6 lg:px-8 py-8 pb-32">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
@@ -275,7 +275,7 @@ export default function WOTemplatePage() {
 
         {/* Sticky Bottom Actions */}
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.05)] z-40 md:pl-64">
-          <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <div className="w-full flex items-center justify-between px-4 sm:px-6 lg:px-8">
             <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
               <span className="w-2 h-2 rounded-full bg-orange-500"></span>
               Akan muncul di dropdown form Work Order
