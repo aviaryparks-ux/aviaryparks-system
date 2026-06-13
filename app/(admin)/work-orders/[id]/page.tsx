@@ -17,6 +17,7 @@ import {
   WorkOrderPhoto
 } from "@/types/work-order";
 import PhotoUpload from "@/components/mod/PhotoUpload";
+import TransparentSignature from "@/components/ui/TransparentSignature";
 
 export default function WorkOrderDetailPage() {
   const { user } = useAuth();
@@ -703,7 +704,7 @@ export default function WorkOrderDetailPage() {
                       Approved
                     </div>
                   )}
-                  <img src={step.signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" onError={(e) => e.currentTarget.style.display = 'none'} />
+                  <TransparentSignature src={step.signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain" />
                 </div>
               ) : (
                 <div className="h-20 flex items-center justify-center relative bg-white" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>

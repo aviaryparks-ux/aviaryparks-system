@@ -1,6 +1,7 @@
 // app/(admin)/internal-memo/[id]/page.tsx
 "use client";
 import LoadingScreen from "@/components/ui/LoadingScreen";
+import TransparentSignature from "@/components/ui/TransparentSignature";
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -249,7 +250,7 @@ export default function MemoDetailPage() {
                      
                      {memo.createdBy?.signatureUrl ? (
                        <div style={{ height: '64px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', marginBottom: '8px' }}>
-                         <img src={memo.createdBy.signatureUrl.startsWith('data:') ? memo.createdBy.signatureUrl : `/_next/image?url=${encodeURIComponent(memo.createdBy.signatureUrl)}&w=256&q=75`} alt="Signature" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                         <TransparentSignature src={memo.createdBy.signatureUrl.startsWith('data:') ? memo.createdBy.signatureUrl : `/_next/image?url=${encodeURIComponent(memo.createdBy.signatureUrl)}&w=256&q=75`} alt="Signature" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
                        </div>
                      ) : (
                        <div style={{ height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px' }}></div>
@@ -283,7 +284,7 @@ export default function MemoDetailPage() {
       
                       {approver.signatureUrl && approver.status === "APPROVED" ? (
                         <div style={{ height: '64px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', zIndex: 10, marginBottom: '8px' }}>
-                          <img src={approver.signatureUrl.startsWith('data:') ? approver.signatureUrl : `/_next/image?url=${encodeURIComponent(approver.signatureUrl)}&w=256&q=75`} alt="Signature" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
+                          <TransparentSignature src={approver.signatureUrl.startsWith('data:') ? approver.signatureUrl : `/_next/image?url=${encodeURIComponent(approver.signatureUrl)}&w=256&q=75`} alt="Signature" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
                         </div>
                       ) : (
                         <div style={{ height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, marginBottom: '8px' }}></div>
@@ -347,7 +348,7 @@ export default function MemoDetailPage() {
                  <p className="text-sm font-bold text-slate-800 mb-auto">Dibuat Oleh,</p>
                  {memo.createdBy?.signatureUrl ? (
                    <div className="h-16 w-full flex items-center justify-center relative">
-                     <img src={memo.createdBy.signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                     <TransparentSignature src={memo.createdBy.signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain" />
                    </div>
                  ) : (
                    <div className="h-16 flex items-center justify-center"></div>
@@ -380,7 +381,7 @@ export default function MemoDetailPage() {
   
                   {approver.signatureUrl && approver.status === "APPROVED" ? (
                     <div className="h-16 w-full flex items-center justify-center relative z-10">
-                      <img src={approver.signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                      <TransparentSignature src={approver.signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain" />
                     </div>
                   ) : (
                     <div className="h-16 flex items-center justify-center z-10"></div>
