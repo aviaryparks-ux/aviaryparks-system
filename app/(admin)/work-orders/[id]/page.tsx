@@ -703,7 +703,7 @@ export default function WorkOrderDetailPage() {
                       Approved
                     </div>
                   )}
-                  <img src={step.signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain" onError={(e) => e.currentTarget.style.display = 'none'} />
+                  <img src={step.signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" onError={(e) => e.currentTarget.style.display = 'none'} />
                 </div>
               ) : (
                 <div className="h-20 flex items-center justify-center relative bg-white" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>

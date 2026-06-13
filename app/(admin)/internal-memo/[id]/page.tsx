@@ -249,7 +249,7 @@ export default function MemoDetailPage() {
                      
                      {memo.createdBy?.signatureUrl ? (
                        <div style={{ height: '64px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', marginBottom: '8px' }}>
-                         <img src={memo.createdBy.signatureUrl.startsWith('data:') ? memo.createdBy.signatureUrl : `/_next/image?url=${encodeURIComponent(memo.createdBy.signatureUrl)}&w=256&q=75`} alt="Signature" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
+                         <img src={memo.createdBy.signatureUrl.startsWith('data:') ? memo.createdBy.signatureUrl : `/_next/image?url=${encodeURIComponent(memo.createdBy.signatureUrl)}&w=256&q=75`} alt="Signature" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
                        </div>
                      ) : (
                        <div style={{ height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px' }}></div>
@@ -283,7 +283,7 @@ export default function MemoDetailPage() {
       
                       {approver.signatureUrl && approver.status === "APPROVED" ? (
                         <div style={{ height: '64px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', zIndex: 10, marginBottom: '8px' }}>
-                          <img src={approver.signatureUrl.startsWith('data:') ? approver.signatureUrl : `/_next/image?url=${encodeURIComponent(approver.signatureUrl)}&w=256&q=75`} alt="Signature" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
+                          <img src={approver.signatureUrl.startsWith('data:') ? approver.signatureUrl : `/_next/image?url=${encodeURIComponent(approver.signatureUrl)}&w=256&q=75`} alt="Signature" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} />
                         </div>
                       ) : (
                         <div style={{ height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, marginBottom: '8px' }}></div>
