@@ -265,6 +265,18 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && isSuperAdmin();
     }
 
+    // ==================== EVENTS (REO/FEO) ====================
+    match /events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isHR() || isSPV());
+      allow update: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isHR() || isSPV());
+      allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    match /counters/{counterId} {
+      allow read, write: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isHR() || isSPV());
+    }
+
     // ==================== CALL SIGNALING ====================
     match /active_calls/{callId} {
       allow read: if isAuthenticated();
@@ -291,6 +303,11 @@ service cloud.firestore {
     match /departments/{departmentId} {
       allow read: if isAuthenticated();
       allow write: if isSuperAdmin() || isAdmin();
+    }
+
+    match /clients/{clientId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
     }
 
   }
