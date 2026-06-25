@@ -22,7 +22,7 @@ export default function ApprovalFlowPage() {
 
   const roles = [
     { value: "spv", label: "Supervisor", icon: "👔", description: "Supervisor (Division Level)" },
-    { value: "manager", label: "Manager", icon: "💼", description: "Manager (Section Level)" },
+    { value: "manager", label: "Manager", icon: "💼", description: "Manager" },
     { value: "hod", label: "HOD", icon: "🏗️", description: "Head of Department" },
     { value: "gm", label: "General Manager", icon: "🏢", description: "General Manager" },
     { value: "owner", label: "Owner", icon: "👑", description: "Owner / Direktur" },
@@ -195,7 +195,7 @@ export default function ApprovalFlowPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin"]}>
+    <ProtectedRoute requiredFeature="manage_settings">
       <div className="space-y-6 p-6">
         {/* Header dengan Glassmorphism */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-green-600 to-green-700 p-6 text-white shadow-xl">

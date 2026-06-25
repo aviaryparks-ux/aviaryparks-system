@@ -592,8 +592,8 @@ export async function searchUsers(searchQuery: string): Promise<ChatUser[]> {
         photoUrl: doc.data().photoUrl,
         role: doc.data().role || "",
         department: doc.data().department || "",
-        section: doc.data().section || "",
         division: doc.data().division || "",
+        position: doc.data().position || "",
         isActive: doc.data().isActive ?? true,
       }))
       .filter(
@@ -626,8 +626,8 @@ export async function getAllUsers(): Promise<ChatUser[]> {
       photoUrl: doc.data().photoUrl,
       role: doc.data().role || "",
       department: doc.data().department || "",
-      section: doc.data().section || "",
       division: doc.data().division || "",
+      position: doc.data().position || "",
       isActive: doc.data().isActive ?? true,
     }))
     .filter((user) => user.uid !== currentUserId)
@@ -647,8 +647,8 @@ export async function getUserById(uid: string): Promise<ChatUser | null> {
       photoUrl: docSnap.data().photoUrl,
       role: docSnap.data().role || "",
       department: docSnap.data().department || "",
-      section: docSnap.data().section || "",
       division: docSnap.data().division || "",
+      position: docSnap.data().position || "",
       isActive: docSnap.data().isActive ?? true,
     };
   }

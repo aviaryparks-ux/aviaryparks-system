@@ -70,7 +70,19 @@ export const APP_FEATURES: AppFeature[] = [
   { id: "manage_meetings", name: "Kelola Meeting/Briefing", description: "Membuat jadwal meeting dan notulensi", module: "Communication" },
   
   // Articles
-  { id: "manage_articles", name: "Kelola Pengumuman", description: "Membuat dan mengedit artikel/pengumuman", module: "Communication" }
+  { id: "manage_articles", name: "Kelola Pengumuman", description: "Membuat dan mengedit artikel/pengumuman", module: "Communication" },
+
+  // Roles & Settings (Additional)
+  { id: "manage_roles", name: "Kelola Pengaturan Peran", description: "Mengatur hak akses fitur untuk setiap peran", module: "General" },
+
+  // Events
+  { id: "view_events_dashboard", name: "Lihat Dashboard Event", description: "Melihat ringkasan event FEO & REO", module: "Events" },
+  { id: "view_clients", name: "Lihat Database Klien", description: "Melihat daftar klien event", module: "Events" },
+  { id: "view_calendar", name: "Lihat Kalender Event", description: "Melihat jadwal event di kalender bulanan", module: "Events" },
+  { id: "view_feo", name: "Lihat FEO", description: "Melihat daftar dan detail FEO", module: "Events" },
+  { id: "manage_feo", name: "Kelola FEO", description: "Membuat, mengedit, menghapus, dan menyetujui FEO", module: "Events" },
+  { id: "view_reo", name: "Lihat REO", description: "Melihat daftar dan detail REO", module: "Events" },
+  { id: "manage_reo", name: "Kelola REO", description: "Membuat, mengedit, menghapus, dan menyetujui REO", module: "Events" }
 ];
 
 export const AVAILABLE_ROLES = [

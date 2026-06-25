@@ -823,7 +823,7 @@ export default function PayrollPage() {
   const unpaidCount = filteredSummary.length - paidCount;
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "hr", "admin"]}>
+    <ProtectedRoute requiredFeature="manage_payroll">
       <div className="space-y-6 pb-20">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">

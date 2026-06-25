@@ -51,21 +51,28 @@ export function usePermissions() {
   }, [user, authLoading]);
 
   // The main authorization function
-  const can = (featureId: string): boolean => {
+  const can = (featureId: string | string[]): boolean => {
     if (authLoading || loading) return false;
     
     // Super admin bypasses all checks
     const normalizedRole = user?.role?.toLowerCase().replace(/\s+/g, '_');
     if (normalizedRole === "super_admin") return true;
 
-    // 1. Check User-Level Overrides First (Highest Priority)
-    // We assume user.customPermissions is a Record<string, boolean>
-    if (user?.customPermissions && typeof user.customPermissions[featureId] === "boolean") {
-      return user.customPermissions[featureId];
+    const checkFeature = (f: string) => {
+      // 1. Check User-Level Overrides First (Highest Priority)
+      if (user?.customPermissions && typeof user.customPermissions[f] === "boolean") {
+        return user.customPermissions[f];
+      }
+      // 2. Check Role-Level Default (Fallback)
+      return !!permissions[f];
+    };
+
+    if (Array.isArray(featureId)) {
+      // Return true if ANY of the required features are allowed (OR logic)
+      return featureId.some(f => checkFeature(f));
     }
 
-    // 2. Check Role-Level Default (Fallback)
-    return !!permissions[featureId];
+    return checkFeature(featureId);
   };
 
   return { can, permissions, loading: authLoading || loading };

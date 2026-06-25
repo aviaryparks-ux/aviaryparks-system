@@ -202,7 +202,7 @@ export default function REODetailPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "manager"]}>
+    <ProtectedRoute requiredFeature={["view_reo", "view_calendar"]}>
       {/* Tombol Aksi - Disembunyikan saat print */}
       <div className={`w-full max-w-5xl mx-auto px-4 py-6 flex justify-between items-center ${isPrinting ? 'hidden' : 'block'}`}>
         <button onClick={() => router.back()} className="text-slate-500 hover:bg-slate-100 px-4 py-2 rounded-xl font-bold flex items-center gap-2">

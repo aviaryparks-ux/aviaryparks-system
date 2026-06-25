@@ -33,9 +33,11 @@ type User = {
   email: string;
   role: string;
   department?: string;
-  section?: string;
   division?: string;
+  position?: string;
   jabatan?: string;
+  jobLevel?: string;
+  employeeStatus?: string;
   dailyRate?: number;
   company?: string;
   location?: string;
@@ -82,9 +84,10 @@ export default function UsersPage() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("employee");
   const [department, setDepartment] = useState("");
-  const [section, setSection] = useState("");
   const [division, setDivision] = useState("");
-  const [jabatan, setJabatan] = useState("");
+  const [position, setPosition] = useState("");
+  const [jobLevel, setJobLevel] = useState("");
+  const [employeeStatus, setEmployeeStatus] = useState("");
   const [dailyRate, setDailyRate] = useState("");
   const [company, setCompany] = useState("");
   const [location, setLocation] = useState("");
@@ -162,9 +165,10 @@ export default function UsersPage() {
         const updateData: any = {
           name, email, role, 
           department: normalizedDepartment,
-          section: section,
           division: division,
-          jabatan,
+          position: position,
+          jobLevel,
+          employeeStatus,
           dailyRate: dailyRate ? Number(dailyRate) : null,
           company: normalizedCompany,
           location: normalizedLocation,
@@ -186,9 +190,10 @@ export default function UsersPage() {
         const payload = {
           name, email, password, role,
           department: normalizedDepartment,
-          section: section,
           division: division,
-          jabatan,
+          position: position,
+          jobLevel,
+          employeeStatus,
           dailyRate: dailyRate ? Number(dailyRate) : null,
           company: normalizedCompany,
           location: normalizedLocation,
@@ -280,9 +285,10 @@ export default function UsersPage() {
     setEmail(user.email || "");
     setRole(user.role || "employee");
     setDepartment(user.department || "");
-    setSection(user.section || "");
     setDivision(user.division || "");
-    setJabatan(user.jabatan || "");
+    setPosition(user.position || "");
+    setJobLevel(user.jobLevel || user.jabatan || "");
+    setEmployeeStatus(user.employeeStatus || "");
     setDailyRate(user.dailyRate?.toString() || "");
     setCompany(user.company || "");
     setLocation(user.location || "");
@@ -303,9 +309,10 @@ export default function UsersPage() {
     setPassword("");
     setRole("employee");
     setDepartment("");
-    setSection("");
     setDivision("");
-    setJabatan("");
+    setPosition("");
+    setJobLevel("");
+    setEmployeeStatus("");
     setDailyRate("");
     setCompany("");
     setLocation("");
@@ -418,7 +425,8 @@ export default function UsersPage() {
         const password = row.Password || row.password;
         const role = (row.Role || row.role || "employee").toLowerCase();
         const department = normalizeDepartment(row.Department || row.department || "");
-        const jabatan = row.Jabatan || row.jabatan || "";
+        const jobLevel = row.JobLevel || row.jobLevel || row.Jabatan || row.jabatan || "";
+        const employeeStatus = row.EmployeeStatus || row.employeeStatus || "";
         const dailyRate = row.DailyRate || row.dailyRate || 0;
         const company = normalizeText(row.Company || row.company || "");
         const location = normalizeText(row.Location || row.location || "");
@@ -433,7 +441,7 @@ export default function UsersPage() {
         }
         
         const payload = {
-          name, email, password, role, department, jabatan,
+          name, email, password, role, department, jobLevel, employeeStatus,
           dailyRate: dailyRate ? Number(dailyRate) : null,
           company, location, joinDate,
           isActive: true,
@@ -535,8 +543,12 @@ export default function UsersPage() {
     { value: "intern", label: "Intern / Magang" },
   ];
 
-  const jabatanOptions = [
-    "Casual", "Daily Worker", "Staff", "Supervisor", "Manager", "Training", "Intern / Magang",
+  const jobLevelOptions = [
+    "Casual", "Daily Worker", "Staff", "Supervisor", "Manager", "General Manager", "Direktur"
+  ];
+
+  const employeeStatusOptions = [
+    "Casual", "Daily Worker", "Contract", "Permanen"
   ];
 
   if (loading) {
@@ -551,7 +563,7 @@ export default function UsersPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "hr"]}>
+    <ProtectedRoute requiredFeature="view_users">
       <div className="space-y-6 p-6">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
@@ -704,20 +716,20 @@ export default function UsersPage() {
                         <thead className="bg-gray-100">
                           <tr>
                             <th className="px-3 py-2 text-left">Name</th>
-                            <th className="px-4 py-4 text-left">Department</th>
-                            <th className="px-4 py-4 text-left">Section</th>
-                            <th className="px-4 py-4 text-left">Division</th>
-                            <th className="px-4 py-4 text-left">Role</th>
+                            <th className="px-4 py-4 text-left">Position</th>
+                            <th className="px-4 py-4 text-left">Job Level</th>
+                            <th className="px-4 py-4 text-left">Emp. Status</th>
+                            <th className="px-4 py-4 text-left">Status</th>
                           </tr>
                         </thead>
-                        <tbody>
-                          {importData.slice(0, 10).map((row, idx) => (
-                            <tr key={idx} className="border-b">
-                              <td className="px-3 py-2">{row.Nama || row.name || "-"}</td>
-                              <td className="px-4 py-4">{row.Department || row.department || "-"}</td>
-                              <td className="px-4 py-4">{row.Section || row.section || "-"}</td>
-                              <td className="px-4 py-4">{row.Division || row.division || "-"}</td>
-                              <td className="px-4 py-4">{row.Role || row.role || "employee"}</td>
+                        <tbody className="divide-y divide-gray-100">
+                          {importData.map((row, idx) => (
+                            <tr key={idx} className="hover:bg-gray-50/50">
+                              <td className="px-4 py-4 font-medium text-gray-900">{row.Nama}</td>
+                              <td className="px-4 py-4 text-gray-500">{row.Email}</td>
+                              <td className="px-4 py-4">{row.Role || "employee"}</td>
+                              <td className="px-4 py-4">{row.Department || "-"}</td>
+                              <td className="px-4 py-4">{row.Position || row.position || "-"}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -814,7 +826,7 @@ export default function UsersPage() {
                   <div>
                     <select
                       value={department || ""}
-                      onChange={(e) => { setDepartment(e.target.value); setSection(""); setDivision(""); }}
+                      onChange={(e) => { setDepartment(e.target.value); setDivision(""); setPosition(""); }}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                     >
                       <option value="">-- Select Department --</option>
@@ -826,50 +838,65 @@ export default function UsersPage() {
                   
                   <div>
                     <select
-                      value={section || ""}
-                      onChange={(e) => { setSection(e.target.value); setDivision(""); }}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                      disabled={!department || departmentsList.length === 0}
-                    >
-                      <option value="">-- Select Section --</option>
-                      {departmentsList.find((d: any) => d.name === department)?.sections?.map((s: any) => (
-                        <option key={s.id} value={s.name}>{s.name}</option>
-                      ))}
-                      {section && <option value={section}>{section} (Current)</option>}
-                    </select>
-                    <p className="text-[11px] text-gray-500 mt-1">Cabang Section di bawah Department (jika ada).</p>
-                  </div>
-                  
-                  <div>
-                    <select
                       value={division || ""}
-                      onChange={(e) => setDivision(e.target.value)}
+                      onChange={(e) => { setDivision(e.target.value); setPosition(""); }}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                      disabled={!section || departmentsList.length === 0}
+                      disabled={!department}
                     >
                       <option value="">-- Select Division --</option>
-                      {departmentsList.find((d: any) => d.name === department)?.sections?.find((s: any) => s.name === section)?.divisions?.map((div: any) => (
+                      {departmentsList.find((d: any) => d.name === department)?.divisions?.map((div: any) => (
                         <option key={div.id} value={div.name}>{div.name}</option>
                       ))}
                       {division && <option value={division}>{division} (Current)</option>}
                     </select>
-                    <p className="text-[11px] text-gray-500 mt-1">Cabang Division di bawah Section (jika ada).</p>
+                    <p className="text-[11px] text-gray-500 mt-1">Cabang Division di bawah Department (jika ada).</p>
                   </div>
+                  
                   <div>
                     <select
-                      value={jabatan || ""}
-                      onChange={(e) => setJabatan(e.target.value)}
+                      value={position || ""}
+                      onChange={(e) => setPosition(e.target.value)}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                      disabled={!division}
                     >
-                      <option value="">Select Position</option>
-                      {jabatanOptions.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
+                      <option value="">-- Select Position --</option>
+                      {departmentsList.find((d: any) => d.name === department)?.divisions?.find((div: any) => div.name === division)?.positions?.map((pos: any) => (
+                        <option key={pos.id} value={pos.name}>{pos.name}</option>
                       ))}
+                      {position && <option value={position}>{position} (Current)</option>}
                     </select>
-                    <p className="text-[11px] text-gray-500 mt-1">Status Kepegawaian / Nama Jabatan resmi di HRD.</p>
+                    <p className="text-[11px] text-gray-500 mt-1">Pilih Jabatan spesifik dari Master Department.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <select
+                        value={jobLevel || ""}
+                        onChange={(e) => setJobLevel(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                      >
+                        <option value="">Select Job Level</option>
+                        {jobLevelOptions.map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-gray-500 mt-1">Level jabatan (Staff, Manager, dll).</p>
+                    </div>
+                    <div>
+                      <select
+                        value={employeeStatus || ""}
+                        onChange={(e) => setEmployeeStatus(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                      >
+                        <option value="">Select Employee Status</option>
+                        {employeeStatusOptions.map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-gray-500 mt-1">Status kepegawaian (Contract, dll).</p>
+                    </div>
                   </div>
                 </div>
-                {(jabatan === "Casual" || jabatan === "Daily Worker") && (
+                {(employeeStatus === "Casual" || employeeStatus === "Daily Worker" || jobLevel === "Casual" || jobLevel === "Daily Worker") && (
                   <input
                     placeholder="Daily Rate (Rp)"
                     type="number"
@@ -990,9 +1017,10 @@ export default function UsersPage() {
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">User</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Role</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Department</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Section</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Division</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Position</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Job Level</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Employee Status</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Rate</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Actions</th>
@@ -1037,14 +1065,19 @@ export default function UsersPage() {
                       <span className="font-mono text-slate-700 font-medium">{user.department || "-"}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="font-mono text-slate-700 font-medium">{user.section || "-"}</span>
-                    </td>
-                    <td className="px-4 py-3">
                       <span className="font-mono text-slate-700 font-medium">{user.division || "-"}</span>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{user.jabatan || "-"}</td>
                     <td className="px-4 py-3">
-                      {user.jabatan === "Training" || user.jabatan === "Intern / Magang" ? (
+                      <span className="font-mono text-slate-700 font-medium">{user.position || "-"}</span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">{user.jobLevel || user.jabatan || "-"}</td>
+                    <td className="px-4 py-3 text-gray-600">
+                      <span className="px-2 py-1 bg-gray-100 rounded-md text-xs font-medium text-gray-600">
+                        {user.employeeStatus || "-"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {user.employeeStatus === "Training" || user.employeeStatus === "Intern / Magang" || user.jabatan === "Training" || user.jabatan === "Intern / Magang" ? (
                         <span className="text-gray-400">-</span>
                       ) : user.dailyRate ? (
                         `Rp ${user.dailyRate.toLocaleString()}`
@@ -1174,8 +1207,8 @@ export default function UsersPage() {
                         <span className="font-mono font-bold text-slate-700">{selectedUser.department || "-"}</span>
                       </div>
                       <div className="flex flex-col bg-gray-50 rounded-lg p-3">
-                        <span className="text-gray-500">Section</span>
-                        <span className="font-mono font-bold text-slate-700">{selectedUser.section || "-"}</span>
+                        <span className="text-gray-500">Position</span>
+                        <span className="font-mono font-bold text-slate-700">{selectedUser.position || "-"}</span>
                       </div>
                       <div className="flex flex-col bg-gray-50 rounded-lg p-3">
                         <span className="text-gray-500">Division</span>

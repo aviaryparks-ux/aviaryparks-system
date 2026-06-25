@@ -702,7 +702,7 @@ export default function ScheduleShiftPage() {
 
   if (!canManage) {
     return (
-      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv"]}>
+      <ProtectedRoute requiredFeature="view_shifts">
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <div className="text-7xl mb-4">🔒</div>
@@ -715,7 +715,7 @@ export default function ScheduleShiftPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv"]}>
+    <ProtectedRoute requiredFeature="view_shifts">
       <div className="space-y-6 pb-20">
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">

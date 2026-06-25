@@ -5,11 +5,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/usePermissions";
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { user, loading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const { can, loading: permLoading } = usePermissions();
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const loading = authLoading || permLoading;
 
   // Definisi menu dengan role yang diizinkan
   const allMenus = [
@@ -22,6 +26,7 @@ export default function Sidebar() {
         </svg>
       ),
       allowedRoles: ["super_admin", "admin", "hr", "spv", "employee"],
+      requiredFeature: "view_dashboard",
     },
     {
       name: "Attendance",
@@ -32,6 +37,7 @@ export default function Sidebar() {
         </svg>
       ),
       allowedRoles: ["super_admin", "admin", "hr", "spv", "employee"],
+      requiredFeature: "view_attendance",
     },
     {
       name: "Attendance Corrections",
@@ -139,7 +145,12 @@ export default function Sidebar() {
   // Filter menu berdasarkan role user yang login
   const getFilteredMenu = () => {
     if (!user) return [];
-    return allMenus.filter(menu => menu.allowedRoles.includes(user.role));
+    return allMenus.filter(menu => {
+      if ((menu as any).requiredFeature) {
+        return can((menu as any).requiredFeature);
+      }
+      return menu.allowedRoles.includes(user.role);
+    });
   };
 
   const filteredMenu = getFilteredMenu();

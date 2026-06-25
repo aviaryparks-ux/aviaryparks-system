@@ -275,17 +275,19 @@ export default function AttendancePage() {
   const isHR = currentUser?.role === "hr";
   const isSPV = currentUser?.role === "spv";
 
-  // Load department untuk SPV
+  const isGlobalAdmin = currentUser?.role === "super_admin" || currentUser?.role === "hr" || 
+                        ((currentUser?.role === "admin" || currentUser?.role === "manager" || currentUser?.role === "gm" || currentUser?.role === "owner") && !currentUser?.department);
+  const scopeDepartment = isGlobalAdmin ? null : currentUser?.department;
+
+  // Load department untuk SPV / Manager
   useEffect(() => {
     const loadUserDepartment = async () => {
-      if (currentUser?.uid && isSPV) {
-        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-        const userData = userDoc.data();
-        setUserDepartment(userData?.department || "");
+      if (currentUser?.uid && scopeDepartment) {
+        setUserDepartment(scopeDepartment);
       }
     };
     loadUserDepartment();
-  }, [currentUser, isSPV]);
+  }, [currentUser, scopeDepartment]);
 
   // Load users
   useEffect(() => {
@@ -410,10 +412,10 @@ export default function AttendancePage() {
   // Filter data
   const filtered = useMemo(() => {
     let filteredData = data;
-    if (isSPV && userDepartment) filteredData = filteredData.filter(a => a.department === userDepartment);
+    if (scopeDepartment) filteredData = filteredData.filter(a => a.department === scopeDepartment);
     return filteredData.filter((a) => {
       let ok = true;
-      if (dept !== "ALL" && !isSPV) ok = ok && a.department === dept;
+      if (dept !== "ALL" && !scopeDepartment) ok = ok && a.department === dept;
       if (jabatan !== "ALL") ok = ok && a.jabatan === jabatan;
       if (selectedEmployees.length > 0) ok = ok && selectedEmployees.includes(a.uid);
       if (status !== "ALL") ok = ok && getAttendanceStatus(a).status === status;
@@ -427,7 +429,7 @@ export default function AttendancePage() {
       }
       return ok;
     });
-  }, [data, dept, jabatan, selectedEmployees, status, startDate, endDate, isSPV, userDepartment]);
+  }, [data, dept, jabatan, selectedEmployees, status, startDate, endDate, scopeDepartment]);
 
   // Stats
   const stats = useMemo(() => {
@@ -492,16 +494,16 @@ export default function AttendancePage() {
 
   const deptList = useMemo(() => {
     const depts = new Set(Object.values(users).map((u) => u.department).filter(Boolean));
-    if (isSPV && userDepartment) return ["ALL", userDepartment];
+    if (scopeDepartment) return ["ALL", scopeDepartment];
     return ["ALL", ...Array.from(depts)];
-  }, [users, isSPV, userDepartment]);
+  }, [users, scopeDepartment]);
 
   const jabatanList = useMemo(() => ["ALL", ...new Set(Object.values(users).map((u) => u.jabatan).filter(Boolean))], [users]);
   const employeeList = useMemo(() => {
     let employees = [...new Set(data.map((a) => a.uid))];
-    if (isSPV && userDepartment) employees = [...new Set(data.filter(a => a.department === userDepartment).map(a => a.uid))];
+    if (scopeDepartment) employees = [...new Set(data.filter(a => a.department === scopeDepartment).map(a => a.uid))];
     return ["ALL", ...employees];
-  }, [data, isSPV, userDepartment]);
+  }, [data, scopeDepartment]);
 
   const applyFilter = useCallback(() => {
     if (tempStartDate && tempEndDate && new Date(tempStartDate) > new Date(tempEndDate)) {
@@ -877,7 +879,7 @@ export default function AttendancePage() {
   }
 
     return (
-      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "employee"]}>
+      <ProtectedRoute requiredFeature="view_attendance">
         <div className="space-y-6 pb-20">
           {/* Unified Toolbar (Stats, Filters, Actions) */}
         {/* Stats Cards - Sleek SaaS Style */}

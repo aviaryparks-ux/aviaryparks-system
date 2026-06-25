@@ -106,7 +106,7 @@ export default function RoleManagementPage() {
 
   if (loading) {
     return (
-      <ProtectedRoute allowedRoles={["super_admin"]}>
+      <ProtectedRoute requiredFeature="manage_roles">
         <div className="flex justify-center items-center min-h-[60vh]">
           <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
         </div>
@@ -115,7 +115,7 @@ export default function RoleManagementPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin"]}>
+    <ProtectedRoute requiredFeature="manage_roles">
       <div className="max-w-7xl mx-auto space-y-6 p-6 pb-32">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">

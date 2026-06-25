@@ -125,7 +125,7 @@ export default function EventDashboardPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "manager", "owner", "gm"]}>
+    <ProtectedRoute requiredFeature="view_events_dashboard">
       <div className="w-full space-y-6 px-4 sm:px-6 lg:px-8 py-8">
         <div>
           <h1 className="text-2xl font-black text-slate-800 tracking-tight">Dashboard Event</h1>

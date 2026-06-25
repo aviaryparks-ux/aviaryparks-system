@@ -180,7 +180,7 @@ export default function ShiftAuditPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "hr"]}>
+    <ProtectedRoute requiredFeature="manage_shifts">
       <div className="space-y-6 pb-20">
 
         {/* Stats Cards */}

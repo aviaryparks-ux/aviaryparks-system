@@ -351,7 +351,7 @@ export default function EditFEOPage() {
   if (!formData) return <div className="p-8 text-center">FEO tidak ditemukan atau tidak memiliki akses.</div>;
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "manager"]}>
+    <ProtectedRoute requiredFeature="manage_feo">
       <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-32">
         <div className="mb-8">
           <h1 className="text-2xl font-black text-slate-800 tracking-tight">Ubah Fieldtrip Event Order (FEO)</h1>

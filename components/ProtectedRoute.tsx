@@ -9,7 +9,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles?: string[]; // Legacy / Backup
-  requiredFeature?: string; // New RBAC
+  requiredFeature?: string | string[]; // New RBAC
   redirectTo?: string;
 }
 

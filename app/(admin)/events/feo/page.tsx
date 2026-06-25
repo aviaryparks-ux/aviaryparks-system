@@ -73,7 +73,7 @@ export default function FEOListPage() {
   const actionNeededCount = events.filter(event => event.status === "waiting_approval" && event.approvalFlow?.[event.currentApproverIndex || 0]?.approverUid === user?.uid).length;
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "manager"]}>
+    <ProtectedRoute requiredFeature="view_feo">
       <div className="w-full space-y-6 px-4 sm:px-6 lg:px-8 py-8 pb-32">
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">

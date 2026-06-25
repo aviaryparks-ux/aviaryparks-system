@@ -6,6 +6,7 @@ import { collection, getDocs, query, orderBy, limit, where, Timestamp } from "fi
 import { db } from "@/lib/firebase";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LoadingScreen from "@/components/ui/LoadingScreen";
+import { useAuth } from "@/contexts/AuthContext";
 import PageHeader from "@/components/ui/PageHeader";
 import Link from "next/link";
 import {
@@ -176,9 +177,16 @@ export default function DashboardPage() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [attendanceRate, setAttendanceRate] = useState(0);
 
+  const { user: currentUser } = useAuth();
+  const isGlobalAdmin = currentUser?.role === "super_admin" || currentUser?.role === "hr" || 
+                        ((currentUser?.role === "admin" || currentUser?.role === "manager" || currentUser?.role === "gm" || currentUser?.role === "owner") && !currentUser?.department);
+  const scopeDepartment = isGlobalAdmin ? null : currentUser?.department;
+
   useEffect(() => {
-    loadAllData();
-  }, [selectedYear]);
+    if (currentUser !== undefined) {
+      loadAllData();
+    }
+  }, [selectedYear, currentUser]);
 
   async function loadAllData() {
     setLoading(true);
@@ -189,7 +197,7 @@ export default function DashboardPage() {
       const yearStart = Timestamp.fromDate(new Date(selectedYear, 0, 1));
       const yearEnd = Timestamp.fromDate(new Date(selectedYear, 11, 31, 23, 59, 59));
 
-      const [usersSnap, attendanceSnap, requestsSnap, shiftsSnap] = await Promise.all([
+      const [usersSnapRaw, attendanceSnapRaw, requestsSnapRaw, shiftsSnap] = await Promise.all([
         getDocs(query(collection(db, "users"), limit(500))),
         getDocs(query(
           collection(db, "attendance"),
@@ -201,12 +209,38 @@ export default function DashboardPage() {
         getDocs(collection(db, "shifts")),
       ]);
 
+      const validUids = new Set();
+      usersSnapRaw.forEach((doc: any) => {
+        const data = doc.data();
+        if (!scopeDepartment || data.department === scopeDepartment) {
+          validUids.add(doc.id);
+        }
+      });
+
+      const usersSnap = {
+        docs: usersSnapRaw.docs.filter((doc: any) => validUids.has(doc.id)),
+        size: validUids.size,
+        forEach: (cb: any) => { usersSnapRaw.forEach((doc: any) => { if (validUids.has(doc.id)) cb(doc); }); }
+      };
+
+      const attendanceSnap = {
+        docs: attendanceSnapRaw.docs.filter((doc: any) => validUids.has(doc.data().uid)),
+        size: attendanceSnapRaw.docs.filter((doc: any) => validUids.has(doc.data().uid)).length,
+        forEach: (cb: any) => { attendanceSnapRaw.forEach((doc: any) => { if (validUids.has(doc.data().uid)) cb(doc); }); }
+      };
+
+      const requestsSnap = {
+        docs: requestsSnapRaw.docs.filter((doc: any) => validUids.has(doc.data().uid)),
+        size: requestsSnapRaw.docs.filter((doc: any) => validUids.has(doc.data().uid)).length,
+        forEach: (cb: any) => { requestsSnapRaw.forEach((doc: any) => { if (validUids.has(doc.data().uid)) cb(doc); }); }
+      };
+
       await Promise.all([
         loadStats(usersSnap, attendanceSnap, requestsSnap, shiftsSnap),
         loadMonthlyData(attendanceSnap, usersSnap),
         loadDepartmentData(usersSnap, attendanceSnap),
         loadShiftDistribution(shiftsSnap, attendanceSnap),
-        loadRecentActivities(),
+        loadRecentActivities(validUids),
       ]);
     } catch (err: any) {
       console.error("Error loading dashboard:", err);
@@ -496,19 +530,19 @@ export default function DashboardPage() {
     }
   }
 
-  async function loadRecentActivities() {
+  async function loadRecentActivities(validUids: Set<unknown>) {
     try {
       const activities: any[] = [];
 
       const attendanceQuery = query(
         collection(db, "attendance"),
         orderBy("date", "desc"),
-        limit(5)
+        limit(50) // Increased limit since we filter post-fetch
       );
       const attendanceSnap = await getDocs(attendanceQuery);
       attendanceSnap.forEach(doc => {
         const data = doc.data();
-        if (data.date?.toDate) {
+        if (data.date?.toDate && validUids.has(data.uid)) {
           activities.push({
             id: doc.id,
             type: "attendance",
@@ -523,12 +557,12 @@ export default function DashboardPage() {
         const auditQuery = query(
           collection(db, "shift_audit_logs"),
           orderBy("changedAt", "desc"),
-          limit(5)
+          limit(50)
         );
         const auditSnap = await getDocs(auditQuery);
         auditSnap.forEach(doc => {
           const data = doc.data();
-          if (data.changedAt?.toDate) {
+          if (data.changedAt?.toDate && validUids.has(data.uid)) {
             activities.push({
               id: doc.id,
               type: "shift_change",
@@ -568,7 +602,7 @@ export default function DashboardPage() {
   // ============================
   if (loading) {
     return (
-      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "employee"]}>
+      <ProtectedRoute requiredFeature="view_dashboard">
         <div className="min-h-[80vh] flex items-center justify-center">
           <LoadingScreen fullScreen={false} message="Memuat dashboard..." size={150} />
         </div>
@@ -581,7 +615,7 @@ export default function DashboardPage() {
   // ============================
   if (error) {
     return (
-      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "employee"]}>
+      <ProtectedRoute requiredFeature="view_dashboard">
         <div className="min-h-[80vh] flex items-center justify-center p-6">
           <div className="text-center bg-white p-8 rounded-xl shadow-sm border border-red-100 max-w-md">
             <div className="w-14 h-14 bg-red-50 rounded-xl flex items-center justify-center mx-auto mb-4">
@@ -607,7 +641,7 @@ export default function DashboardPage() {
   // MAIN RENDER
   // ============================
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "employee"]}>
+    <ProtectedRoute requiredFeature="view_dashboard">
       <div className="space-y-6 pb-20">
         {/* ============================================ */}
         {/* STATS CARDS — White with colored left border */}

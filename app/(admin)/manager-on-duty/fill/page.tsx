@@ -378,7 +378,7 @@ export default function FillMODReportPage() {
 
   if (loading || loadingTemplate) {
     return (
-      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
+      <ProtectedRoute requiredFeature="fill_mod">
         <div className="flex flex-col items-center justify-center py-12 gap-4">
           <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-gray-500">Memuat...</p>
@@ -390,7 +390,7 @@ export default function FillMODReportPage() {
   const stats = getStats();
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
+    <ProtectedRoute requiredFeature="fill_mod">
       <div className="space-y-6 pb-32">
         {error && (
           <div className="mt-12 flex flex-col items-center justify-center p-8 bg-white border border-slate-200 rounded-2xl shadow-sm max-w-md mx-auto text-center">

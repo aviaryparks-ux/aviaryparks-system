@@ -622,7 +622,7 @@ export default function WorkOrderDetailPage() {
 
   if (loading) {
     return (
-      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager", "employee"]}>
+      <ProtectedRoute requiredFeature="view_work_orders">
         <div className="flex justify-center py-12">
           <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
         </div>
@@ -633,7 +633,7 @@ export default function WorkOrderDetailPage() {
   if (!wo) return null;
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager", "employee"]}>
+    <ProtectedRoute requiredFeature="view_work_orders">
       {/* -------------------- PRINT LAYOUT (INTERNAL MEMO) -------------------- */}
       <div className="hidden print:block p-8 max-w-none w-full bg-white">
         <div className="flex justify-center mb-12">

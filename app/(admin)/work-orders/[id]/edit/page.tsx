@@ -275,7 +275,7 @@ export default function EditWorkOrderPage() {
 
   if (loading) {
     return (
-      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
+      <ProtectedRoute requiredFeature="manage_work_orders">
         <div className="flex items-center justify-center min-h-[50vh]">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-orange-500 border-t-transparent"></div>
         </div>
@@ -286,7 +286,7 @@ export default function EditWorkOrderPage() {
   // If there's an error and we don't have data, just show the error
   if (error && !woData) {
     return (
-      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
+      <ProtectedRoute requiredFeature="manage_work_orders">
         <div className="p-6 max-w-4xl mx-auto">
           <div className="rounded-xl bg-red-50 border border-red-200 p-6 text-center">
             <p className="text-red-700 font-medium mb-4">{error}</p>
@@ -303,7 +303,7 @@ export default function EditWorkOrderPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
+    <ProtectedRoute requiredFeature="manage_work_orders">
       <div className="w-full space-y-8 px-4 sm:px-6 lg:px-8 py-8 pb-32">
         {/* Header */}
         <div className="flex items-center gap-4">

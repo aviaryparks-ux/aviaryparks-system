@@ -69,8 +69,8 @@ export interface ChatUser {
   photoUrl?: string;
   role: string;
   department?: string;
-  section?: string;
   division?: string;
+  position?: string;
   isActive: boolean;
 }
 

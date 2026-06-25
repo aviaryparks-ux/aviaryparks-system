@@ -131,7 +131,7 @@ export default function PublicCalendarPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "manager", "spv", "owner", "gm"]}>
+    <ProtectedRoute requiredFeature="view_calendar">
       <div className="w-full h-[calc(100vh-2rem)] p-4 sm:p-6 lg:p-8">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-full flex flex-col">
           <div className="mb-6">

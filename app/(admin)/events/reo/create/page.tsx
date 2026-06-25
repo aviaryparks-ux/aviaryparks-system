@@ -353,7 +353,7 @@ export default function CreateREOPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "manager"]}>
+    <ProtectedRoute requiredFeature="manage_reo">
       <form onSubmit={handleSubmit} className="w-full max-w-7xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8 py-8 pb-32">
         {errorMsg && <div className="bg-red-50 text-red-600 p-4 rounded-xl font-bold border border-red-200">{errorMsg}</div>}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">

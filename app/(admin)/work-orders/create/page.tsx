@@ -413,7 +413,7 @@ export default function CreateWorkOrderPage() {
 
   if (showIMPreview) {
     return (
-      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
+      <ProtectedRoute requiredFeature="create_work_order">
         <div className="max-w-4xl mx-auto py-8">
           <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
             <div className="p-6 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
@@ -522,7 +522,7 @@ export default function CreateWorkOrderPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
+    <ProtectedRoute requiredFeature="create_work_order">
       <div className="w-full space-y-8 px-4 sm:px-6 lg:px-8 py-8 pb-32">
         {/* Header */}
         <div className="flex items-center gap-4">

@@ -159,7 +159,7 @@ export default function WOTemplatePage() {
 
   if (loading) {
     return (
-      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "manager"]}>
+      <ProtectedRoute requiredFeature="manage_wo_templates">
         <div className="flex justify-center py-12">
           <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
         </div>
@@ -170,7 +170,7 @@ export default function WOTemplatePage() {
   if (!template) return null;
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
+    <ProtectedRoute requiredFeature="manage_wo_templates">
       <div className="w-full space-y-6 px-4 sm:px-6 lg:px-8 py-8 pb-32">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">

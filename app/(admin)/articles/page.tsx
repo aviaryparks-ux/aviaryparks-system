@@ -216,7 +216,7 @@ export default function ArticlesPage() {
 
   if (loading) {
     return (
-      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr"]}>
+      <ProtectedRoute requiredFeature="manage_articles">
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
             <div className="relative w-20 h-20 mx-auto mb-6">
@@ -232,7 +232,7 @@ export default function ArticlesPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr"]}>
+    <ProtectedRoute requiredFeature="manage_articles">
       <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100 p-6 lg:p-8">
         <style jsx global>{`
           @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');

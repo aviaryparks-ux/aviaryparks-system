@@ -84,7 +84,7 @@ export default function MODReportListPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
+    <ProtectedRoute requiredFeature="view_mod">
       <div className="space-y-6 pb-20">
         {/* Header Clean */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">

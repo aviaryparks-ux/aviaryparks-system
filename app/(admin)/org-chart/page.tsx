@@ -13,8 +13,8 @@ type User = {
   name: string;
   role: string;
   department?: string;
-  section?: string;
   division?: string;
+  position?: string;
   jabatan?: string;
   photoUrl?: string;
 };
@@ -23,12 +23,11 @@ type DepartmentData = {
   id: string;
   name: string;
   hodUid?: string;
-  sections?: {
+  divisions?: {
     name: string;
-    managerUid?: string;
-    divisions?: {
+    spvUid?: string;
+    positions?: {
       name: string;
-      spvUid?: string;
     }[];
   }[];
 };
@@ -151,13 +150,12 @@ export default function OrgChartPage() {
   
   const getUser = (uid?: string) => users.find(u => u.uid === uid);
   
-  const getStaffCount = (deptName: string, sectionName?: string, divisionName?: string) => {
+  const getStaffCount = (deptName: string, divisionName?: string) => {
     return users.filter(u => {
       const isStaffOrAdmin = ["staff", "admin"].includes(u.role);
       const isDept = u.department?.toLowerCase() === deptName?.toLowerCase();
-      const isSec = sectionName ? u.section?.toLowerCase() === sectionName?.toLowerCase() : true;
       const isDiv = divisionName ? u.division?.toLowerCase() === divisionName?.toLowerCase() : true;
-      return isStaffOrAdmin && isDept && isSec && isDiv;
+      return isStaffOrAdmin && isDept && isDiv;
     }).length;
   };
 
@@ -200,7 +198,7 @@ export default function OrgChartPage() {
   if (loading) return <LoadingScreen />;
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "owner", "gm", "hod", "manager", "spv"]}>
+    <ProtectedRoute requiredFeature="view_users">
       <div className="min-h-screen bg-slate-50/50 p-6 md:p-8">
         <div className="max-w-[1400px] mx-auto">
           
@@ -300,39 +298,25 @@ export default function OrgChartPage() {
                             />
                           )}
 
-                          {/* Section Nodes */}
-                          {dept.sections?.map((sec, secIdx) => {
-                            const manager = getUser(sec.managerUid);
-                            const isSecCollapsed = collapsedNodes[`sec-${dept.id}-${secIdx}`];
+                          {/* Division Nodes */}
+                          {dept.divisions?.map((div, divIdx) => {
+                            const spv = getUser(div.spvUid);
+                            const staffCount = getStaffCount(dept.name, div.name);
+                            const isDivCollapsed = collapsedNodes[`div-${dept.id}-${divIdx}`];
 
                             return (
                               <TreeNode
-                                key={secIdx}
-                                title={manager ? manager.name : "Posisi Kosong"}
-                                subtitle={`Manager - ${sec.name}`}
-                                icon={Briefcase}
-                                colorClass="bg-emerald-500 text-emerald-600"
-                                isCollapsed={isSecCollapsed}
-                                onToggle={() => toggleNode(`sec-${dept.id}-${secIdx}`)}
-                                photoUrl={manager?.photoUrl}
+                                key={divIdx}
+                                title={spv ? spv.name : "Posisi Kosong"}
+                                subtitle={`SPV - ${div.name}`}
+                                icon={UserCheck}
+                                colorClass="bg-amber-500 text-amber-600"
+                                count={staffCount}
+                                photoUrl={spv?.photoUrl}
+                                isCollapsed={isDivCollapsed}
+                                onToggle={() => toggleNode(`div-${dept.id}-${divIdx}`)}
                               >
-                                {/* Division Nodes */}
-                                {sec.divisions?.map((div, divIdx) => {
-                                  const spv = getUser(div.spvUid);
-                                  const staffCount = getStaffCount(dept.name, sec.name, div.name);
-
-                                  return (
-                                    <TreeNode
-                                      key={divIdx}
-                                      title={spv ? spv.name : "Posisi Kosong"}
-                                      subtitle={`SPV - ${div.name}`}
-                                      icon={UserCheck}
-                                      colorClass="bg-amber-500 text-amber-600"
-                                      count={staffCount}
-                                      photoUrl={spv?.photoUrl}
-                                    />
-                                  );
-                                })}
+                                {/* Position Nodes can go here if needed, but currently just showing SPVs */}
                               </TreeNode>
                             );
                           })}

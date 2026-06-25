@@ -147,7 +147,7 @@ export default function SettingsPage() {
   if (loading) return <LoadingScreen fullScreen={false} size={150} />;
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin"]}>
+    <ProtectedRoute requiredFeature="manage_settings">
       <div className="space-y-6 p-6">
         {/* Header dengan Glassmorphism */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-green-600 to-green-700 p-6 text-white shadow-xl">

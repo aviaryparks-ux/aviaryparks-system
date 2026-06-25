@@ -46,7 +46,7 @@ export default function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) 
       title: "MAIN",
       items: [
         { name: "Dashboard", path: "/dashboard", icon: <DashboardIcon />, roles: ["all"] },
-        { name: "Artikel & Pengumuman", path: "/articles", icon: <ArticleIcon />, roles: ["super_admin", "admin", "hr", "owner", "gm"] },
+        { name: "Artikel & Pengumuman", path: "/articles", icon: <ArticleIcon />, feature: "manage_articles" },
         { name: "Chat", path: "/chat", icon: <ChatIcon />, roles: ["all"] },
       ],
     },
@@ -93,11 +93,11 @@ export default function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) 
     {
       title: "EVENTS",
       items: [
-        { name: "Dashboard Event", path: "/events/dashboard", icon: <DashboardIcon />, roles: ["all"] },
-        { name: "Database Klien", path: "/events/clients", icon: <DatabaseIcon />, roles: ["all"] },
-        { name: "Kalender Event", path: "/events/calendar", icon: <CalendarIcon />, roles: ["all"] },
-        { name: "Daftar REO", path: "/events/reo", icon: <ReoIcon />, roles: ["super_admin", "admin", "hr", "manager"] },
-        { name: "Daftar FEO", path: "/events/feo", icon: <FeoIcon />, roles: ["super_admin", "admin", "hr", "manager"] },
+        { name: "Dashboard Event", path: "/events/dashboard", icon: <DashboardIcon />, feature: "view_events_dashboard" },
+        { name: "Database Klien", path: "/events/clients", icon: <DatabaseIcon />, feature: "view_clients" },
+        { name: "Kalender Event", path: "/events/calendar", icon: <CalendarIcon />, feature: "view_calendar" },
+        { name: "Daftar REO", path: "/events/reo", icon: <ReoIcon />, feature: "view_reo" },
+        { name: "Daftar FEO", path: "/events/feo", icon: <FeoIcon />, feature: "view_feo" },
       ],
     },
     {
@@ -105,8 +105,8 @@ export default function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) 
       items: [
         { name: "Approval Flow", path: "/approval-flow", icon: <ApprovalIcon />, feature: "manage_settings" },
         { name: "Settings", path: "/settings", icon: <SettingsIcon />, feature: "manage_settings" },
-        { name: "Departments", path: "/settings/departments", icon: <SettingsIcon />, roles: ["super_admin", "admin", "hr", "owner", "gm"] },
-        { name: "Hak Akses (RBAC)", path: "/settings/roles", icon: <RolesIcon />, roles: ["super_admin"] },
+        { name: "Departments", path: "/settings/departments", icon: <SettingsIcon />, feature: "manage_settings" },
+        { name: "Hak Akses (RBAC)", path: "/settings/roles", icon: <RolesIcon />, feature: "manage_roles" },
       ],
     },
   ];

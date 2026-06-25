@@ -126,7 +126,7 @@ export default function MODReportDetailPage() {
 
   if (loading) {
     return (
-      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
+      <ProtectedRoute requiredFeature="view_mod">
         <div className="flex justify-center py-12">
           <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
         </div>
@@ -150,7 +150,7 @@ export default function MODReportDetailPage() {
   });
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
+    <ProtectedRoute requiredFeature="view_mod">
       <div className="space-y-6 p-6 max-w-4xl mx-auto">
         {/* Header */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 to-purple-700 p-6 text-white shadow-xl">

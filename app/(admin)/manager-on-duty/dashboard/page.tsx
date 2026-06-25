@@ -96,7 +96,7 @@ export default function MODDashboardPage() {
   const canReview = user?.role === "super_admin" || user?.role === "admin" || user?.role === "hr";
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
+    <ProtectedRoute requiredFeature="view_mod">
       <div className="space-y-6 p-6">
         {/* MOD Status Banner - Only show on Fri/Sat/Sun */}
         {todayDayOfWeek && (

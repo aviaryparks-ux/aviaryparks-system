@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     }
 
     const data = await request.json();
-    const { name, email, password, role, department, section, division, jabatan, dailyRate, company, location, joinDate, bankName, bankAccountNumber, bankAccountName } = data;
+    const { name, email, password, role, department, position, division, jobLevel, employeeStatus, dailyRate, company, location, joinDate, bankName, bankAccountNumber, bankAccountName } = data;
 
     if (!name || !email || !password) {
       return NextResponse.json({ error: 'Name, email, and password are required' }, { status: 400 });
@@ -60,9 +60,10 @@ export async function POST(request: Request) {
       email: String(email),
       role: role || 'employee',
       department: department || '',
-      section: section || '',
+      position: position || '',
       division: division || '',
-      jabatan: jabatan || '',
+      jobLevel: jobLevel || '',
+      employeeStatus: employeeStatus || '',
       dailyRate: dailyRate ? Number(dailyRate) : null,
       company: company || '',
       location: location || '',

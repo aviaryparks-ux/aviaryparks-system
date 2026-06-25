@@ -155,7 +155,7 @@ export default function ManagerOnDutyPage() {
   const paginatedRows = tableRows.slice(startIndex, startIndex + itemsPerPage);
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "spv", "manager"]}>
+    <ProtectedRoute requiredFeature="view_mod">
       <div className="space-y-6 pb-20">
         
         {/* STATS CARDS ROW */}

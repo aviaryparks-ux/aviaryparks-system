@@ -5,6 +5,7 @@ import { db } from "@/lib/firebase";
 import { collection, doc, getDocs, setDoc, deleteDoc, Timestamp } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/contexts/AuthContext";
+import Select from "react-select";
 
 interface Division {
   id: string;
@@ -12,20 +13,25 @@ interface Division {
   spvUid: string;
 }
 
-interface Section {
+interface Position {
   id: string;
   name: string;
-  managerUid: string;
-  divisions: Division[];
+  userUid?: string;
+}
+
+interface Division {
+  id: string;
+  name: string;
+  spvUid: string;
+  positions: Position[];
 }
 
 interface Department {
   id: string;
   name: string;
   hodUid: string;
-  managerUid?: string; // legacy
-  sections: Section[];
-  divisions?: Division[]; // legacy
+  divisions: Division[];
+  sections?: any[]; // legacy
 }
 
 interface UserData {
@@ -45,7 +51,7 @@ export default function DepartmentsSettingsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deptName, setDeptName] = useState("");
   const [hodUid, setHodUid] = useState("");
-  const [sections, setSections] = useState<Section[]>([]);
+  const [divisions, setDivisions] = useState<Division[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -71,26 +77,30 @@ export default function DepartmentsSettingsPage() {
       const deptList: Department[] = [];
       deptSnap.forEach((d) => {
         const data = d.data();
+        let loadedDivisions: Division[] = data.divisions || [];
         
-        let loadedSections: Section[] = data.sections || [];
-        
-        // Migrate legacy divisions
-        if (data.divisions && data.divisions.length > 0 && loadedSections.length === 0) {
-          loadedSections = [
-            {
-              id: `sec_${Date.now()}`,
-              name: "GENERAL SECTION",
-              managerUid: data.managerUid || "",
-              divisions: data.divisions
+        // Migrate legacy sections to flat divisions
+        if (data.sections && data.sections.length > 0 && loadedDivisions.length === 0) {
+          const flattenedDivs: Division[] = [];
+          data.sections.forEach((sec: any) => {
+            if (sec.divisions) {
+              flattenedDivs.push(...sec.divisions);
             }
-          ];
+          });
+          loadedDivisions = flattenedDivs;
         }
+
+        // Ensure positions array exists
+        loadedDivisions = loadedDivisions.map(div => ({
+          ...div,
+          positions: div.positions || []
+        }));
 
         deptList.push({
           id: d.id,
           name: data.name || "",
           hodUid: data.hodUid || data.managerUid || "",
-          sections: loadedSections,
+          divisions: loadedDivisions,
         });
       });
       setDepartments(deptList);
@@ -102,44 +112,43 @@ export default function DepartmentsSettingsPage() {
     }
   };
 
-  const handleAddSection = () => {
-    setSections([
-      ...sections,
-      { id: Date.now().toString(), name: "", managerUid: "", divisions: [] }
+  const handleAddDivision = () => {
+    setDivisions([
+      ...divisions,
+      { id: Date.now().toString(), name: "", spvUid: "", positions: [] }
     ]);
   };
 
-  const handleUpdateSection = (index: number, field: keyof Section, value: any) => {
-    const updated = [...sections];
+  const handleUpdateDivision = (index: number, field: keyof Division, value: any) => {
+    const updated = [...divisions];
     updated[index] = { ...updated[index], [field]: value };
-    setSections(updated);
+    setDivisions(updated);
   };
 
-  const handleRemoveSection = (index: number) => {
-    const updated = sections.filter((_, i) => i !== index);
-    setSections(updated);
+  const handleRemoveDivision = (index: number) => {
+    const updated = divisions.filter((_, i) => i !== index);
+    setDivisions(updated);
   };
 
-  const handleAddDivision = (sectionIndex: number) => {
-    const updated = [...sections];
-    updated[sectionIndex].divisions.push({
+  const handleAddPosition = (divIndex: number) => {
+    const updated = [...divisions];
+    updated[divIndex].positions.push({
       id: Date.now().toString() + Math.random().toString().slice(2,5),
-      name: "",
-      spvUid: ""
+      name: ""
     });
-    setSections(updated);
+    setDivisions(updated);
   };
 
-  const handleUpdateDivision = (secIndex: number, divIndex: number, field: keyof Division, value: string) => {
-    const updated = [...sections];
-    updated[secIndex].divisions[divIndex] = { ...updated[secIndex].divisions[divIndex], [field]: value };
-    setSections(updated);
+  const handleUpdatePosition = (divIndex: number, posIndex: number, field: keyof Position, value: string) => {
+    const updated = [...divisions];
+    updated[divIndex].positions[posIndex] = { ...updated[divIndex].positions[posIndex], [field]: value };
+    setDivisions(updated);
   };
 
-  const handleRemoveDivision = (secIndex: number, divIndex: number) => {
-    const updated = [...sections];
-    updated[secIndex].divisions = updated[secIndex].divisions.filter((_, i) => i !== divIndex);
-    setSections(updated);
+  const handleRemovePosition = (divIndex: number, posIndex: number) => {
+    const updated = [...divisions];
+    updated[divIndex].positions = updated[divIndex].positions.filter((_, i) => i !== posIndex);
+    setDivisions(updated);
   };
 
   const handleSave = async () => {
@@ -152,19 +161,19 @@ export default function DepartmentsSettingsPage() {
       const idToSave = editingId || `dept_${Date.now()}`;
       
       const normalizedName = deptName.trim().toUpperCase();
-      const normalizedSections = sections.map(sec => ({
-        ...sec,
-        name: sec.name.trim().toUpperCase(),
-        divisions: sec.divisions.map(div => ({
-          ...div,
-          name: div.name.trim().toUpperCase()
-        })).filter(div => div.name !== "")
-      })).filter(sec => sec.name !== "");
+      const normalizedDivisions = divisions.map(div => ({
+        ...div,
+        name: div.name.trim().toUpperCase(),
+        positions: div.positions.map(pos => ({
+          name: pos.name.trim().toUpperCase(),
+          userUid: pos.userUid || ""
+        })).filter(pos => pos.name !== "")
+      })).filter(div => div.name !== "");
 
       const dataToSave = {
         name: normalizedName,
         hodUid,
-        sections: normalizedSections,
+        divisions: normalizedDivisions,
         updatedAt: Timestamp.now(),
       };
 
@@ -187,7 +196,7 @@ export default function DepartmentsSettingsPage() {
     setEditingId(dept.id);
     setDeptName(dept.name);
     setHodUid(dept.hodUid);
-    setSections(dept.sections || []);
+    setDivisions(dept.divisions || []);
     setShowForm(true);
   };
 
@@ -207,12 +216,12 @@ export default function DepartmentsSettingsPage() {
     setEditingId(null);
     setDeptName("");
     setHodUid("");
-    setSections([]);
+    setDivisions([]);
   };
 
   if (loading) {
     return (
-      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "owner", "gm"]}>
+      <ProtectedRoute requiredFeature="manage_settings">
         <div className="flex justify-center items-center min-h-[60vh]">
           <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
         </div>
@@ -224,8 +233,33 @@ export default function DepartmentsSettingsPage() {
   const potentialManagers = users.filter(u => ["manager", "hod", "gm", "owner", "super_admin"].includes(u.role));
   const potentialSpvs = users; // SPV can be anyone technically
 
+  const spvOptions = potentialSpvs.map(u => ({ value: u.id, label: `${u.name} (${u.role})` }));
+  const userOptions = users.map(u => ({ value: u.id, label: u.name }));
+
+  const selectStyles = {
+    control: (base: any) => ({
+      ...base,
+      borderColor: '#e2e8f0',
+      borderRadius: '0.5rem',
+      padding: '1px',
+      boxShadow: 'none',
+      fontSize: '0.875rem',
+      '&:hover': {
+        borderColor: '#22c55e'
+      }
+    }),
+    option: (base: any) => ({
+      ...base,
+      fontSize: '0.875rem'
+    }),
+    menu: (base: any) => ({
+      ...base,
+      zIndex: 50
+    })
+  };
+
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr", "owner", "gm"]}>
+    <ProtectedRoute requiredFeature="manage_settings">
       <div className="max-w-7xl mx-auto space-y-6 p-6">
         
         {/* Header */}
@@ -233,7 +267,7 @@ export default function DepartmentsSettingsPage() {
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Master Departments & Organization Structure</h1>
             <p className="text-sm text-slate-500 mt-1">
-              Configure 3-tier structure (Department ➔ Section ➔ Division) and approval routing.
+              Configure organizational structure (Department ➔ Division ➔ Position) and approval routing.
             </p>
           </div>
           <button
@@ -281,103 +315,101 @@ export default function DepartmentsSettingsPage() {
               </div>
             </div>
 
-            {/* Sections Section */}
+            {/* Divisions Section */}
             <div className="border-t border-slate-100 pt-6">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-md font-bold text-slate-800">Sections & Divisions</h3>
+                <h3 className="text-md font-bold text-slate-800">Divisions & Positions</h3>
                 <button
-                  onClick={handleAddSection}
+                  onClick={handleAddDivision}
                   className="text-sm bg-green-50 hover:bg-green-100 text-green-700 px-3 py-1.5 rounded-lg font-medium transition-colors border border-green-200"
                 >
-                  + Add Section
+                  + Add Division
                 </button>
               </div>
 
-              {sections.length === 0 ? (
+              {divisions.length === 0 ? (
                 <div className="text-center py-6 bg-slate-50 border border-dashed border-slate-300 rounded-lg text-slate-500 text-sm">
-                  No sections added yet. Click "+ Add Section" to create one.
+                  No divisions added yet. Click "+ Add Division" to create one.
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {sections.map((sec, secIdx) => (
-                    <div key={sec.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  {divisions.map((div, divIdx) => (
+                    <div key={div.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center mb-4">
                         <div className="flex-1 w-full">
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Section Name</label>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">Division Name</label>
                           <input
                             type="text"
-                            placeholder="e.g. F&B SECTION"
-                            value={sec.name}
-                            onChange={(e) => handleUpdateSection(secIdx, "name", e.target.value)}
+                            placeholder="e.g. KITCHEN"
+                            value={div.name}
+                            onChange={(e) => handleUpdateDivision(divIdx, "name", e.target.value)}
                             className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-500 outline-none uppercase"
                           />
                         </div>
                         <div className="flex-1 w-full">
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Kepala Section (Manager)</label>
-                          <select
-                            value={sec.managerUid}
-                            onChange={(e) => handleUpdateSection(secIdx, "managerUid", e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-500 outline-none"
-                          >
-                            <option value="">-- No Manager Assigned --</option>
-                            {potentialManagers.map(u => (
-                              <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-                            ))}
-                          </select>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">Kepala Division (SPV)</label>
+                          <Select
+                            options={spvOptions}
+                            value={spvOptions.find(opt => opt.value === div.spvUid) || null}
+                            onChange={(option: any) => handleUpdateDivision(divIdx, "spvUid", option ? option.value : "")}
+                            isClearable
+                            placeholder="-- No SPV Assigned --"
+                            styles={selectStyles}
+                            className="w-full"
+                          />
                         </div>
                         <div className="mt-5">
                           <button
-                            onClick={() => handleRemoveSection(secIdx)}
+                            onClick={() => handleRemoveDivision(divIdx)}
                             className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200"
-                            title="Remove Section"
+                            title="Remove Division"
                           >
-                            Delete Section
+                            Delete Division
                           </button>
                         </div>
                       </div>
 
-                      {/* Nested Divisions */}
+                      {/* Nested Positions */}
                       <div className="pl-6 border-l-2 border-slate-200">
                         <div className="flex justify-between items-center mb-3">
-                          <h4 className="text-sm font-semibold text-slate-600">Divisions in this Section</h4>
+                          <h4 className="text-sm font-semibold text-slate-600">Positions in this Division</h4>
                           <button
-                            onClick={() => handleAddDivision(secIdx)}
+                            onClick={() => handleAddPosition(divIdx)}
                             className="text-xs bg-white hover:bg-slate-100 text-slate-600 px-2 py-1 rounded border border-slate-300 font-medium transition-colors"
                           >
-                            + Add Division
+                            + Add Position
                           </button>
                         </div>
 
-                        {sec.divisions.length === 0 ? (
-                          <div className="text-xs text-slate-400 italic mb-2">No divisions in this section.</div>
+                        {(!div.positions || div.positions.length === 0) ? (
+                          <div className="text-xs text-slate-400 italic mb-2">No positions defined.</div>
                         ) : (
                           <div className="space-y-2">
-                            {sec.divisions.map((div, divIdx) => (
-                              <div key={div.id} className="flex flex-col sm:flex-row gap-2 items-start sm:items-center bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
-                                <div className="flex-[2] w-full">
+                            {div.positions.map((pos, posIdx) => (
+                              <div key={pos.id} className="flex flex-col sm:flex-row gap-2 items-start sm:items-center bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                                <div className="flex-1">
                                   <input
                                     type="text"
-                                    placeholder="Division Name (e.g. KITCHEN)"
-                                    value={div.name}
-                                    onChange={(e) => handleUpdateDivision(secIdx, divIdx, "name", e.target.value)}
-                                    className="w-full border-none bg-transparent px-2 py-1 text-sm focus:ring-0 outline-none uppercase placeholder:normal-case"
+                                    value={pos.name}
+                                    onChange={(e) => handleUpdatePosition(divIdx, posIdx, 'name', e.target.value)}
+                                    placeholder="Position Name (e.g. TEKNISI AC)"
+                                    className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all"
                                   />
                                 </div>
-                                <div className="flex-[2] w-full border-l border-slate-100 pl-2">
-                                  <select
-                                    value={div.spvUid}
-                                    onChange={(e) => handleUpdateDivision(secIdx, divIdx, "spvUid", e.target.value)}
-                                    className="w-full border-none bg-transparent px-2 py-1 text-sm focus:ring-0 outline-none text-slate-600"
-                                  >
-                                    <option value="">-- SPV --</option>
-                                    {potentialSpvs.map(u => (
-                                      <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-                                    ))}
-                                  </select>
+                                <div className="flex-1">
+                                  <Select
+                                    options={userOptions}
+                                    value={userOptions.find(opt => opt.value === pos.userUid) || null}
+                                    onChange={(option: any) => handleUpdatePosition(divIdx, posIdx, 'userUid', option ? option.value : "")}
+                                    isClearable
+                                    placeholder="-- Assigned To --"
+                                    styles={selectStyles}
+                                    className="w-full"
+                                  />
                                 </div>
                                 <div>
                                   <button
-                                    onClick={() => handleRemoveDivision(secIdx, divIdx)}
+                                    onClick={() => handleRemovePosition(divIdx, posIdx)}
                                     className="text-red-400 hover:text-red-600 p-1 hover:bg-red-50 rounded transition-colors"
                                   >
                                     ❌
@@ -421,7 +453,7 @@ export default function DepartmentsSettingsPage() {
             ) : (
               departments.map((dept) => {
                 const hod = users.find(u => u.id === dept.hodUid);
-                const totalDivisions = dept.sections?.reduce((acc, sec) => acc + sec.divisions.length, 0) || 0;
+                const totalPositions = dept.divisions?.reduce((acc, div) => acc + (div.positions?.length || 0), 0) || 0;
                 
                 return (
                   <div key={dept.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
@@ -430,10 +462,10 @@ export default function DepartmentsSettingsPage() {
                         <h3 className="font-bold text-lg text-slate-800">{dept.name}</h3>
                         <div className="flex flex-col items-end gap-1">
                           <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                            {dept.sections?.length || 0} Sections
+                            {dept.divisions?.length || 0} Divisions
                           </span>
                           <span className="text-[10px] font-semibold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                            {totalDivisions} Divisions
+                            {totalPositions} Positions
                           </span>
                         </div>
                       </div>
@@ -451,32 +483,28 @@ export default function DepartmentsSettingsPage() {
                       </div>
 
                       <div className="space-y-3">
-                        {!dept.sections || dept.sections.length === 0 ? (
-                          <p className="text-sm text-slate-400 italic">No sections defined</p>
+                        {!dept.divisions || dept.divisions.length === 0 ? (
+                          <p className="text-sm text-slate-400 italic">No divisions defined</p>
                         ) : (
-                          dept.sections.map(sec => {
-                            const manager = users.find(u => u.id === sec.managerUid);
+                          dept.divisions.map(div => {
+                            const spv = users.find(u => u.id === div.spvUid);
                             return (
-                              <div key={sec.id} className="border border-slate-100 rounded-lg overflow-hidden">
+                              <div key={div.id} className="border border-slate-100 rounded-lg overflow-hidden">
                                 <div className="bg-slate-100 px-3 py-2 flex justify-between items-center">
                                   <div>
-                                    <p className="text-xs font-bold text-slate-700">{sec.name}</p>
-                                    <p className="text-[10px] text-slate-500">Mgr: {manager?.name || 'Unassigned'}</p>
+                                    <p className="text-xs font-bold text-slate-700">{div.name}</p>
+                                    <p className="text-[10px] text-slate-500">SPV: {spv?.name || 'Unassigned'}</p>
                                   </div>
                                 </div>
                                 <div className="bg-white p-2">
-                                  {sec.divisions.length === 0 ? (
-                                    <p className="text-[10px] text-slate-400 italic px-1">No divisions</p>
+                                  {(!div.positions || div.positions.length === 0) ? (
+                                    <p className="text-[10px] text-slate-400 italic px-1">No positions</p>
                                   ) : (
                                     <ul className="space-y-1">
-                                      {sec.divisions.map(div => {
-                                        const spv = users.find(u => u.id === div.spvUid);
+                                      {div.positions.map(pos => {
                                         return (
-                                          <li key={div.id} className="text-[11px] flex justify-between items-center py-1 px-2 hover:bg-slate-50 rounded">
-                                            <span className="font-medium text-slate-600">• {div.name}</span>
-                                            <span className="text-slate-400">
-                                              SPV: {spv ? spv.name.split(' ')[0] : "None"}
-                                            </span>
+                                          <li key={pos.id} className="text-[11px] flex justify-between items-center py-1 px-2 hover:bg-slate-50 rounded">
+                                            <span className="font-medium text-slate-600">• {pos.name}</span>
                                           </li>
                                         );
                                       })}

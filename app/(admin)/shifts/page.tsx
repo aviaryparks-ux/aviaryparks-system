@@ -234,7 +234,7 @@ export default function ShiftsPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "hr"]}>
+    <ProtectedRoute requiredFeature="manage_shifts">
         <div className="space-y-6 pb-20">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">

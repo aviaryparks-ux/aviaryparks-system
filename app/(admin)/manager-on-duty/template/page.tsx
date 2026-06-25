@@ -188,7 +188,7 @@ export default function MODTemplatePage() {
 
   if (loading) {
     return (
-      <ProtectedRoute allowedRoles={["super_admin", "admin", "hr"]}>
+      <ProtectedRoute requiredFeature="manage_mod_templates">
         <div className="flex justify-center py-12">
           <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
         </div>
@@ -199,7 +199,7 @@ export default function MODTemplatePage() {
   if (!template) return null;
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "admin", "hr"]}>
+    <ProtectedRoute requiredFeature="manage_mod_templates">
       <div className="space-y-6 pb-32">
         {/* Header Clean */}
         <div className="flex items-center justify-between mb-8">

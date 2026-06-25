@@ -511,7 +511,7 @@ export default function MorningBriefingPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "hr"]}>
+    <ProtectedRoute requiredFeature="view_meetings">
       <div className="space-y-6 p-6">
         {/* Stats Cards - Sama seperti Attendance Page */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">

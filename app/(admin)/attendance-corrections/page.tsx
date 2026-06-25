@@ -483,7 +483,7 @@ export default function AttendanceCorrectionsPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["super_admin", "hr", "manager", "spv"]}>
+    <ProtectedRoute requiredFeature="manage_attendance">
       <div className="space-y-6 pb-20">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
