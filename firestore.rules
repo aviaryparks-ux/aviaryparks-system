@@ -63,9 +63,9 @@ service cloud.firestore {
     // ==================== ATTENDANCE ====================
     match /attendance/{docId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && (request.resource.data.uid == request.auth.uid || isAdmin() || isHR() || isSuperAdmin());
       allow update: if isAuthenticated() && (resource.data.uid == request.auth.uid || isSPV());
-      allow delete: if isAuthenticated() && isSuperAdmin();
+      allow delete: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isHR());
     }
 
     match /attendance_requests/{requestId} {
