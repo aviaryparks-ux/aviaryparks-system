@@ -39,6 +39,7 @@ type User = {
   jobLevel?: string;
   employeeStatus?: string;
   dailyRate?: number;
+  monthlySalary?: number;
   company?: string;
   location?: string;
   joinDate?: string;
@@ -89,6 +90,7 @@ export default function UsersPage() {
   const [jobLevel, setJobLevel] = useState("");
   const [employeeStatus, setEmployeeStatus] = useState("");
   const [dailyRate, setDailyRate] = useState("");
+  const [monthlySalary, setMonthlySalary] = useState("");
   const [company, setCompany] = useState("");
   const [location, setLocation] = useState("");
   const [joinDate, setJoinDate] = useState("");
@@ -170,6 +172,7 @@ export default function UsersPage() {
           jobLevel,
           employeeStatus,
           dailyRate: dailyRate ? Number(dailyRate) : null,
+          monthlySalary: monthlySalary ? Number(monthlySalary) : null,
           company: normalizedCompany,
           location: normalizedLocation,
           joinDate, phone, isActive,
@@ -195,6 +198,7 @@ export default function UsersPage() {
           jobLevel,
           employeeStatus,
           dailyRate: dailyRate ? Number(dailyRate) : null,
+          monthlySalary: monthlySalary ? Number(monthlySalary) : null,
           company: normalizedCompany,
           location: normalizedLocation,
           joinDate, phone,
@@ -290,6 +294,7 @@ export default function UsersPage() {
     setJobLevel(user.jobLevel || user.jabatan || "");
     setEmployeeStatus(user.employeeStatus || "");
     setDailyRate(user.dailyRate?.toString() || "");
+    setMonthlySalary(user.monthlySalary?.toString() || "");
     setCompany(user.company || "");
     setLocation(user.location || "");
     setJoinDate(user.joinDate || "");
@@ -314,6 +319,7 @@ export default function UsersPage() {
     setJobLevel("");
     setEmployeeStatus("");
     setDailyRate("");
+    setMonthlySalary("");
     setCompany("");
     setLocation("");
     setJoinDate("");
@@ -392,6 +398,7 @@ export default function UsersPage() {
         Department: "IT",
         Jabatan: "Staff",
         DailyRate: 0,
+        MonthlySalary: 0,
         Company: "AVIARYPARKS",
         Location: "JAKARTA",
         JoinDate: "2024-01-01",
@@ -428,6 +435,7 @@ export default function UsersPage() {
         const jobLevel = row.JobLevel || row.jobLevel || row.Jabatan || row.jabatan || "";
         const employeeStatus = row.EmployeeStatus || row.employeeStatus || "";
         const dailyRate = row.DailyRate || row.dailyRate || 0;
+        const monthlySalary = row.MonthlySalary || row.monthlySalary || 0;
         const company = normalizeText(row.Company || row.company || "");
         const location = normalizeText(row.Location || row.location || "");
         const joinDate = row.JoinDate || row.joinDate || "";
@@ -443,6 +451,7 @@ export default function UsersPage() {
         const payload = {
           name, email, password, role, department, jobLevel, employeeStatus,
           dailyRate: dailyRate ? Number(dailyRate) : null,
+          monthlySalary: monthlySalary ? Number(monthlySalary) : null,
           company, location, joinDate,
           isActive: true,
           bankName, bankAccountNumber, bankAccountName,
@@ -544,11 +553,11 @@ export default function UsersPage() {
   ];
 
   const jobLevelOptions = [
-    "Casual", "Daily Worker", "Staff", "Supervisor", "Manager", "General Manager", "Direktur"
+    "Casual", "Daily Worker", "Training", "Intern / Magang", "Staff", "Supervisor", "Manager", "General Manager", "Direktur"
   ];
 
   const employeeStatusOptions = [
-    "Casual", "Daily Worker", "Contract", "Permanen"
+    "Casual", "Daily Worker", "Training", "Intern / Magang", "Contract", "Permanen"
   ];
 
   if (loading) {
@@ -896,12 +905,22 @@ export default function UsersPage() {
                     </div>
                   </div>
                 </div>
-                {(employeeStatus === "Casual" || employeeStatus === "Daily Worker" || jobLevel === "Casual" || jobLevel === "Daily Worker") && (
+                {((employeeStatus === "Casual" || employeeStatus === "Daily Worker" || jobLevel === "Casual" || jobLevel === "Daily Worker") && 
+                  !(role === "training" || employeeStatus === "Training" || jobLevel === "Training")) && (
                   <input
                     placeholder="Daily Rate (Rp)"
                     type="number"
                     value={dailyRate || ""}
                     onChange={(e) => setDailyRate(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
+                  />
+                )}
+                {(role === "training" || employeeStatus === "Training" || jobLevel === "Training") && (
+                  <input
+                    placeholder="Gaji Bulanan (Rp)"
+                    type="number"
+                    value={monthlySalary || ""}
+                    onChange={(e) => setMonthlySalary(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                   />
                 )}
@@ -1078,7 +1097,7 @@ export default function UsersPage() {
                     </td>
                     <td className="px-4 py-3">
                       {user.employeeStatus === "Training" || user.employeeStatus === "Intern / Magang" || user.jabatan === "Training" || user.jabatan === "Intern / Magang" ? (
-                        <span className="text-gray-400">-</span>
+                        <span className="text-gray-600">{user.monthlySalary ? `Rp ${user.monthlySalary.toLocaleString()} / bln` : '-'}</span>
                       ) : user.dailyRate ? (
                         `Rp ${user.dailyRate.toLocaleString()}`
                       ) : "-"}
@@ -1222,7 +1241,7 @@ export default function UsersPage() {
                       <span className="text-gray-500">Daily Rate</span>
                       <span className="font-medium text-gray-800">
                         {selectedUser.jabatan === "Training" || selectedUser.jabatan === "Intern / Magang" 
-                          ? "-" 
+                          ? (selectedUser.monthlySalary ? `Rp ${selectedUser.monthlySalary.toLocaleString()} / bln` : "-")
                           : selectedUser.dailyRate 
                             ? `Rp ${selectedUser.dailyRate.toLocaleString()}` 
                             : "-"}

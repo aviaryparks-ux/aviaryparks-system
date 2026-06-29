@@ -27,7 +27,10 @@ type User = {
   uid: string;
   name: string;
   email: string;
+  role?: string;
+  employeeStatus?: string;
   dailyRate: number;
+  monthlySalary?: number;
   bankName: string;
   bankAccountNumber: string;
   bankAccountName: string;
@@ -67,6 +70,8 @@ type PayrollSummary = {
   jabatan: string;
   department: string;
   dailyRate: number;
+  monthlySalary?: number;
+  isTraining?: boolean;
   bankName: string;
   bankAccountNumber: string;
   bankAccountName: string;
@@ -192,6 +197,7 @@ export default function PayrollPage() {
           name: data.name || "",
           email: data.email || "",
           dailyRate: data.dailyRate || 0,
+          monthlySalary: data.monthlySalary || 0,
           bankName: data.bankName || "",
           bankAccountNumber: data.bankAccountNumber || "",
           bankAccountName: data.bankAccountName || "",
@@ -309,6 +315,8 @@ export default function PayrollPage() {
 
   const calculatePayrollSummary = (data: AttendanceRecord[], currentUsersMap: Map<string, User>) => {
     const summaryMap = new Map<string, PayrollSummary>();
+    const endDt = new Date(dateRange.endDate);
+    const daysInMonth = new Date(endDt.getFullYear(), endDt.getMonth() + 1, 0).getDate();
 
     data.forEach((att) => {
       if (!att.checkIn?.time || !att.checkOut?.time) return;
@@ -318,7 +326,9 @@ export default function PayrollPage() {
       if (!user || user.isActive === false) return;
 
       const dailyRate = user?.dailyRate || 0;
+      const monthlySalary = user?.monthlySalary || 0;
       const department = user?.department || "";
+      const isTraining = user?.role === "training" || user?.employeeStatus === "Training" || user?.jabatan === "Training" || user?.employeeStatus === "Intern / Magang" || user?.jabatan === "Intern / Magang";
 
       const checkInTime = att.checkIn.time.toDate();
       const checkOutTime = att.checkOut.time.toDate();
@@ -348,6 +358,8 @@ export default function PayrollPage() {
           jabatan: user?.jabatan || "-",
           department: department,
           dailyRate: dailyRate,
+          monthlySalary: monthlySalary,
+          isTraining: isTraining,
           bankName: user?.bankName || "-",
           bankAccountNumber: user?.bankAccountNumber || "-",
           bankAccountName: user?.bankAccountName || "-",
@@ -362,7 +374,11 @@ export default function PayrollPage() {
       const existing = summaryMap.get(uid)!;
       existing.totalDays += 1;
       existing.totalHours += workHours;
-      existing.totalSalary = existing.totalDays * dailyRate;
+      if (existing.isTraining) {
+        existing.totalSalary = Math.round(((existing.monthlySalary || 0) / daysInMonth) * existing.totalDays);
+      } else {
+        existing.totalSalary = existing.totalDays * dailyRate;
+      }
       existing.attendanceDetails.push({
         date: dateStr,
         checkIn: checkInStr,
@@ -579,7 +595,7 @@ export default function PayrollPage() {
         Email: item.email,
         Departemen: item.department,
         Jabatan: item.jabatan,
-        "Rate Harian": `Rp ${item.dailyRate.toLocaleString()}`,
+        "Rate Harian": item.isTraining ? `Rp ${(item.monthlySalary || 0).toLocaleString()} / bln (Prorata)` : `Rp ${item.dailyRate.toLocaleString()}`,
         Bank: item.bankName,
         "Nomor Rekening": item.bankAccountNumber && item.bankAccountNumber !== "-" ? `'${item.bankAccountNumber}` : "-",
         "Nama Pemilik": item.bankAccountName,
@@ -674,7 +690,7 @@ export default function PayrollPage() {
       // Header employee
       detailRows.push({
         "No": `===== ${item.name} (${item.department || '-'}) =====`,
-        "Tanggal": `Rate: ${formatCurrency(item.dailyRate)} | Total: ${formatCurrency(item.totalSalary)}`,
+        "Tanggal": item.isTraining ? `Gaji Pokok: ${formatCurrency(item.monthlySalary || 0)} (Prorata) | Total: ${formatCurrency(item.totalSalary)}` : `Rate: ${formatCurrency(item.dailyRate)} | Total: ${formatCurrency(item.totalSalary)}`,
         "Jam Masuk": "",
         "Jam Pulang": "",
         "Durasi": "",
@@ -735,7 +751,7 @@ export default function PayrollPage() {
       { Label: "Nama Karyawan", Value: employee.name },
       { Label: "Departemen", Value: employee.department || "-" },
       { Label: "Jabatan", Value: employee.jabatan },
-      { Label: "Rate Harian", Value: formatCurrency(employee.dailyRate) },
+      { Label: employee.isTraining ? "Gaji Pokok Bulanan" : "Rate Harian", Value: formatCurrency(employee.isTraining ? (employee.monthlySalary || 0) : employee.dailyRate) },
       { Label: "Periode", Value: `${dateRange.startDate} - ${dateRange.endDate}` },
       { Label: "", Value: "" },
       { Label: "Total Hari Kerja", Value: `${employee.totalDays} hari` },
@@ -1285,7 +1301,16 @@ export default function PayrollPage() {
                           </span>
                         </td>
                         <td className="px-4 py-4 text-slate-600 text-sm">{item.jabatan}</td>
-                        <td className="px-4 py-4 text-right text-slate-700 font-medium">{formatCurrency(item.dailyRate)}</td>
+                        <td className="px-4 py-4 text-right text-slate-700 font-medium">
+                          {item.isTraining ? (
+                            <div className="flex flex-col items-end">
+                              <span>{formatCurrency(item.monthlySalary || 0)}</span>
+                              <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 rounded mt-0.5">Bulanan (Prorata)</span>
+                            </div>
+                          ) : (
+                            formatCurrency(item.dailyRate)
+                          )}
+                        </td>
                         <td className="px-4 py-4 text-center">
                           <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-sm font-bold">{item.totalDays} hari</span>
                         </td>
@@ -1341,7 +1366,7 @@ export default function PayrollPage() {
         </div>
 
         {/* Zero Rate Warning */}
-        {filteredSummary.filter((item) => item.dailyRate === 0).length > 0 && (
+        {filteredSummary.filter((item) => item.isTraining ? (item.monthlySalary === 0 || !item.monthlySalary) : item.dailyRate === 0).length > 0 && (
           <div className="mt-6 bg-white rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-red-500 p-5 animate-slide-up" style={{ animationDelay: '0.7s' }}>
             <div className="flex gap-4">
               <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -1350,10 +1375,10 @@ export default function PayrollPage() {
                 </svg>
               </div>
               <div>
-                <p className="font-semibold text-red-800">Perhatian: Ada karyawan dengan Rate Harian 0</p>
-                <p className="text-sm text-red-600 mt-1">Karyawan berikut belum diisi rate hariannya:</p>
+                <p className="text-sm font-bold text-red-700">Perhatian: Ada Rate yang Belum Diisi!</p>
+                <p className="text-sm text-red-600 mt-1">Karyawan berikut belum diisi rate harian / bulanan-nya:</p>
                 <ul className="text-sm text-red-600 mt-2 space-y-1">
-                  {filteredSummary.filter((item) => item.dailyRate === 0).map((item) => (
+                  {filteredSummary.filter((item) => item.isTraining ? (item.monthlySalary === 0 || !item.monthlySalary) : item.dailyRate === 0).map((item) => (
                     <li key={item.uid} className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
                       {item.name} ({item.department || "No Dept"})
@@ -1432,8 +1457,9 @@ export default function PayrollPage() {
                   <p className="text-2xl font-bold text-slate-800 mt-1">{formatTime(selectedEmployee.totalHours)}</p>
                 </div>
                 <div className="bg-slate-50 rounded-xl p-4">
-                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Rate Harian</p>
-                  <p className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(selectedEmployee.dailyRate)}</p>
+                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">{selectedEmployee.isTraining ? "Gaji Pokok" : "Rate Harian"}</p>
+                  <p className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(selectedEmployee.isTraining ? (selectedEmployee.monthlySalary || 0) : selectedEmployee.dailyRate)}</p>
+                  {selectedEmployee.isTraining && <p className="text-[10px] text-slate-400 mt-1">Sistem Prorata Bulanan</p>}
                 </div>
                 <div className="bg-emerald-50 rounded-xl p-4">
                   <p className="text-xs text-emerald-600 font-medium uppercase tracking-wider">Total Gaji</p>
