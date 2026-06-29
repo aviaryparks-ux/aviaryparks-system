@@ -232,6 +232,7 @@ export default function AttendancePage() {
   const [editCheckInMinute, setEditCheckInMinute] = useState("");
   const [editCheckOutHour, setEditCheckOutHour] = useState("");
   const [editCheckOutMinute, setEditCheckOutMinute] = useState("");
+  const [editDailyRate, setEditDailyRate] = useState("");
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [editDate, setEditDate] = useState("");
   const [isEditingShift, setIsEditingShift] = useState(false);
@@ -636,14 +637,22 @@ export default function AttendancePage() {
           }
         }
       }
+      if (editDailyRate !== "") {
+        updates['dailyRate'] = parseInt(editDailyRate) || 0;
+      }
       updates['updatedAt'] = Timestamp.now();
       updates['editedBy'] = currentUser?.uid;
       updates['editedByName'] = currentUser?.name;
       updates['editedAt'] = Timestamp.now();
       await updateDoc(attendanceRef, updates);
-      toast.success("✅ Jam absensi berhasil diupdate!");
+      toast.success("✅ Absensi berhasil diupdate!");
       setIsEditingTime(false);
-      setSelectedAttendance({ ...selectedAttendance, checkIn: updates['checkIn.time'] ? { ...selectedAttendance.checkIn, time: updates['checkIn.time'] } : selectedAttendance.checkIn, checkOut: updates['checkOut.time'] ? { ...selectedAttendance.checkOut, time: updates['checkOut.time'] } : selectedAttendance.checkOut });
+      setSelectedAttendance({ 
+        ...selectedAttendance, 
+        ...(editDailyRate !== "" ? { dailyRate: parseInt(editDailyRate) || 0 } : {}),
+        checkIn: updates['checkIn.time'] ? { ...selectedAttendance.checkIn, time: updates['checkIn.time'] } : selectedAttendance.checkIn, 
+        checkOut: updates['checkOut.time'] ? { ...selectedAttendance.checkOut, time: updates['checkOut.time'], status: updates['checkOut.status'] || selectedAttendance.checkOut?.status, location: updates['checkOut.location'] || selectedAttendance.checkOut?.location } : selectedAttendance.checkOut 
+      });
     } catch (error) { console.error("Error saving edit:", error); toast.error("❌ Gagal menyimpan perubahan"); } finally { setIsSavingEdit(false); }
   };
 
@@ -1576,7 +1585,10 @@ export default function AttendancePage() {
                     Edit Shift
                   </button>
                   <button
-                    onClick={() => setIsEditingTime(true)}
+                    onClick={() => {
+                      setIsEditingTime(true);
+                      setEditDailyRate(selectedAttendance.dailyRate?.toString() || "");
+                    }}
                     className="px-4 py-2.5 bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-700 font-medium text-sm rounded-xl transition-all shadow-sm flex items-center gap-2 group"
                   >
                     <Clock className="w-4 h-4 text-slate-400 group-hover:text-slate-600" />
@@ -1778,6 +1790,22 @@ export default function AttendancePage() {
                         </select>
                       </div>
                     </div>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 mb-5">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Rate Harian Khusus Hari Ini</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <span className="text-slate-500 font-medium">Rp</span>
+                      </div>
+                      <input
+                        type="number"
+                        value={editDailyRate}
+                        onChange={(e) => setEditDailyRate(e.target.value)}
+                        placeholder="Cth: 170000"
+                        className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1.5">Kosongkan kolom ini jika ingin otomatis menggunakan Rate dari Profil Master Karyawan.</p>
                   </div>
                   <div className="flex gap-3">
                     <button

@@ -84,6 +84,7 @@ type PayrollSummary = {
     checkIn: string;
     checkOut: string;
     workHours: number;
+    dailyRate?: number;
   }[];
 };
 
@@ -374,16 +375,21 @@ export default function PayrollPage() {
       const existing = summaryMap.get(uid)!;
       existing.totalDays += 1;
       existing.totalHours += workHours;
+      
+      const currentAttRate = (att as any).dailyRate !== undefined ? (att as any).dailyRate : dailyRate;
+
       if (existing.isTraining) {
         existing.totalSalary = Math.round(((existing.monthlySalary || 0) / daysInMonth) * existing.totalDays);
       } else {
-        existing.totalSalary = existing.totalDays * dailyRate;
+        existing.totalSalary += currentAttRate;
       }
+      
       existing.attendanceDetails.push({
         date: dateStr,
         checkIn: checkInStr,
         checkOut: checkOutStr,
         workHours: workHours,
+        dailyRate: currentAttRate,
       });
     });
 
@@ -595,7 +601,7 @@ export default function PayrollPage() {
         Email: item.email,
         Departemen: item.department,
         Jabatan: item.jabatan,
-        "Rate Harian": item.isTraining ? `Rp ${(item.monthlySalary || 0).toLocaleString()} / bln (Prorata)` : `Rp ${item.dailyRate.toLocaleString()}`,
+        "Rate Harian": item.isTraining ? `Rp ${(item.monthlySalary || 0).toLocaleString()} / bln (Prorata)` : (new Set(item.attendanceDetails.map(d => d.dailyRate || 0)).size > 1 ? "Beragam (Multi-Rate)" : `Rp ${(item.attendanceDetails[0]?.dailyRate || item.dailyRate).toLocaleString()}`),
         Bank: item.bankName,
         "Nomor Rekening": item.bankAccountNumber && item.bankAccountNumber !== "-" ? `'${item.bankAccountNumber}` : "-",
         "Nama Pemilik": item.bankAccountName,
@@ -690,7 +696,7 @@ export default function PayrollPage() {
       // Header employee
       detailRows.push({
         "No": `===== ${item.name} (${item.department || '-'}) =====`,
-        "Tanggal": item.isTraining ? `Gaji Pokok: ${formatCurrency(item.monthlySalary || 0)} (Prorata) | Total: ${formatCurrency(item.totalSalary)}` : `Rate: ${formatCurrency(item.dailyRate)} | Total: ${formatCurrency(item.totalSalary)}`,
+        "Tanggal": item.isTraining ? `Gaji Pokok: ${formatCurrency(item.monthlySalary || 0)} (Prorata) | Total: ${formatCurrency(item.totalSalary)}` : `Rate: ${new Set(item.attendanceDetails.map(d => d.dailyRate || 0)).size > 1 ? "Beragam (Multi-Rate)" : formatCurrency(item.attendanceDetails[0]?.dailyRate || item.dailyRate)} | Total: ${formatCurrency(item.totalSalary)}`,
         "Jam Masuk": "",
         "Jam Pulang": "",
         "Durasi": "",
@@ -700,7 +706,7 @@ export default function PayrollPage() {
       item.attendanceDetails.forEach((att, idx) => {
         detailRows.push({
           "No": idx + 1,
-          "Tanggal": att.date,
+          "Tanggal": item.isTraining ? att.date : `${att.date} (Rate: ${formatCurrency(att.dailyRate || item.dailyRate)})`,
           "Jam Masuk": att.checkIn,
           "Jam Pulang": att.checkOut,
           "Durasi": `${att.workHours.toFixed(1)} jam`,
@@ -751,7 +757,7 @@ export default function PayrollPage() {
       { Label: "Nama Karyawan", Value: employee.name },
       { Label: "Departemen", Value: employee.department || "-" },
       { Label: "Jabatan", Value: employee.jabatan },
-      { Label: employee.isTraining ? "Gaji Pokok Bulanan" : "Rate Harian", Value: formatCurrency(employee.isTraining ? (employee.monthlySalary || 0) : employee.dailyRate) },
+      { Label: employee.isTraining ? "Gaji Pokok Bulanan" : "Rate Harian", Value: employee.isTraining ? formatCurrency(employee.monthlySalary || 0) : (new Set(employee.attendanceDetails.map(d => d.dailyRate || 0)).size > 1 ? "Beragam (Multi-Rate)" : formatCurrency(employee.attendanceDetails[0]?.dailyRate || employee.dailyRate)) },
       { Label: "Periode", Value: `${dateRange.startDate} - ${dateRange.endDate}` },
       { Label: "", Value: "" },
       { Label: "Total Hari Kerja", Value: `${employee.totalDays} hari` },
@@ -1308,7 +1314,7 @@ export default function PayrollPage() {
                               <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 rounded mt-0.5">Bulanan (Prorata)</span>
                             </div>
                           ) : (
-                            formatCurrency(item.dailyRate)
+                            new Set(item.attendanceDetails.map(d => d.dailyRate || 0)).size > 1 ? <span className="text-amber-600 font-medium text-[13px]">Beragam (Multi-Rate)</span> : formatCurrency(item.attendanceDetails[0]?.dailyRate || item.dailyRate)
                           )}
                         </td>
                         <td className="px-4 py-4 text-center">
@@ -1366,7 +1372,7 @@ export default function PayrollPage() {
         </div>
 
         {/* Zero Rate Warning */}
-        {filteredSummary.filter((item) => item.isTraining ? (item.monthlySalary === 0 || !item.monthlySalary) : item.dailyRate === 0).length > 0 && (
+        {filteredSummary.filter((item) => item.isTraining ? (item.monthlySalary === 0 || !item.monthlySalary) : (item.attendanceDetails.length > 0 ? item.attendanceDetails.some(d => (d.dailyRate || 0) === 0) : item.dailyRate === 0)).length > 0 && (
           <div className="mt-6 bg-white rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-red-500 p-5 animate-slide-up" style={{ animationDelay: '0.7s' }}>
             <div className="flex gap-4">
               <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -1378,7 +1384,7 @@ export default function PayrollPage() {
                 <p className="text-sm font-bold text-red-700">Perhatian: Ada Rate yang Belum Diisi!</p>
                 <p className="text-sm text-red-600 mt-1">Karyawan berikut belum diisi rate harian / bulanan-nya:</p>
                 <ul className="text-sm text-red-600 mt-2 space-y-1">
-                  {filteredSummary.filter((item) => item.isTraining ? (item.monthlySalary === 0 || !item.monthlySalary) : item.dailyRate === 0).map((item) => (
+                  {filteredSummary.filter((item) => item.isTraining ? (item.monthlySalary === 0 || !item.monthlySalary) : (item.attendanceDetails.length > 0 ? item.attendanceDetails.some(d => (d.dailyRate || 0) === 0) : item.dailyRate === 0)).map((item) => (
                     <li key={item.uid} className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
                       {item.name} ({item.department || "No Dept"})
@@ -1458,7 +1464,7 @@ export default function PayrollPage() {
                 </div>
                 <div className="bg-slate-50 rounded-xl p-4">
                   <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">{selectedEmployee.isTraining ? "Gaji Pokok" : "Rate Harian"}</p>
-                  <p className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(selectedEmployee.isTraining ? (selectedEmployee.monthlySalary || 0) : selectedEmployee.dailyRate)}</p>
+                  <p className="text-2xl font-bold text-slate-800 mt-1">{selectedEmployee.isTraining ? formatCurrency(selectedEmployee.monthlySalary || 0) : (new Set(selectedEmployee.attendanceDetails.map(d => d.dailyRate || 0)).size > 1 ? "Beragam (Multi-Rate)" : formatCurrency(selectedEmployee.attendanceDetails[0]?.dailyRate || selectedEmployee.dailyRate))}</p>
                   {selectedEmployee.isTraining && <p className="text-[10px] text-slate-400 mt-1">Sistem Prorata Bulanan</p>}
                 </div>
                 <div className="bg-emerald-50 rounded-xl p-4">

@@ -67,11 +67,8 @@ export default function Page() {
   const [scheduledShift, setScheduledShift] = useState<any>(null);
   const [isLoadingShift, setIsLoadingShift] = useState(true);
 
-  const [bankAccount, setBankAccount] = useState({
-    bankName: "",
-    bankAccountNumber: "",
-    bankAccountName: ""
-  });
+  const [bankAccount, setBankAccount] = useState<{bankName: string, bankAccountNumber: string, bankAccountName: string} | null>(null);
+  const [userProfileData, setUserProfileData] = useState<any>(null);
   
   const [showBankModal, setShowBankModal] = useState(false);
   const [tempBankAccount, setTempBankAccount] = useState({
@@ -119,6 +116,7 @@ export default function Page() {
       const userDoc = await getDoc(doc(db, "users", user.uid));
       if (userDoc.exists()) {
         const userData = userDoc.data();
+        setUserProfileData(userData);
         setBankAccount({
           bankName: userData.bankName || "",
           bankAccountNumber: userData.bankAccountNumber || "",
@@ -527,6 +525,11 @@ export default function Page() {
           uid: user.uid,
           name: user.name,
           email: user.email,
+          dailyRate: userProfileData?.dailyRate || 0,
+          monthlySalary: userProfileData?.monthlySalary || 0,
+          role: userProfileData?.role || "",
+          employeeStatus: userProfileData?.employeeStatus || "",
+          jabatan: userProfileData?.jabatan || userProfileData?.jobLevel || "",
           date: Timestamp.fromDate(today),
           bankAccount: bankData,
           shift: shiftData,
