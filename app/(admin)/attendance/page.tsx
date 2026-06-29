@@ -632,7 +632,7 @@ export default function AttendancePage() {
           updates['checkOut.time'] = Timestamp.fromDate(newCheckOutTime);
           if (!selectedAttendance.checkOut) {
             updates['checkOut.status'] = "Manual Entry";
-            updates['checkOut.location'] = { lat: 0, lng: 0, address: "Added via Admin" };
+            updates['checkOut.location'] = "Manual Entry";
           }
         }
       }
@@ -1523,7 +1523,7 @@ export default function AttendancePage() {
                           <div className="px-3 pb-3 bg-slate-50/50">
                             <div className="flex items-center gap-2 text-xs text-slate-600 bg-white border border-slate-200 p-2.5 rounded-lg shadow-sm">
                               <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
-                              <span className="flex-1 truncate font-medium">{selectedAttendance.checkOut.location}</span>
+                              <span className="flex-1 truncate font-medium">{typeof selectedAttendance.checkOut.location === 'string' ? selectedAttendance.checkOut.location : "Manual Entry"}</span>
                             </div>
                           </div>
                         )}
