@@ -244,6 +244,20 @@ export default function AttendancePage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteOption, setDeleteOption] = useState<"checkin" | "checkout" | "all">("all");
 
+  // 🔥 STATE MANUAL ATTENDANCE
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [manualUid, setManualUid] = useState("");
+  const [manualDate, setManualDate] = useState("");
+  const [manualCheckInHour, setManualCheckInHour] = useState("08");
+  const [manualCheckInMinute, setManualCheckInMinute] = useState("00");
+  const [manualCheckOutHour, setManualCheckOutHour] = useState("");
+  const [manualCheckOutMinute, setManualCheckOutMinute] = useState("");
+  const [manualShiftId, setManualShiftId] = useState("");
+  const [manualNote, setManualNote] = useState("");
+  const [isSavingManual, setIsSavingManual] = useState(false);
+  const [manualSearchTerm, setManualSearchTerm] = useState("");
+  const [showManualDropdown, setShowManualDropdown] = useState(false);
+
   // 🔥 STATE FILTER - DEFAULT TANGGAL HARI INI
   const getTodayLocalStr = () => {
     const d = new Date();
@@ -731,6 +745,102 @@ export default function AttendancePage() {
     setShowDeleteModal(true);
   };
 
+  const openManualModal = async () => {
+    setManualDate(getTodayLocalStr());
+    setManualUid("");
+    setManualNote("");
+    setManualCheckInHour("08");
+    setManualCheckInMinute("00");
+    setManualCheckOutHour("");
+    setManualCheckOutMinute("");
+    if (shiftsList.length === 0) {
+      await loadShiftsList();
+    }
+    setShowManualModal(true);
+  };
+
+  const handleAddManualAttendance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualUid || !manualDate || !manualShiftId || !manualCheckInHour || !manualCheckInMinute) {
+      toast.error("Harap isi Karyawan, Tanggal, Shift, dan Jam Masuk");
+      return;
+    }
+    setIsSavingManual(true);
+    try {
+      const selectedShift = shiftsList.find((s) => s.id === manualShiftId);
+      const user = users[manualUid];
+      
+      const newDateParts = manualDate.split("-").map(Number);
+      const attendanceDate = new Date(newDateParts[0], newDateParts[1] - 1, newDateParts[2], 12, 0, 0);
+      
+      const checkInTime = new Date(attendanceDate);
+      checkInTime.setHours(parseInt(manualCheckInHour), parseInt(manualCheckInMinute), 0);
+      
+      let checkOutObj = null;
+      if (manualCheckOutHour && manualCheckOutMinute) {
+        const checkOutTime = new Date(attendanceDate);
+        checkOutTime.setHours(parseInt(manualCheckOutHour), parseInt(manualCheckOutMinute), 0);
+        checkOutObj = {
+          time: Timestamp.fromDate(checkOutTime),
+          location: "Manual Entry",
+          note: manualNote,
+          isCorrected: true,
+          photo: ""
+        };
+      }
+
+      const checkInObj = {
+        time: Timestamp.fromDate(checkInTime),
+        location: "Manual Entry",
+        note: manualNote,
+        isCorrected: true,
+        photo: ""
+      };
+
+      const newDocId = `${manualUid}_${manualDate}`;
+      const existingDoc = await getDoc(doc(db, "attendance", newDocId));
+      if (existingDoc.exists()) {
+        toast.error(`⚠️ Data absensi untuk ${user?.name} pada ${manualDate} sudah ada. Silakan edit atau hapus data tersebut terlebih dahulu.`);
+        setIsSavingManual(false);
+        return;
+      }
+
+      const attendanceData = {
+        uid: manualUid,
+        name: user?.name || "",
+        department: user?.department || "",
+        jabatan: user?.jabatan || "",
+        dailyRate: user?.dailyRate || 0,
+        date: Timestamp.fromDate(attendanceDate),
+        checkIn: checkInObj,
+        checkOut: checkOutObj,
+        shift: selectedShift ? {
+          id: selectedShift.id,
+          name: selectedShift.name,
+          code: selectedShift.code,
+          startTime: selectedShift.startTime,
+          endTime: selectedShift.endTime,
+          color: selectedShift.color,
+          lateTolerance: selectedShift.lateTolerance || 15
+        } : null,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        editedBy: currentUser?.uid,
+        editedByName: currentUser?.name,
+        isManualEntry: true
+      };
+
+      await setDoc(doc(db, "attendance", newDocId), attendanceData);
+      toast.success("✅ Absensi manual berhasil ditambahkan!");
+      setShowManualModal(false);
+    } catch (error) {
+      console.error("Error saving manual attendance:", error);
+      toast.error("❌ Gagal menyimpan absensi manual");
+    } finally {
+      setIsSavingManual(false);
+    }
+  };
+
   // EXPORT FUNCTIONS
   const exportDetailExcel = async () => {
     setExporting("detail-excel");
@@ -1057,6 +1167,11 @@ export default function AttendancePage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2 shrink-0 border-t lg:border-t-0 pt-4 lg:pt-0">
+                {(isSuperAdmin || isHR) && (
+                  <button onClick={openManualModal} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 mr-2 shadow-sm">
+                    <FileEdit className="w-4 h-4" /> <span className="hidden sm:inline">Tambah Manual</span>
+                  </button>
+                )}
                 <button onClick={applyFilter} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5">
                   <Search className="w-4 h-4" /> <span className="hidden sm:inline">Terapkan</span>
                 </button>
@@ -1771,6 +1886,193 @@ export default function AttendancePage() {
                   Batal
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tambah Absensi Manual */}
+      {showManualModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowManualModal(false)} />
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col relative z-10 animate-scale-in max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <FileEdit className="w-5 h-5 text-indigo-600" />
+                Tambah Absensi Manual
+              </h3>
+              <button onClick={() => setShowManualModal(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto">
+              <form onSubmit={handleAddManualAttendance} className="space-y-4">
+                <div className="relative">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Karyawan <span className="text-red-500">*</span></label>
+                  <div className="relative">
+                    <div 
+                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 transition-all text-slate-800 flex items-center justify-between cursor-text"
+                      onClick={() => setShowManualDropdown(true)}
+                    >
+                      <input 
+                        type="text" 
+                        placeholder="Cari Karyawan..." 
+                        value={manualSearchTerm} 
+                        onChange={(e) => {
+                          setManualSearchTerm(e.target.value);
+                          setShowManualDropdown(true);
+                        }}
+                        onFocus={() => setShowManualDropdown(true)}
+                        className="bg-transparent border-none outline-none w-full text-sm placeholder-slate-400"
+                      />
+                      <ChevronDown className="w-4 h-4 text-slate-400 cursor-pointer" onClick={(e) => { e.stopPropagation(); setShowManualDropdown(!showManualDropdown); }} />
+                    </div>
+                    
+                    {showManualDropdown && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                        {Object.entries(users)
+                          .filter(([uid, u]) => 
+                            u.name.toLowerCase().includes(manualSearchTerm.toLowerCase()) || 
+                            (u.department || "").toLowerCase().includes(manualSearchTerm.toLowerCase())
+                          )
+                          .map(([uid, u]) => (
+                            <div 
+                              key={uid} 
+                              className={`px-4 py-2 cursor-pointer text-sm hover:bg-indigo-50 hover:text-indigo-700 ${manualUid === uid ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-700'}`}
+                              onClick={() => {
+                                setManualUid(uid);
+                                setManualSearchTerm(`${u.name} - ${u.department || '-'}`);
+                                setShowManualDropdown(false);
+                              }}
+                            >
+                              <div className="font-medium">{u.name}</div>
+                              <div className="text-xs opacity-70">{u.department || '-'}</div>
+                            </div>
+                        ))}
+                        {Object.entries(users).filter(([uid, u]) => 
+                            u.name.toLowerCase().includes(manualSearchTerm.toLowerCase()) || 
+                            (u.department || "").toLowerCase().includes(manualSearchTerm.toLowerCase())
+                          ).length === 0 && (
+                          <div className="px-4 py-3 text-sm text-slate-500 text-center">Karyawan tidak ditemukan</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {/* Hidden required input to block form submission if manualUid is empty */}
+                  <input type="text" required value={manualUid} className="opacity-0 absolute h-0 w-0 pointer-events-none" onChange={() => {}} tabIndex={-1} />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Tanggal <span className="text-red-500">*</span></label>
+                  <input
+                    type="date"
+                    required
+                    value={manualDate}
+                    onChange={(e) => setManualDate(e.target.value)}
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-slate-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Shift <span className="text-red-500">*</span></label>
+                  <select
+                    value={manualShiftId}
+                    onChange={(e) => setManualShiftId(e.target.value)}
+                    required
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-slate-800"
+                  >
+                    <option value="">Pilih Shift</option>
+                    {shiftsList.map((shift) => (
+                      <option key={shift.id} value={shift.id}>
+                        {shift.name} ({shift.startTime} - {shift.endTime})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Jam Masuk <span className="text-red-500">*</span></label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0" max="23"
+                        required
+                        value={manualCheckInHour}
+                        onChange={(e) => setManualCheckInHour(e.target.value.padStart(2, '0'))}
+                        className="w-16 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-center"
+                        placeholder="HH"
+                      />
+                      <span>:</span>
+                      <input
+                        type="number"
+                        min="0" max="59"
+                        required
+                        value={manualCheckInMinute}
+                        onChange={(e) => setManualCheckInMinute(e.target.value.padStart(2, '0'))}
+                        className="w-16 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-center"
+                        placeholder="MM"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Jam Pulang <span className="text-slate-400 text-xs font-normal">(Opsional)</span></label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0" max="23"
+                        value={manualCheckOutHour}
+                        onChange={(e) => setManualCheckOutHour(e.target.value.padStart(2, '0'))}
+                        className="w-16 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-center"
+                        placeholder="HH"
+                      />
+                      <span>:</span>
+                      <input
+                        type="number"
+                        min="0" max="59"
+                        value={manualCheckOutMinute}
+                        onChange={(e) => setManualCheckOutMinute(e.target.value.padStart(2, '0'))}
+                        className="w-16 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-center"
+                        placeholder="MM"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Catatan <span className="text-slate-400 text-xs font-normal">(Opsional)</span></label>
+                  <textarea
+                    rows={2}
+                    value={manualNote}
+                    onChange={(e) => setManualNote(e.target.value)}
+                    placeholder="Contoh: Karyawan lupa absen masuk, dsb."
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-slate-800 resize-none"
+                  />
+                </div>
+
+                <div className="pt-4 flex justify-end gap-3 border-t border-slate-100 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowManualModal(false)}
+                    className="px-5 py-2.5 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingManual}
+                    className="px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                  >
+                    {isSavingManual ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="w-4 h-4" />
+                    )}
+                    {isSavingManual ? "Menyimpan..." : "Simpan Absensi"}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
