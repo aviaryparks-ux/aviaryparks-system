@@ -68,8 +68,8 @@ type Attendance = {
   jabatan?: string;
   dailyRate?: number;
   date: any;
-  checkIn?: { time: any; location?: string; note?: string; photo?: string; lat?: number; lng?: number };
-  checkOut?: { time: any; location?: string; note?: string; photo?: string; lat?: number; lng?: number };
+  checkIn?: { time: any; location?: string; note?: string; photo?: string; lat?: number; lng?: number; status?: string };
+  checkOut?: { time: any; location?: string; note?: string; photo?: string; lat?: number; lng?: number; status?: string };
   workHours?: string;
   status?: string;
   isCorrected?: boolean;
