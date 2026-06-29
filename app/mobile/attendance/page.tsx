@@ -515,7 +515,7 @@ export default function Page() {
           lateTolerance: scheduledShift.lateTolerance || 15,
         } : null;
         
-        const bankData = bankAccount.bankAccountNumber ? {
+        const bankData = bankAccount?.bankAccountNumber ? {
           bankName: bankAccount.bankName,
           accountNumber: bankAccount.bankAccountNumber,
           accountName: bankAccount.bankAccountName
