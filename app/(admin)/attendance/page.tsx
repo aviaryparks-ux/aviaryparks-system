@@ -622,11 +622,18 @@ export default function AttendancePage() {
         }
       }
       if (editCheckOutHour && editCheckOutMinute) {
-        const checkOutDate = toDate(selectedAttendance.checkOut?.time);
+        let checkOutDate = toDate(selectedAttendance.checkOut?.time);
+        if (!checkOutDate) {
+          checkOutDate = toDate(selectedAttendance.checkIn?.time) || toDate(selectedAttendance.date);
+        }
         if (checkOutDate) {
           const newCheckOutTime = new Date(checkOutDate);
           newCheckOutTime.setHours(parseInt(editCheckOutHour), parseInt(editCheckOutMinute), 0);
           updates['checkOut.time'] = Timestamp.fromDate(newCheckOutTime);
+          if (!selectedAttendance.checkOut) {
+            updates['checkOut.status'] = "Manual Entry";
+            updates['checkOut.location'] = { lat: 0, lng: 0, address: "Added via Admin" };
+          }
         }
       }
       updates['updatedAt'] = Timestamp.now();
