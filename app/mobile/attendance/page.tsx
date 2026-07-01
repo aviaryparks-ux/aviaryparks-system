@@ -669,7 +669,7 @@ export default function Page() {
 
         {/* TAMPILAN REKENING */}
         <div className="mb-4">
-          {bankAccount.bankAccountNumber ? (
+          {bankAccount && bankAccount.bankAccountNumber ? (
             <div className="bg-green-50 border border-green-200 rounded-xl p-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -878,7 +878,7 @@ export default function Page() {
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-4 text-white">
               <h2 className="text-lg font-bold text-center">
-                {bankAccount.bankAccountNumber ? "Update Rekening" : "Input Rekening"}
+                {bankAccount?.bankAccountNumber ? "Update Rekening" : "Input Rekening"}
               </h2>
               <p className="text-xs text-center text-blue-100 mt-1">
                 Isi data rekening untuk memudahkan pembayaran gaji
