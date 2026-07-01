@@ -109,6 +109,21 @@ export default function Page() {
     }
   }, [user]);
 
+  const getWibTime = () => {
+    const d = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' });
+    const parts = formatter.formatToParts(d);
+    const mo = parts.find(p => p.type === 'month')?.value;
+    const da = parts.find(p => p.type === 'day')?.value;
+    const ye = parts.find(p => p.type === 'year')?.value;
+    
+    const todayStr = `${ye}-${mo}-${da}`;
+    const start = new Date(`${todayStr}T00:00:00+07:00`);
+    const end = new Date(`${todayStr}T23:59:59.999+07:00`);
+    
+    return { todayStr, start, end };
+  };
+
   const loadUserBankAccount = async () => {
     if (!user) return;
     
@@ -169,8 +184,7 @@ export default function Page() {
     setIsLoadingShift(true);
     
     try {
-      const today = new Date();
-      const dateStr = today.toISOString().split("T")[0];
+      const { todayStr: dateStr } = getWibTime();
       const scheduleId = `${user.uid}_${dateStr}`;
       
       const scheduleDoc = await getDoc(doc(db, "shift_schedules", scheduleId));
@@ -237,8 +251,7 @@ export default function Page() {
 
   const loadTodayAttendance = async () => {
     if (!user) return;
-    const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
+    const { todayStr, start: todayStart, end: todayEnd } = getWibTime();
 
     // Pertama cek dengan document ID standar
     const docId = user.uid + "_" + todayStr;
@@ -255,8 +268,6 @@ export default function Page() {
         orderBy("date", "desc")
       );
       const allSnap = await getDocs(q);
-      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
-      const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
 
       for (const doc of allSnap.docs) {
         const data = doc.data();
@@ -434,8 +445,8 @@ export default function Page() {
 
   const getLocation = () => {
     setIsLoadingLocation(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
+    
+    const handleSuccess = (pos: any) => {
         const userLoc = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
@@ -459,13 +470,26 @@ export default function Page() {
         setIsWithinRadius(min <= nearest?.radius);
         setShowMap(true);
         setIsLoadingLocation(false);
-      },
-      (err) => {
-        console.error("GPS Error:", err);
-        alert("GPS tidak aktif, nyalakan GPS untuk absensi");
-        setIsLoadingLocation(false);
-      }
-    );
+      };
+
+      const handleError = (err: any) => {
+        console.warn("High accuracy GPS failed:", err);
+        navigator.geolocation.getCurrentPosition(
+          handleSuccess,
+          (fallbackErr) => {
+            console.error("GPS Error:", fallbackErr);
+            alert("GPS tidak dapat diakses. Pastikan izin lokasi (termasuk Precise Location/Lokasi Tepat) menyala di pengaturan browser/HP Anda.");
+            setIsLoadingLocation(false);
+          },
+          { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 }
+        );
+      };
+
+      navigator.geolocation.getCurrentPosition(
+        handleSuccess, 
+        handleError, 
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
   };
 
   const refreshLocation = () => {
@@ -499,8 +523,8 @@ export default function Page() {
     try {
       const photoUrl = await uploadPhotoToStorage(photoUri);
       
-      const today = new Date();
-      const docId = user.uid + "_" + today.toISOString().slice(0, 10);
+      const { todayStr } = getWibTime();
+      const docId = user.uid + "_" + todayStr;
       const ref = doc(db, "attendance", docId);
       const snap = await getDoc(ref);
 
