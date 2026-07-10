@@ -4,7 +4,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { db, storage } from "@/lib/firebase";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -84,12 +84,12 @@ export default function AdminProfilePage() {
     if (!user) return;
     setLoading(true);
     try {
-      await updateDoc(doc(db, "users", user.uid), {
+      await setDoc(doc(db, "users", user.uid), {
         name: name,
         phone: phone,
         address: address,
         updatedAt: new Date(),
-      });
+      }, { merge: true });
       setIsEditing(false);
       alert("✅ Profil berhasil diupdate");
     } catch (error) {
@@ -110,10 +110,10 @@ export default function AdminProfilePage() {
       await uploadBytes(storageRef, file);
       const downloadUrl = await getDownloadURL(storageRef);
       
-      await updateDoc(doc(db, "users", user.uid), {
+      await setDoc(doc(db, "users", user.uid), {
         photoUrl: downloadUrl,
         updatedAt: new Date(),
-      });
+      }, { merge: true });
       
       setPhotoUrl(downloadUrl);
       alert("✅ Foto profil berhasil diperbarui");
@@ -139,14 +139,20 @@ export default function AdminProfilePage() {
 
     setIsSavingSignature(true);
     try {
+      if (sigPadRef.current.isEmpty()) {
+        alert("⚠️ Silakan gambar tanda tangan terlebih dahulu");
+        setIsSavingSignature(false);
+        return;
+      }
+      
       // Get base64 string of the signature
-      const base64Signature = sigPadRef.current.getTrimmedCanvas().toDataURL('image/png');
+      const base64Signature = sigPadRef.current.getCanvas().toDataURL('image/png');
       
       // Save directly to Firestore as it is just a small string
-      await updateDoc(doc(db, "users", user.uid), {
+      await setDoc(doc(db, "users", user.uid), {
         signatureUrl: base64Signature,
         updatedAt: new Date(),
-      });
+      }, { merge: true });
       
       setSignatureUrl(base64Signature);
       alert("✅ Tanda tangan berhasil disimpan");
@@ -168,10 +174,10 @@ export default function AdminProfilePage() {
       await uploadBytes(storageRef, file);
       const downloadUrl = await getDownloadURL(storageRef);
       
-      await updateDoc(doc(db, "users", user.uid), {
+      await setDoc(doc(db, "users", user.uid), {
         signatureUrl: downloadUrl,
         updatedAt: new Date(),
-      });
+      }, { merge: true });
       
       setSignatureUrl(downloadUrl);
       alert("✅ Tanda tangan berhasil diupload & disimpan");
