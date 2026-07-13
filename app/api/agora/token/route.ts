@@ -5,17 +5,27 @@ import { adminAuth } from '@/lib/firebase-admin';
 const AGORA_APP_ID = process.env.AGORA_APP_ID;
 const AGORA_APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE;
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+export async function OPTIONS(req: Request) {
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
+}
+
 export async function POST(req: Request) {
   try {
     if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
       console.error('Missing Agora credentials in environment variables');
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500, headers: corsHeaders });
     }
 
     // 1. Validasi Keamanan: Verifikasi Firebase ID Token
     const authHeader = req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized: Missing or invalid token' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized: Missing or invalid token' }, { status: 401, headers: corsHeaders });
     }
 
     const idToken = authHeader.split('Bearer ')[1];
@@ -23,13 +33,13 @@ export async function POST(req: Request) {
       await adminAuth.verifyIdToken(idToken);
     } catch (authError) {
       console.error("Firebase auth error:", authError);
-      return NextResponse.json({ error: 'Unauthorized: Invalid token' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized: Invalid token' }, { status: 401, headers: corsHeaders });
     }
 
     const { channelName, uid } = await req.json();
 
     if (!channelName) {
-      return NextResponse.json({ error: 'channelName is required' }, { status: 400 });
+      return NextResponse.json({ error: 'channelName is required' }, { status: 400, headers: corsHeaders });
     }
 
     // Convert string uid to integer for Agora RtcTokenBuilder (range 1-65535)
@@ -66,9 +76,9 @@ export async function POST(req: Request) {
       token,
       uid: intUid, // return the generated int uid
       appId: AGORA_APP_ID
-    });
+    }, { headers: corsHeaders });
   } catch (error: any) {
     console.error("Agora token error:", error);
-    return NextResponse.json({ error: error.message || 'Failed to generate token' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Failed to generate token' }, { status: 500, headers: corsHeaders });
   }
 }
