@@ -43,7 +43,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https: blob:",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://identitytoolkit.googleapis.com https://api.groq.com wss://*.firebaseio.com",
+      "connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://identitytoolkit.googleapis.com https://api.groq.com wss://*.firebaseio.com https://*.agora.io wss://*.agora.io https://*.sd-rtn.com wss://*.sd-rtn.com https://*.agoraio.cn wss://*.agoraio.cn",
       "frame-src 'self' https://*.firebaseapp.com",
       "media-src 'self' https://*.firebasestorage.googleapis.com blob:",
       "worker-src 'self' blob:",
