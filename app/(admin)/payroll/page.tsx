@@ -32,10 +32,11 @@ type User = {
   employeeStatus?: string;
   dailyRate: number;
   monthlySalary?: number;
-  bankName: string;
+  bankName?: string;
   bankAccountNumber: string;
   bankAccountName: string;
   jabatan: string;
+  division?: string;
   department: string;
   isActive?: boolean;
   photoUrl?: string;
@@ -69,9 +70,11 @@ type PayrollSummary = {
   name: string;
   email: string;
   jabatan: string;
+  employeeStatus?: string;
+  division?: string;
   department: string;
   dailyRate: number;
-  monthlySalary?: number;
+  monthlySalary: number;
   isTraining?: boolean;
   bankName: string;
   bankAccountNumber: string;
@@ -113,8 +116,14 @@ export default function PayrollPage() {
 
   const [departments, setDepartments] = useState<string[]>([]);
   const [selectedDepartment, setSelectedDepartment] = useState<string>("ALL");
+  const [divisions, setDivisions] = useState<string[]>([]);
+  const [selectedDivision, setSelectedDivision] = useState<string>("ALL");
+  const [jabatans, setJabatans] = useState<string[]>([]);
+  const [selectedJabatan, setSelectedJabatan] = useState<string>("ALL");
+  const [employeeStatuses, setEmployeeStatuses] = useState<string[]>([]);
+  const [selectedEmployeeStatus, setSelectedEmployeeStatus] = useState<string>("ALL");
 
-  const [allEmployees, setAllEmployees] = useState<{ uid: string; name: string; department: string }[]>([]);
+  const [allEmployees, setAllEmployees] = useState<{ uid: string; name: string; department: string; division: string; jabatan: string; employeeStatus: string }[]>([]);
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
   const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
@@ -129,13 +138,73 @@ export default function PayrollPage() {
     setMounted(true);
   }, []);
 
-  // Compute available employees based on selected department
-  const availableEmployees = useMemo(() => {
-    if (selectedDepartment === "ALL") {
-      return allEmployees;
+  const filteredDivisions = useMemo(() => {
+    let emps = allEmployees;
+    if (selectedDepartment !== "ALL") {
+      emps = emps.filter(e => e.department === selectedDepartment);
     }
-    return allEmployees.filter((emp) => emp.department === selectedDepartment);
+    const divSet = new Set(emps.map(e => e.division).filter(Boolean));
+    return Array.from(divSet).sort();
   }, [allEmployees, selectedDepartment]);
+
+  const normalizeString = (s: string) => {
+    if (!s) return "";
+    const lower = s.trim().toLowerCase();
+    if (lower === "casual") return "Casual";
+    if (lower === "staff") return "Staff";
+    if (lower === "intern / magang") return "Intern / Magang";
+    if (lower === "manager") return "Manager";
+    if (lower === "supervisor") return "Supervisor";
+    if (lower === "contract") return "Contract";
+    if (lower === "permanent") return "Permanent";
+    // Title Case fallback
+    return s.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+  };
+
+  const filteredJabatans = useMemo(() => {
+    let emps = allEmployees;
+    if (selectedDepartment !== "ALL") {
+      emps = emps.filter(e => e.department === selectedDepartment);
+    }
+    if (selectedDivision !== "ALL") {
+      emps = emps.filter(e => e.division === selectedDivision);
+    }
+    const jabSet = new Set(emps.map(e => e.jabatan).filter(Boolean).map(normalizeString));
+    return Array.from(jabSet).sort();
+  }, [allEmployees, selectedDepartment, selectedDivision]);
+
+  const filteredStatuses = useMemo(() => {
+    let emps = allEmployees;
+    if (selectedDepartment !== "ALL") {
+      emps = emps.filter(e => e.department === selectedDepartment);
+    }
+    if (selectedDivision !== "ALL") {
+      emps = emps.filter(e => e.division === selectedDivision);
+    }
+    if (selectedJabatan !== "ALL") {
+      emps = emps.filter(e => e.jabatan && normalizeString(e.jabatan).toLowerCase() === selectedJabatan.toLowerCase());
+    }
+    const statusSet = new Set(emps.map(e => e.employeeStatus).filter(Boolean).map(normalizeString));
+    return Array.from(statusSet).sort();
+  }, [allEmployees, selectedDepartment, selectedDivision, selectedJabatan]);
+
+  // Compute available employees based on selected filters
+  const availableEmployees = useMemo(() => {
+    let filtered = allEmployees;
+    if (selectedDepartment !== "ALL") {
+      filtered = filtered.filter((emp) => emp.department === selectedDepartment);
+    }
+    if (selectedDivision !== "ALL") {
+      filtered = filtered.filter((emp) => emp.division === selectedDivision);
+    }
+    if (selectedJabatan !== "ALL") {
+      filtered = filtered.filter((emp) => emp.jabatan && normalizeString(emp.jabatan).toLowerCase() === selectedJabatan.toLowerCase());
+    }
+    if (selectedEmployeeStatus !== "ALL") {
+      filtered = filtered.filter((emp) => emp.employeeStatus && normalizeString(emp.employeeStatus).toLowerCase() === selectedEmployeeStatus.toLowerCase());
+    }
+    return filtered;
+  }, [allEmployees, selectedDepartment, selectedDivision, selectedJabatan, selectedEmployeeStatus]);
 
   const filteredEmployees = useMemo(() => {
     if (!employeeSearchTerm.trim()) return availableEmployees;
@@ -176,7 +245,7 @@ export default function PayrollPage() {
 
   useEffect(() => {
     applyFilters();
-  }, [selectedDepartment, selectedEmployees, payrollSummary]);
+  }, [selectedDepartment, selectedDivision, selectedJabatan, selectedEmployeeStatus, selectedEmployees, payrollSummary]);
 
   useEffect(() => {
     loadPaymentStatus();
@@ -187,15 +256,24 @@ export default function PayrollPage() {
       const usersSnap = await getDocs(query(collection(db, "users"), limit(500)));
       const usersMap = new Map<string, User>();
       const deptSet = new Set<string>();
-      const empList: { uid: string; name: string; department: string }[] = [];
+      const divSet = new Set<string>();
+      const jabSet = new Set<string>();
+      const statusSet = new Set<string>();
+      const empList: { uid: string; name: string; department: string; division: string; jabatan: string; employeeStatus: string }[] = [];
 
       usersSnap.forEach((doc) => {
         const data = doc.data();
         const department = data.department || "";
+        const division = data.division || "";
+        const jabatan = data.jabatan || "";
+        const employeeStatus = data.employeeStatus || "";
 
         if (data.isActive === false) return;
 
         if (department) deptSet.add(department);
+        if (division) divSet.add(division);
+        if (jabatan) jabSet.add(jabatan);
+        if (employeeStatus) statusSet.add(employeeStatus);
 
         usersMap.set(doc.id, {
           uid: doc.id,
@@ -206,7 +284,9 @@ export default function PayrollPage() {
           bankName: data.bankName || "",
           bankAccountNumber: data.bankAccountNumber || "",
           bankAccountName: data.bankAccountName || "",
-          jabatan: data.jabatan || "",
+          jabatan: jabatan,
+          employeeStatus: employeeStatus,
+          division: division,
           department: department,
           isActive: data.isActive !== false,
           photoUrl: data.photoUrl || "",
@@ -216,11 +296,17 @@ export default function PayrollPage() {
           uid: doc.id,
           name: data.name || "",
           department: department,
+          division: division,
+          jabatan: jabatan,
+          employeeStatus: employeeStatus,
         });
       });
 
       setUsers(usersMap);
       setDepartments(Array.from(deptSet).sort());
+      setDivisions(Array.from(divSet).sort());
+      setJabatans(Array.from(jabSet).sort());
+      setEmployeeStatuses(Array.from(statusSet).sort());
       setAllEmployees(empList.sort((a, b) => a.name.localeCompare(b.name)));
       return usersMap;
     } catch (error) {
@@ -263,6 +349,15 @@ export default function PayrollPage() {
 
     if (selectedDepartment !== "ALL") {
       filtered = filtered.filter((item) => item.department === selectedDepartment);
+    }
+    if (selectedDivision !== "ALL") {
+      filtered = filtered.filter((item) => item.division === selectedDivision);
+    }
+    if (selectedJabatan !== "ALL") {
+      filtered = filtered.filter((item) => item.jabatan && normalizeString(item.jabatan).toLowerCase() === selectedJabatan.toLowerCase());
+    }
+    if (selectedEmployeeStatus !== "ALL") {
+      filtered = filtered.filter((item) => item.employeeStatus && normalizeString(item.employeeStatus).toLowerCase() === selectedEmployeeStatus.toLowerCase());
     }
 
     if (selectedEmployees.length > 0) {
@@ -397,6 +492,8 @@ export default function PayrollPage() {
           name: att.name || user?.name || "-",
           email: att.email || user?.email || "-",
           jabatan: user?.jabatan || "-",
+          employeeStatus: user?.employeeStatus || "-",
+          division: user?.division || "-",
           department: department,
           dailyRate: dailyRate,
           monthlySalary: monthlySalary,
@@ -641,7 +738,9 @@ export default function PayrollPage() {
         "Nama Karyawan": item.name,
         Email: item.email,
         Departemen: item.department,
+        Divisi: item.division || "-",
         Jabatan: item.jabatan,
+        Status: item.employeeStatus || "-",
         "Rate Harian": item.isTraining ? `Rp ${(item.monthlySalary || 0).toLocaleString()} / bln (Prorata)` : (new Set(item.attendanceDetails.map(d => d.dailyRate || 0)).size > 1 ? "Beragam (Multi-Rate)" : `Rp ${(item.attendanceDetails[0]?.dailyRate || item.dailyRate).toLocaleString()}`),
         Bank: item.bankName,
         "Nomor Rekening": item.bankAccountNumber && item.bankAccountNumber !== "-" ? `'${item.bankAccountNumber}` : "-",
@@ -662,7 +761,9 @@ export default function PayrollPage() {
       "Nama Karyawan": "TOTAL",
       Email: "",
       Departemen: "",
+      Divisi: "",
       Jabatan: "",
+      Status: "",
       "Rate Harian": "",
       Bank: "",
       "Nomor Rekening": "",
@@ -683,10 +784,10 @@ export default function PayrollPage() {
         "No": `Karyawan ${index + 1}`,
         "Nama": item.name,
         "Departemen": item.department,
-        "Total Masuk": `${item.totalDays}x`,
-        "": "",
-        "": "",
-        "": "",
+        "Divisi": item.division || "-",
+        "Jabatan": item.jabatan || "-",
+        "Status": item.employeeStatus || "-",
+        "Rate Harian": `Total Masuk: ${item.totalDays}x`,
         "": "",
       });
 
@@ -696,11 +797,10 @@ export default function PayrollPage() {
           "No": attIdx + 1,
           "Nama": att.date,
           "Departemen": att.checkIn,
+          "Divisi": "",
           "Jabatan": att.checkOut,
+          "Status": "",
           "Rate Harian": `${att.workHours.toFixed(1)} jam`,
-          "": "",
-          "": "",
-          "": "",
           "": "",
         });
       });
@@ -1010,7 +1110,7 @@ export default function PayrollPage() {
             </div>
           </div>
 
-          <div className={`grid grid-cols-1 md:grid-cols-4 gap-4 px-6 pb-6 ${isFilterOpen ? 'block' : 'hidden'}`}>
+          <div className={`grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-4 px-6 pb-6 ${isFilterOpen ? 'block' : 'hidden'}`}>
             {/* Date Start */}
             <div className="space-y-2">
               <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Tanggal Mulai</label>
@@ -1060,7 +1160,12 @@ export default function PayrollPage() {
               <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Departemen</label>
               <select
                 value={selectedDepartment}
-                onChange={(e) => setSelectedDepartment(e.target.value)}
+                onChange={(e) => {
+                  setSelectedDepartment(e.target.value);
+                  setSelectedDivision("ALL");
+                  setSelectedJabatan("ALL");
+                  setSelectedEmployeeStatus("ALL");
+                }}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
               >
                 <option value="ALL">Semua Departemen</option>
@@ -1070,13 +1175,65 @@ export default function PayrollPage() {
               </select>
             </div>
 
+            {/* Division */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Divisi</label>
+              <select
+                value={selectedDivision}
+                onChange={(e) => {
+                  setSelectedDivision(e.target.value);
+                  setSelectedJabatan("ALL");
+                  setSelectedEmployeeStatus("ALL");
+                }}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
+              >
+                <option value="ALL">Semua Divisi</option>
+                {filteredDivisions.map((div) => (
+                  <option key={div} value={div}>{div}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Jabatan */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Jabatan</label>
+              <select
+                value={selectedJabatan}
+                onChange={(e) => {
+                  setSelectedJabatan(e.target.value);
+                  setSelectedEmployeeStatus("ALL");
+                }}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
+              >
+                <option value="ALL">Semua Jabatan</option>
+                {filteredJabatans.map((jab) => (
+                  <option key={jab} value={jab}>{jab}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status Pegawai */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Status Pegawai</label>
+              <select
+                value={selectedEmployeeStatus}
+                onChange={(e) => setSelectedEmployeeStatus(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
+              >
+                <option value="ALL">Semua Status</option>
+                {filteredStatuses.map((stat) => (
+                  <option key={stat} value={stat}>{stat}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Action Buttons */}
-            <div className="flex items-end gap-3">
+            <div className="flex items-end gap-3 md:col-span-3 xl:col-span-2">
               <button
                 onClick={() => { loadUsers(); loadAttendanceData(); }}
-                className="btn-primary px-5 py-3 text-white rounded-xl font-medium flex items-center gap-2"
+                className="w-full justify-center btn-primary px-5 py-3 text-white rounded-xl font-medium flex items-center gap-2 transition-all"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 Tampilkan
@@ -1084,9 +1241,9 @@ export default function PayrollPage() {
               <button
                 onClick={exportToExcel}
                 disabled={filteredSummary.length === 0}
-                className="px-5 py-3 bg-white border-2 border-emerald-500 text-emerald-600 rounded-xl font-medium hover:bg-emerald-50 transition-all disabled:opacity-50 flex items-center gap-2"
+                className="w-full justify-center px-5 py-3 bg-white border-2 border-emerald-500 text-emerald-600 rounded-xl font-medium hover:bg-emerald-50 transition-all disabled:opacity-50 flex items-center gap-2"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 Export

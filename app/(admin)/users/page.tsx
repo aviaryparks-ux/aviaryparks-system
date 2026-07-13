@@ -1,7 +1,7 @@
 // app/(admin)/users/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { db, auth, storage } from "@/lib/firebase";
 import {
   collection,
@@ -15,7 +15,8 @@ import {
   limit,
   where,
   onSnapshot,
-  getCountFromServer
+  getCountFromServer,
+  orderBy
 } from "firebase/firestore";
 import {
   createUserWithEmailAndPassword,
@@ -103,10 +104,24 @@ export default function UsersPage() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState("ALL");
+  const [filterDepartment, setFilterDepartment] = useState("ALL");
+  const [filterDivision, setFilterDivision] = useState("ALL");
   const [departmentsList, setDepartmentsList] = useState<any[]>([]);
 
+  // Attendance history state
+  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceStartDate, setAttendanceStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().split("T")[0];
+  });
+  const [attendanceEndDate, setAttendanceEndDate] = useState(() => {
+    return new Date().toISOString().split("T")[0];
+  });
+
   const bankOptions = [
-    "BCA", "Mandiri", "BNI", "BRI", "CIMB Niaga", "Danamon", "Permata",
+    "BCA", "Mandiri", "BNI", "BRI", "BTN", "CIMB Niaga", "Danamon", "Permata",
     "Maybank", "OCBC NISP", "UOB", "Panin Bank", "Bank Mega",
     "Bank Syariah Indonesia", "Bank Jago", "Bank Neo Commerce", "SeaBank", "Lainnya",
   ];
@@ -115,6 +130,42 @@ export default function UsersPage() {
     loadUsers();
     loadDepartments();
   }, []);
+
+  const loadUserAttendance = async (userId: string, startDateStr: string, endDateStr: string) => {
+    try {
+      setAttendanceLoading(true);
+      const startDate = new Date(startDateStr);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(endDateStr);
+      endDate.setHours(23, 59, 59, 999);
+
+      const q = query(
+        collection(db, "attendance"),
+        where("date", ">=", Timestamp.fromDate(startDate)),
+        where("date", "<=", Timestamp.fromDate(endDate)),
+        orderBy("date", "desc")
+      );
+      const snapshot = await getDocs(q);
+      const records: any[] = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.uid === userId || data.userId === userId) {
+          records.push({ id: doc.id, ...data });
+        }
+      });
+      setAttendanceRecords(records);
+    } catch (error) {
+      console.error("Error fetching attendance:", error);
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showDetailModal && selectedUser) {
+      loadUserAttendance(selectedUser.id || "", attendanceStartDate, attendanceEndDate);
+    }
+  }, [showDetailModal, selectedUser, attendanceStartDate, attendanceEndDate]);
 
   const loadDepartments = async () => {
     try {
@@ -305,6 +356,9 @@ export default function UsersPage() {
     setBankAccountName(user.bankAccountName || "");
     setPhoto(null);
     setShowForm(true);
+    setTimeout(() => {
+      document.querySelector('main')?.scrollTo({ top: 0, behavior: "smooth" });
+    }, 100);
   };
 
   const resetForm = () => {
@@ -529,12 +583,26 @@ export default function UsersPage() {
     });
   };
 
+  const filterDepartmentsList = useMemo(() => {
+    return Array.from(new Set(users.map(u => u.department).filter(Boolean))).sort();
+  }, [users]);
+
+  const filterDivisionsList = useMemo(() => {
+    let emps = users;
+    if (filterDepartment !== "ALL") {
+      emps = emps.filter(u => u.department === filterDepartment);
+    }
+    return Array.from(new Set(emps.map(u => u.division).filter(Boolean))).sort();
+  }, [users, filterDepartment]);
+
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
       user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = filterRole === "ALL" || user.role === filterRole;
-    return matchesSearch && matchesRole;
+    const matchesDept = filterDepartment === "ALL" || user.department === filterDepartment;
+    const matchesDiv = filterDivision === "ALL" || user.division === filterDivision;
+    return matchesSearch && matchesRole && matchesDept && matchesDiv;
   });
 
   const roleOptions = [
@@ -606,9 +674,9 @@ export default function UsersPage() {
         </div>
 
         {/* Search & Filter */}
-        <div className="rounded-xl bg-white p-5 shadow-md border border-gray-100">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
+        <div className="rounded-xl bg-white p-5 shadow-sm border border-gray-100">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-4">
+            <div className="sm:col-span-2 lg:col-span-4">
               <input
                 type="text"
                 placeholder="🔍 Search by name or email..."
@@ -617,26 +685,59 @@ export default function UsersPage() {
                 className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
               />
             </div>
-            <select
-              value={filterRole}
-              onChange={(e) => { setFilterRole(e.target.value); }}
-              className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-            >
-              {roleOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => {
-                setSearchTerm("");
-                setFilterRole("ALL");
-              }}
-              className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
-            >
-              Reset
-            </button>
+            <div className="lg:col-span-2">
+              <select
+                value={filterDepartment}
+                onChange={(e) => {
+                  setFilterDepartment(e.target.value);
+                  setFilterDivision("ALL");
+                }}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
+              >
+                <option value="ALL">All Departments</option>
+                {filterDepartmentsList.map((dept) => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
+              </select>
+            </div>
+            <div className="lg:col-span-2">
+              <select
+                value={filterDivision}
+                onChange={(e) => setFilterDivision(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
+              >
+                <option value="ALL">All Divisions</option>
+                {filterDivisionsList.map((div) => (
+                  <option key={div} value={div}>{div}</option>
+                ))}
+              </select>
+            </div>
+            <div className="lg:col-span-2">
+              <select
+                value={filterRole}
+                onChange={(e) => { setFilterRole(e.target.value); }}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
+              >
+                {roleOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="lg:col-span-2">
+              <button
+                onClick={() => {
+                  setSearchTerm("");
+                  setFilterRole("ALL");
+                  setFilterDepartment("ALL");
+                  setFilterDivision("ALL");
+                }}
+                className="w-full px-4 py-2 bg-slate-500 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                Reset
+              </button>
+            </div>
           </div>
         </div>
 
@@ -646,6 +747,11 @@ export default function UsersPage() {
             onClick={() => {
               resetForm();
               setShowForm(!showForm);
+              if (!showForm) {
+                setTimeout(() => {
+                  document.querySelector('main')?.scrollTo({ top: 0, behavior: "smooth" });
+                }, 100);
+              }
             }}
             className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all shadow-sm"
           >
@@ -1030,19 +1136,19 @@ export default function UsersPage() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">User</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Role</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Department</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Division</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Position</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Job Level</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Employee Status</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Rate</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Actions</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700">User</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700">Role</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700">Department</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700">Division</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700">Position</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700">Job Level</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700">Employee Status</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700">Rate</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700">Status</th>
+                  <th className="px-2 py-3 text-left font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1054,62 +1160,62 @@ export default function UsersPage() {
                       idx % 2 === 0 ? "bg-white" : "bg-gray-50"
                     } hover:bg-green-50 hover:shadow-inner`}
                   >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
+                    <td className="px-2 py-3">
+                      <div className="flex items-center gap-2">
                         {user.photoUrl ? (
                           <img
                             src={user.photoUrl}
                             alt={user.name}
-                            className="w-10 h-10 rounded-full object-cover"
+                            className="w-8 h-8 rounded-full object-cover"
                           />
                         ) : (
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-green-500 to-green-600 flex items-center justify-center">
-                            <span className="text-white text-sm font-bold">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-r from-green-500 to-green-600 flex items-center justify-center">
+                            <span className="text-white text-[10px] font-bold">
                               {getInitials(user.name)}
                             </span>
                           </div>
                         )}
-                        <div>
-                          <p className="font-medium text-gray-800">{user.name}</p>
-                          <p className="text-xs text-gray-500">{user.email}</p>
+                        <div className="max-w-[150px] overflow-hidden">
+                          <p className="font-medium text-gray-800 truncate">{user.name}</p>
+                          <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getRoleBadge(user.role)}`}>
+                    <td className="px-2 py-3">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${getRoleBadge(user.role)}`}>
                         {getRoleLabel(user.role)}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-slate-700 font-medium">{user.department || "-"}</span>
+                    <td className="px-2 py-3">
+                      <span className="font-mono text-slate-700 font-medium break-words">{user.department || "-"}</span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-slate-700 font-medium">{user.division || "-"}</span>
+                    <td className="px-2 py-3">
+                      <span className="font-mono text-slate-700 font-medium break-words">{user.division || "-"}</span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-slate-700 font-medium">{user.position || "-"}</span>
+                    <td className="px-2 py-3">
+                      <span className="font-mono text-slate-700 font-medium break-words">{user.position || "-"}</span>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{user.jobLevel || user.jabatan || "-"}</td>
-                    <td className="px-4 py-3 text-gray-600">
+                    <td className="px-2 py-3 text-gray-600">{user.jobLevel || user.jabatan || "-"}</td>
+                    <td className="px-2 py-3 text-gray-600">
                       <span className="px-2 py-1 bg-gray-100 rounded-md text-xs font-medium text-gray-600">
                         {user.employeeStatus || "-"}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-3">
                       {user.employeeStatus === "Training" || user.employeeStatus === "Intern / Magang" || user.jabatan === "Training" || user.jabatan === "Intern / Magang" ? (
                         <span className="text-gray-600">{user.monthlySalary ? `Rp ${user.monthlySalary.toLocaleString()} / bln` : '-'}</span>
                       ) : user.dailyRate ? (
                         `Rp ${user.dailyRate.toLocaleString()}`
                       ) : "-"}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-3">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         user.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                       }`}>
                         {user.isActive ? "Active" : "Inactive"}
                       </span>
                     </td>
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-2 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-3 flex-wrap">
                         <button
                           onClick={() => editUser(user)}
@@ -1157,8 +1263,8 @@ export default function UsersPage() {
       {/* MODAL DETAIL USER */}
       {showDetailModal && selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden animate-scale-in">
-            <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-5 flex justify-between items-center">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-scale-in">
+            <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-5 flex-none flex justify-between items-center">
               <div className="flex items-center gap-4">
                 {selectedUser.photoUrl ? (
                   <img 
@@ -1186,7 +1292,7 @@ export default function UsersPage() {
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto max-h-[70vh]">
+            <div className="p-6 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="bg-gray-50 rounded-xl p-4">
                   <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -1305,10 +1411,98 @@ export default function UsersPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Attendance History */}
+                <div className="md:col-span-2 bg-gray-50 rounded-xl p-4">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-3">
+                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider flex items-center gap-2">
+                      <span>📅</span> Riwayat Absensi
+                    </h3>
+                    <div className="flex items-center gap-2 text-sm bg-white border border-gray-200 rounded-lg p-1">
+                      <input 
+                        type="date" 
+                        value={attendanceStartDate} 
+                        onChange={e => setAttendanceStartDate(e.target.value)}
+                        className="px-2 py-1 rounded bg-transparent focus:outline-none"
+                      />
+                      <span className="text-gray-400">-</span>
+                      <input 
+                        type="date" 
+                        value={attendanceEndDate} 
+                        onChange={e => setAttendanceEndDate(e.target.value)}
+                        className="px-2 py-1 rounded bg-transparent focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  
+                  {attendanceLoading ? (
+                    <div className="text-center py-8 text-gray-500 bg-white rounded-lg border border-gray-200">
+                      <div className="animate-spin w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+                      Memuat data absensi...
+                    </div>
+                  ) : attendanceRecords.length > 0 ? (
+                    <div className="overflow-x-auto bg-white rounded-lg border border-gray-200">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-gray-100 text-gray-600 border-b border-gray-200">
+                          <tr>
+                            <th className="px-4 py-3 font-semibold">Tanggal</th>
+                            <th className="px-4 py-3 font-semibold">Status</th>
+                            <th className="px-4 py-3 font-semibold">Check In</th>
+                            <th className="px-4 py-3 font-semibold">Check Out</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {attendanceRecords.map(record => {
+                            const checkInStr = record.checkIn?.time ? record.checkIn.time.toDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
+                            let checkOutStr = '-';
+                            if (record.checkOut?.time) {
+                              checkOutStr = record.checkOut.time.toDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                            } else if (record.checkIn?.time) {
+                              checkOutStr = '17:00 (Auto)';
+                            }
+                            const statusStr = record.status || (record.checkIn?.time ? 'Present' : 'Absent');
+
+                            return (
+                            <tr key={record.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-4 py-3 font-medium text-gray-800">
+                                {record.date?.toDate ? record.date.toDate().toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : "-"}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2 py-1 rounded-full font-medium ${
+                                  statusStr === 'Present' ? 'bg-green-100 text-green-700' :
+                                  statusStr === 'Alpha' || statusStr === 'Absent' ? 'bg-red-100 text-red-700' :
+                                  statusStr === 'Late' ? 'bg-yellow-100 text-yellow-700' :
+                                  statusStr === 'Half Day' ? 'bg-orange-100 text-orange-700' :
+                                  'bg-gray-100 text-gray-700'
+                                }`}>
+                                  {statusStr}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="font-mono bg-gray-100 px-2 py-1 rounded text-gray-700">
+                                  {checkInStr}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="font-mono bg-gray-100 px-2 py-1 rounded text-gray-700">
+                                  {checkOutStr}
+                                </span>
+                              </td>
+                            </tr>
+                          )})}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500 bg-white rounded-lg border border-dashed border-gray-300">
+                      Tidak ada data absensi pada rentang waktu ini.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 flex-none">
               <button
                 onClick={() => {
                   setShowDetailModal(false);
