@@ -80,6 +80,7 @@ type PayrollSummary = {
   totalSalary: number;
   photoUrl?: string;
   attendanceDetails: {
+    id: string;
     date: string;
     checkIn: string;
     checkOut: string;
@@ -96,6 +97,8 @@ type PaymentStatus = {
 export default function PayrollPage() {
   const [users, setUsers] = useState<Map<string, User>>(new Map());
   const [payrollSummary, setPayrollSummary] = useState<PayrollSummary[]>([]);
+  const [editingRate, setEditingRate] = useState<{ id: string; currentRate: number } | null>(null);
+  const [isSavingRate, setIsSavingRate] = useState(false);
   const [filteredSummary, setFilteredSummary] = useState<PayrollSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -314,6 +317,22 @@ export default function PayrollPage() {
     }
   };
 
+  const handleUpdateDailyRate = async (attId: string, newRate: number) => {
+    if (newRate < 0) return;
+    setIsSavingRate(true);
+    try {
+      await updateDoc(doc(db, "attendance", attId), { dailyRate: newRate });
+      alert("✅ Rate harian berhasil diubah!");
+      setEditingRate(null);
+      fetchData();
+    } catch (error) {
+      console.error(error);
+      alert("❌ Gagal merubah rate");
+    } finally {
+      setIsSavingRate(false);
+    }
+  };
+
   const calculatePayrollSummary = (data: AttendanceRecord[], currentUsersMap: Map<string, User>) => {
     const summaryMap = new Map<string, PayrollSummary>();
     const endDt = new Date(dateRange.endDate);
@@ -405,6 +424,7 @@ export default function PayrollPage() {
       }
       
       existing.attendanceDetails.push({
+        id: att.id,
         date: dateStr,
         checkIn: checkInStr,
         checkOut: checkOutStr,
@@ -1501,6 +1521,7 @@ export default function PayrollPage() {
                       <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Jam Masuk</th>
                       <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase">Jam Pulang</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Jam Kerja</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Rate Harian</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1510,6 +1531,45 @@ export default function PayrollPage() {
                         <td className="px-4 py-3 text-center font-mono text-slate-600">{item.checkIn}</td>
                         <td className="px-4 py-3 text-center font-mono text-slate-600">{item.checkOut}</td>
                         <td className="px-4 py-3 text-right text-slate-700 font-medium">{formatTime(item.workHours)}</td>
+                        <td className="px-4 py-3 text-right">
+                          {editingRate?.id === item.id ? (
+                            <div className="flex items-center justify-end gap-1">
+                              <input
+                                type="number"
+                                className="w-24 px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:border-sky-500"
+                                value={editingRate.currentRate}
+                                onChange={(e) => setEditingRate({ ...editingRate, currentRate: Number(e.target.value) })}
+                                disabled={isSavingRate}
+                                autoFocus
+                              />
+                              <button
+                                onClick={() => handleUpdateDailyRate(item.id, editingRate.currentRate)}
+                                disabled={isSavingRate}
+                                className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                              </button>
+                              <button
+                                onClick={() => setEditingRate(null)}
+                                disabled={isSavingRate}
+                                className="p-1 text-red-500 hover:bg-red-50 rounded"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                              </button>
+                            </div>
+                          ) : (
+                            <div 
+                              onClick={() => !selectedEmployee.isTraining && setEditingRate({ id: item.id, currentRate: item.dailyRate || 0 })}
+                              className={`inline-flex items-center gap-1 ${!selectedEmployee.isTraining ? 'cursor-pointer group hover:bg-slate-100' : ''} px-2 py-1 rounded`}
+                              title={!selectedEmployee.isTraining ? "Klik untuk ubah rate di tanggal ini" : "Karyawan training menggunakan sistem Prorata"}
+                            >
+                              <span className="font-medium text-slate-700">{formatCurrency(item.dailyRate || 0)}</span>
+                              {!selectedEmployee.isTraining && (
+                                <svg className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                              )}
+                            </div>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1519,6 +1579,7 @@ export default function PayrollPage() {
                       <td className="px-4 py-3 text-center">-</td>
                       <td className="px-4 py-3 text-center">-</td>
                       <td className="px-4 py-3 text-right">{formatTime(selectedEmployee.totalHours)}</td>
+                      <td className="px-4 py-3 text-right">-</td>
                     </tr>
                   </tfoot>
                 </table>
