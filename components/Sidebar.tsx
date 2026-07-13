@@ -143,13 +143,18 @@ export default function Sidebar() {
   ];
 
   // Filter menu berdasarkan role user yang login
+  // Normalize role to lowercase for comparison
+  const userRoleLower = user.role?.toLowerCase().replace(/\s+/g, '_') || 'employee';
+
   const getFilteredMenu = () => {
     if (!user) return [];
     return allMenus.filter(menu => {
       if ((menu as any).requiredFeature) {
         return can((menu as any).requiredFeature);
       }
-      return menu.allowedRoles.includes(user.role);
+      // Normalize each allowed role and check if user role matches
+      const normalizedAllowedRoles = menu.allowedRoles.map(r => r.toLowerCase().replace(/\s+/g, '_'));
+      return normalizedAllowedRoles.includes(userRoleLower);
     });
   };
 

@@ -2,8 +2,18 @@ import { NextResponse } from 'next/server';
 import { RtcTokenBuilder, RtcRole } from 'agora-access-token';
 import { adminAuth } from '@/lib/firebase-admin';
 
-const APP_ID = 'cce1fd6074a541e9ae816a873da217f1';
-const APP_CERTIFICATE = '456051080c814120a0bb249e7672896f';
+// Agora credentials from environment variables (secure)
+const APP_ID = process.env.AGORA_APP_ID;
+const APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE;
+
+// Validate that credentials are configured
+if (!APP_ID || !APP_CERTIFICATE) {
+  throw new Error('Missing Agora credentials in environment variables');
+}
+
+// Type-safe credentials (after validation)
+const AGORA_APP_ID = APP_ID as string;
+const AGORA_APP_CERTIFICATE = APP_CERTIFICATE as string;
 
 export async function POST(req: Request) {
   try {
@@ -12,7 +22,7 @@ export async function POST(req: Request) {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized: Missing or invalid token' }, { status: 401 });
     }
-    
+
     const idToken = authHeader.split('Bearer ')[1];
     try {
       await adminAuth.verifyIdToken(idToken);
@@ -49,18 +59,18 @@ export async function POST(req: Request) {
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
     const token = RtcTokenBuilder.buildTokenWithUid(
-      APP_ID,
-      APP_CERTIFICATE,
+      AGORA_APP_ID,
+      AGORA_APP_CERTIFICATE,
       channelName,
       intUid,
       role,
       privilegeExpiredTs
     );
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       token,
       uid: intUid, // return the generated int uid
-      appId: APP_ID
+      appId: AGORA_APP_ID
     });
   } catch (error: any) {
     console.error("Agora token error:", error);

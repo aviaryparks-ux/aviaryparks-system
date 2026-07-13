@@ -53,10 +53,16 @@ export function usePermissions() {
   // The main authorization function
   const can = (featureId: string | string[]): boolean => {
     if (authLoading || loading) return false;
-    
-    // Super admin bypasses all checks
+
     const normalizedRole = user?.role?.toLowerCase().replace(/\s+/g, '_');
+
+    // Super admin bypasses all checks
     if (normalizedRole === "super_admin") return true;
+
+    // Only super admin can manage roles
+    if (featureId === "manage_roles" && normalizedRole !== "super_admin") {
+      return false;
+    }
 
     const checkFeature = (f: string) => {
       // 1. Check User-Level Overrides First (Highest Priority)

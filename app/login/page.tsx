@@ -165,7 +165,7 @@ export default function LoginPage() {
               </h2>
               <p className="text-gray-500 text-base mb-10">Sign in to your account to continue</p>
 
-              <form onSubmit={(e) => { e.preventDefault(); login(); }} className="space-y-6">
+              <form method="POST" onSubmit={(e) => { e.preventDefault(); login(); }} className="space-y-6">
                 
                 {/* Email Input */}
                 <div>

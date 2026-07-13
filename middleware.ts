@@ -2,10 +2,12 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { decryptSession } from '@/lib/crypto';
+import { ADMIN_ROLES, normalizeRole } from '@/lib/roles';
 
-// ✅ HARUS DI SINI (atas)
+// ✅ PUBLIC ROUTES
 const publicRoutes = ['/login', '/profile', '/api/agora/token', '/api/auth/login'];
 
+// ✅ ADMIN ROUTES
 const adminRoutes = [
   '/dashboard',
   '/attendance',
@@ -15,6 +17,7 @@ const adminRoutes = [
   '/approval-flow'
 ];
 
+// ✅ MOBILE ROUTES
 const mobileRoutes = [
   '/mobile/attendance',
   '/mobile/correction',
@@ -22,17 +25,15 @@ const mobileRoutes = [
   '/mobile/profile'
 ];
 
-const adminRoles = ['super_admin', 'admin', 'hr', 'spv'];
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // ✅ PUBLIC
+  // Allow public routes
   if (publicRoutes.includes(pathname)) {
     return NextResponse.next();
   }
 
-  // ✅ STATIC
+  // Allow static files
   if (
     pathname.includes('/_next/') ||
     pathname.includes('/favicon.ico') ||
@@ -43,6 +44,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Check session cookie
   const session = request.cookies.get('__session')?.value;
 
   if (!session) {
@@ -52,36 +54,32 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    console.log("Middleware checking session:", session);
     const userData = decryptSession(session);
-    console.log("Middleware decrypted userData:", userData);
 
     if (!userData || typeof userData !== 'object') {
-      console.log("Middleware redirecting to login because userData is invalid");
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
     const rawUserRole = (userData as any).role || 'employee';
-    const userRole = rawUserRole.toLowerCase().replace(/\s+/g, '_');
+    const userRole = normalizeRole(rawUserRole);
 
-    // ✅ MOBILE BEBAS
+    // Allow mobile routes
     if (mobileRoutes.some(route => pathname.startsWith(route))) {
       return NextResponse.next();
     }
 
-    // ✅ ADMIN ONLY
+    // Admin route check
     if (adminRoutes.some(route => pathname.startsWith(route))) {
-      if (!adminRoles.includes(userRole)) {
+      if (!ADMIN_ROLES.includes(userRole)) {
         if (pathname !== '/mobile/attendance') {
-          return NextResponse.redirect(
-            new URL('/mobile/attendance', request.url)
-          );
+          return NextResponse.redirect(new URL('/mobile/attendance', request.url));
         }
       }
     }
 
     return NextResponse.next();
   } catch (error) {
+    console.error('[MIDDLEWARE] Error:', error);
     return NextResponse.redirect(new URL('/login', request.url));
   }
 }

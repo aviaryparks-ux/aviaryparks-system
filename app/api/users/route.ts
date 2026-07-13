@@ -3,13 +3,19 @@ import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { decryptSession } from '@/lib/crypto';
 import { cookies } from 'next/headers';
+import { USER_MANAGER_ROLES, normalizeRole, isValidRole } from '@/lib/roles';
+import { validatePassword, getPasswordScore } from '@/lib/password';
+import { getClientIdentifier, checkRateLimit, createRateLimitHeaders, RateLimitConfigs } from '@/lib/rate-limit';
 
 async function checkAdmin() {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get('__session')?.value;
   if (!sessionCookie) return null;
   const session = decryptSession(sessionCookie) as any;
-  if (!session || !session.uid || !['super_admin', 'hr'].includes(session.role)) {
+  if (!session || !session.uid) return null;
+  // Use centralized role check
+  const normalizedRole = normalizeRole(session.role || 'employee');
+  if (!USER_MANAGER_ROLES.includes(normalizedRole)) {
     return null;
   }
   return session;
@@ -17,6 +23,19 @@ async function checkAdmin() {
 
 export async function POST(request: Request) {
   try {
+    // ============================================
+    // RATE LIMITING - Protect against abuse
+    // ============================================
+    const clientId = getClientIdentifier(request);
+    const rateLimitResult = checkRateLimit(clientId, RateLimitConfigs.strict);
+
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { status: 429, headers: createRateLimitHeaders(rateLimitResult) }
+      );
+    }
+
     const adminSession = await checkAdmin();
     if (!adminSession) {
       return NextResponse.json({ error: 'Unauthorized. Only super_admin or hr can create users.' }, { status: 403 });
@@ -29,14 +48,49 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Name, email, and password are required' }, { status: 400 });
     }
 
+    // ============================================
+    // PASSWORD VALIDATION - Enforce password strength
+    // ============================================
+    const passwordValidation = validatePassword(password);
+
+    if (!passwordValidation.isValid) {
+      return NextResponse.json({
+        error: 'Password does not meet security requirements',
+        details: passwordValidation.errors,
+        strength: passwordValidation.strength,
+        score: getPasswordScore(password),
+      }, { status: 400 });
+    }
+
+    // ============================================
+    // INPUT VALIDATION - Additional sanitization
+    // ============================================
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
+    }
+
+    // Validate role if provided
+    if (role && !isValidRole(role)) {
+      return NextResponse.json({ error: 'Invalid role specified' }, { status: 400 });
+    }
+
+    // Sanitize name - remove potential XSS
+    const sanitizedName = String(name)
+      .replace(/[<>]/g, '')
+      .trim()
+      .substring(0, 100); // Limit length
+
     let uid = '';
 
     // 1. Create or Update user in Firebase Auth
     try {
       const userRecord = await adminAuth.createUser({
-        email,
+        email: email.toLowerCase().trim(),
         password: String(password),
-        displayName: String(name),
+        displayName: sanitizedName,
       });
       uid = userRecord.uid;
     } catch (authError: any) {
@@ -44,10 +98,10 @@ export async function POST(request: Request) {
         // Fetch existing user
         const existingUser = await adminAuth.getUserByEmail(email);
         uid = existingUser.uid;
-        
-        // Optionally update their password if provided
+
+        // Update their password if provided and validated
         if (password) {
-          await adminAuth.updateUser(uid, { password: String(password), displayName: String(name) });
+          await adminAuth.updateUser(uid, { password: String(password), displayName: sanitizedName });
         }
       } else {
         throw authError;
@@ -55,30 +109,36 @@ export async function POST(request: Request) {
     }
 
     // 2. Save or Update user profile in Firestore
+    const normalizedRole = normalizeRole(role || 'employee');
     const userDoc = {
-      name: String(name),
-      email: String(email),
-      role: role || 'employee',
-      department: department || '',
-      position: position || '',
-      division: division || '',
-      jobLevel: jobLevel || '',
-      employeeStatus: employeeStatus || '',
+      name: sanitizedName,
+      email: email.toLowerCase().trim(),
+      role: normalizedRole,
+      department: String(department || '').replace(/[<>]/g, '').trim().substring(0, 100),
+      position: String(position || '').replace(/[<>]/g, '').trim().substring(0, 100),
+      division: String(division || '').replace(/[<>]/g, '').trim().substring(0, 100),
+      jobLevel: String(jobLevel || '').replace(/[<>]/g, '').trim().substring(0, 50),
+      employeeStatus: String(employeeStatus || '').replace(/[<>]/g, '').trim().substring(0, 50),
       dailyRate: dailyRate ? Number(dailyRate) : null,
-      company: company || '',
-      location: location || '',
-      joinDate: joinDate || '',
+      company: String(company || '').replace(/[<>]/g, '').trim().substring(0, 100),
+      location: String(location || '').replace(/[<>]/g, '').trim().substring(0, 100),
+      joinDate: String(joinDate || '').trim().substring(0, 20),
       isActive: true,
-      bankName: bankName || '',
-      bankAccountNumber: bankAccountNumber || '',
-      bankAccountName: bankAccountName || '',
+      bankName: String(bankName || '').replace(/[<>]/g, '').trim().substring(0, 100),
+      bankAccountNumber: String(bankAccountNumber || '').replace(/[<>]/g, '').trim().substring(0, 50),
+      bankAccountName: String(bankAccountName || '').replace(/[<>]/g, '').trim().substring(0, 100),
       updatedAt: FieldValue.serverTimestamp(),
+      createdBy: adminSession.uid,
     };
 
     // Use set with merge: true to update if exists, or create if new
     await adminDb.collection('users').doc(uid).set(userDoc, { merge: true });
 
-    return NextResponse.json({ success: true, uid }, { status: 201 });
+    return NextResponse.json({
+      success: true,
+      uid,
+      passwordStrength: passwordValidation.strength,
+    }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating user via API:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
@@ -87,6 +147,19 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    // ============================================
+    // RATE LIMITING
+    // ============================================
+    const clientId = getClientIdentifier(request);
+    const rateLimitResult = checkRateLimit(clientId, RateLimitConfigs.strict);
+
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { status: 429, headers: createRateLimitHeaders(rateLimitResult) }
+      );
+    }
+
     const adminSession = await checkAdmin();
     if (!adminSession) {
       return NextResponse.json({ error: 'Unauthorized. Only super_admin or hr can delete users.' }, { status: 403 });
@@ -99,9 +172,25 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'UID is required' }, { status: 400 });
     }
 
-    // Protect against self-deletion or super_admin deletion if needed, but let's trust the role check
+    // Sanitize UID - should be alphanumeric
+    const sanitizedUid = String(uid).replace(/[^a-zA-Z0-9]/g, '');
+
+    if (uid.length !== sanitizedUid.length) {
+      return NextResponse.json({ error: 'Invalid UID format' }, { status: 400 });
+    }
+
+    // Protect against self-deletion
     if (uid === adminSession.uid) {
       return NextResponse.json({ error: 'Cannot delete your own account' }, { status: 400 });
+    }
+
+    // Check if trying to delete a super_admin
+    const targetUserDoc = await adminDb.collection('users').doc(uid).get();
+    if (targetUserDoc.exists) {
+      const targetRole = normalizeRole(targetUserDoc.data()?.role || '');
+      if (targetRole === 'super_admin' && adminSession.uid !== uid) {
+        return NextResponse.json({ error: 'Cannot delete a super_admin account' }, { status: 403 });
+      }
     }
 
     // 1. Delete user from Firestore
