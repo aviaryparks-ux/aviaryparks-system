@@ -13,7 +13,8 @@ import {
   doc,
   setDoc,
   serverTimestamp,
-  limit
+  limit,
+  updateDoc
 } from "firebase/firestore";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LoadingScreen from "@/components/ui/LoadingScreen";
