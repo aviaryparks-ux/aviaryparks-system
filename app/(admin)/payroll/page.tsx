@@ -325,7 +325,7 @@ export default function PayrollPage() {
       await updateDoc(doc(db, "attendance", attId), { dailyRate: newRate });
       alert("✅ Rate harian berhasil diubah!");
       setEditingRate(null);
-      fetchData();
+      loadAttendanceData();
     } catch (error) {
       console.error(error);
       alert("❌ Gagal merubah rate");
