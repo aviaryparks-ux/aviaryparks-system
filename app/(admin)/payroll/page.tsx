@@ -320,7 +320,7 @@ export default function PayrollPage() {
     const daysInMonth = new Date(endDt.getFullYear(), endDt.getMonth() + 1, 0).getDate();
 
     data.forEach((att) => {
-      if (!att.checkIn?.time || !att.checkOut?.time) return;
+      if (!att.checkIn?.time) return;
 
       const uid = att.uid;
       const user = currentUsersMap.get(uid);
@@ -332,7 +332,31 @@ export default function PayrollPage() {
       const isTraining = user?.role === "training" || user?.employeeStatus === "Training" || user?.jabatan === "Training" || user?.employeeStatus === "Intern / Magang" || user?.jabatan === "Intern / Magang";
 
       const checkInTime = att.checkIn.time.toDate();
-      const checkOutTime = att.checkOut.time.toDate();
+      let checkOutTime;
+      let checkOutStr;
+
+      if (att.checkOut?.time) {
+        checkOutTime = att.checkOut.time.toDate();
+        checkOutStr = checkOutTime.toLocaleTimeString("id-ID", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      } else {
+        // Otomatis diset ke jam 17:00 pada hari yang sama
+        checkOutTime = new Date(checkInTime);
+        checkOutTime.setHours(17, 0, 0, 0);
+        
+        // Jaga-jaga jika check-in malam setelah jam 17:00
+        if (checkOutTime.getTime() < checkInTime.getTime()) {
+          checkOutTime = new Date(checkInTime.getTime() + (1 * 60 * 60 * 1000));
+          checkOutStr = checkOutTime.toLocaleTimeString("id-ID", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }) + " (Auto)";
+        } else {
+          checkOutStr = "17:00 (Auto)";
+        }
+      }
 
       const workHours = (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
 
@@ -343,10 +367,6 @@ export default function PayrollPage() {
       });
 
       const checkInStr = checkInTime.toLocaleTimeString("id-ID", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      const checkOutStr = checkOutTime.toLocaleTimeString("id-ID", {
         hour: "2-digit",
         minute: "2-digit",
       });

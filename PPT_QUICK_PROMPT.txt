@@ -1,0 +1,120 @@
+================================================================================
+QUICK PROMPT UNTUK GAMMA.AI / TOME.AI / CANVA
+================================================================================
+
+COPY PROMPT DI BAWAH INI:
+
+================================================================================
+
+
+Buatkan PPT interaktif profesional dengan tema "AVIARYPARK HR MANAGEMENT SYSTEM" untuk presentasi ke Owner hotel.
+
+JUDUL: AviaryPark HR Management System - Digital HR Solution
+
+DESAIN:
+- Warna utama: Emerald Green (#059669)
+- Background: Clean white/light gradient
+- Font: Modern sans-serif
+- Style: Corporate professional dengan sentuhan hospitality
+
+17 SLIDE DENGAN KONTEN BERIKUT:
+
+SLIDE 1 - COVER:
+"AviaryPark HR Management System - Digital HR Solution untuk Efisiensi & Transparansi"
+
+SLIDE 2 - RINGKASAN:
+17 modul terintegrasi | Cloud-based | Real-time | Professional
+
+SLIDE 3 - 17 MODUL OVERVIEW:
+Attendance, Employee Management, Shift Management, Attendance Corrections, Manager on Duty, Work Order, Assessment, Morning Briefing AI, Approval Flow, Payroll, Dashboard, FEO Event, REO Event, Sales Calendar, Internal Memo, Chat, Org Chart
+
+SLIDE 4 - ABSENSI:
+Flow: Login → Check In (GPS+Foto) → Cek Shift → Hadir/Terlambat → Check Out → Rekap Otomatis
+Benefits: GPS capture, Camera verification, Auto timestamp, Late tolerance, WFH support
+
+SLIDE 5 - KOREKSI ABSENSI:
+Flow: Karyawan Ajukan → Pending → SPV Approve → HR Approve → Selesai
+Benefits: Tanpa kertas, Trackable, Approval multi-level, History tersimpan
+
+SLIDE 6 - MANAGER ON DUTY:
+Schedule: Jumat=Manager, Sabtu-Minggu=SPV Sales
+Area Cek: Front Office, Housekeeping, Public Area, Kitchen, Security
+Flow: Atur Jadwal → MOD Bertugas → Isi Laporan → Upload Foto → HR Review
+
+SLIDE 7 - WORK ORDER (2 TIPE):
+URGENT: SLA tracking, Due date/time, Single assignment, Flow: Open→In Progress→Done
+PROJECT: Milestones, Budget tracking, Approval chain, Flow: Open→In Progress→Pending Approval→Done
+
+SLIDE 8 - EVENT MANAGEMENT:
+FEO (Fieldtrip): School/lembaga groups
+REO (Regional): Open trip/group booking
+Flow: Client Inquiry → Sales Input → Custom Approval → Approved → Ongoing → Done
+Plus: Sales Calendar, Leaderboard, Client Management
+
+SLIDE 9 - INTERNAL MEMO:
+Flow: Buat Memo → Set Approval Levels → Submit → Level 1 SPV → Level 2 Manager → Approved → Broadcast
+Types: Pemberitahuan, Kebijakan, Instruksi, Undangan Meeting
+
+SLIDE 10 - MORNING BRIEFING AI:
+Flow: Rekam Meeting → AI Processing → Extract Actions/Decisions/Issues → Save & Share
+Benefits: Voice to text, Auto extract, Meeting history
+
+SLIDE 11 - EVALUASI KINERJA:
+Rating: 90-100=Sangat Baik, 75-89=Baik, 60-74=Cukup, 50-59=Kurang
+Flow: Atur Periode → Self Assessment → Manager Assessment → Hitung Skor → Rating
+
+SLIDE 12 - USER ROLES:
+Hierarchy: Super Admin → Admin → HR → GM → Manager → SPV → Employee
+Permissions based on role level
+
+SLIDE 13 - APPROVAL FLOW FLEKSIBEL:
+Konfigurasi per department
+Contoh: IT: SPV→Manager→HR | Sales: SPV→Manager→GM→HR | Finance: Manager→GM→Owner→HR
+
+SLIDE 14 - DASHBOARD:
+Stats cards: Total Karyawan, Kehadiran %, Pending, Approved
+Charts: Monthly trend, By department, Shift distribution
+Features: Real-time, Export Excel/PDF, Filter options
+
+SLIDE 15 - 6 KEUNTUNGAN:
+1. Efisiensi - Proses 80% lebih cepat
+2. Akurasi - GPS + Foto timestamp
+3. Transparansi - Trackable & audit trail
+4. Reporting - Dashboard real-time
+5. Keamanan - Role-based, encrypted
+6. Scalability - Cloud-based, akses dimana saja
+
+SLIDE 16 - SEBELUM vs SESUDAH:
+SEBELUM: Form kertas ❌, Approval manual ❌, Data tidak real-time ❌, Tidak trackable ❌
+SESUDAH: 100% Digital ✅, Instant approval ✅, Real-time ✅, Full audit trail ✅
+
+SLIDE 17 - ROI:
+80% waktu hemat | 100% paperless | 3x efisiensi HR team | Akurasi data 200%
+
+SLIDE 18 - IMPLEMENTATION ROADMAP:
+Phase 1 (Bulan 1-2): Attendance, Employee, Shift
+Phase 2 (Bulan 3-4): Corrections, Approval Flow, MOD
+Phase 3 (Bulan 5-6): Work Order, Events, Assessment
+Phase 4 (Bulan 7+): Analytics, AI, Continuous improvement
+
+SLIDE 19 - NEXT STEPS:
+1. Review & Approval
+2. Stakeholder Workshop
+3. Implement Phase 1
+
+SLIDE 20 - CLOSING:
+"Digital HR untuk workplace masa depan"
+Terima Kasih
+
+================================================================================
+TAMBAHAN INTERAKTIF:
+================================================================================
+- Clickable tabs pada slide Work Order (Urgent vs Project)
+- Expandable sections untuk detail approval flow
+- Hover effects pada benefit cards
+- Animated charts dan progress bars
+- Navigation dots untuk setiap slide
+- Progress indicator
+- Full screen mode option
+
+================================================================================
