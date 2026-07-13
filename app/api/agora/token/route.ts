@@ -2,21 +2,16 @@ import { NextResponse } from 'next/server';
 import { RtcTokenBuilder, RtcRole } from 'agora-access-token';
 import { adminAuth } from '@/lib/firebase-admin';
 
-// Agora credentials from environment variables (secure)
-const APP_ID = process.env.AGORA_APP_ID;
-const APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE;
-
-// Validate that credentials are configured
-if (!APP_ID || !APP_CERTIFICATE) {
-  throw new Error('Missing Agora credentials in environment variables');
-}
-
-// Type-safe credentials (after validation)
-const AGORA_APP_ID = APP_ID as string;
-const AGORA_APP_CERTIFICATE = APP_CERTIFICATE as string;
+const AGORA_APP_ID = process.env.AGORA_APP_ID;
+const AGORA_APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE;
 
 export async function POST(req: Request) {
   try {
+    if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
+      console.error('Missing Agora credentials in environment variables');
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+    }
+
     // 1. Validasi Keamanan: Verifikasi Firebase ID Token
     const authHeader = req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
