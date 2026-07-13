@@ -144,7 +144,7 @@ export default function Sidebar() {
 
   // Filter menu berdasarkan role user yang login
   // Normalize role to lowercase for comparison
-  const userRoleLower = user.role?.toLowerCase().replace(/\s+/g, '_') || 'employee';
+  const userRoleLower = user?.role?.toLowerCase().replace(/\s+/g, '_') || 'employee';
 
   const getFilteredMenu = () => {
     if (!user) return [];
