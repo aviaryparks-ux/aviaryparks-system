@@ -101,6 +101,9 @@ function CallView({ channelName, appId, token, uid, onEndCall, isVideoCall }: Ag
 
   useEffect(() => {
     audioTracks.forEach((track) => track.play());
+    return () => {
+      audioTracks.forEach((track) => track.stop());
+    };
   }, [audioTracks]);
 
   // Auto-hangup when the other person leaves
