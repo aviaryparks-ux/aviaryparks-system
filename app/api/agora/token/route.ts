@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { RtcTokenBuilder, RtcRole } from 'agora-access-token';
 import { adminAuth } from '@/lib/firebase-admin';
 
-const AGORA_APP_ID = process.env.AGORA_APP_ID;
-const AGORA_APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE;
+// Hardcode to match the client-side fallback and prevent Vercel environment variable mismatches
+const AGORA_APP_ID = "cce1fd6074a541e9ae816a873da217f1";
+const AGORA_APP_CERTIFICATE = "456051080c814120a0bb249e7672896f";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
