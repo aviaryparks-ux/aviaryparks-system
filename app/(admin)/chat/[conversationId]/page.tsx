@@ -43,7 +43,7 @@ export default function ChatRoomPage() {
   const [otherUserOnline, setOtherUserOnline] = useState(false);
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
-  const [activeCall, setActiveCall] = useState<{ channel: string; token: string; isVideo: boolean; uid: number } | null>(null);
+  const [activeCall, setActiveCall] = useState<{ channel: string; token: string; isVideo: boolean; uid: number; appId?: string } | null>(null);
   const [pendingCall, setPendingCall] = useState<{ isVideo: boolean } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -279,7 +279,8 @@ export default function ChatRoomPage() {
           channel: channelName,
           token: data.token,
           uid: data.uid ? Number(data.uid) : randomUid,
-          isVideo
+          isVideo,
+          appId: data.appId
         });
       } else {
         toast.error("Gagal mendapatkan token: " + data.error);
@@ -818,7 +819,7 @@ export default function ChatRoomPage() {
       {activeCall && (
         <AgoraCallRoom 
           channelName={activeCall.channel}
-          appId="cce1fd6074a541e9ae816a873da217f1"
+          appId={activeCall.appId || "cce1fd6074a541e9ae816a873da217f1"}
           token={activeCall.token}
           uid={activeCall.uid}
           isVideoCall={activeCall.isVideo}
