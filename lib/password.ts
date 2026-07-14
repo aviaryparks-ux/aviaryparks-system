@@ -22,11 +22,11 @@ export interface PasswordRequirements {
 }
 
 export const DEFAULT_PASSWORD_REQUIREMENTS: PasswordRequirements = {
-  minLength: 8,
-  requireUppercase: true,
+  minLength: 6,
+  requireUppercase: false,
   requireLowercase: true,
   requireNumbers: true,
-  requireSymbols: true,
+  requireSymbols: false,
 };
 
 /**
@@ -74,20 +74,20 @@ export function validatePassword(
     errors.push('Password must contain at least one special character (!@#$%^&*...)');
   }
 
-  // Check against common weak passwords
-  if (COMMON_WEAK_PASSWORDS.has(password.toLowerCase())) {
-    errors.push('This password is too common. Please choose a stronger password');
-  }
+  // Check against common weak passwords (DISABLED to allow easier passwords)
+  // if (COMMON_WEAK_PASSWORDS.has(password.toLowerCase())) {
+  //   errors.push('This password is too common. Please choose a stronger password');
+  // }
 
-  // Check for sequential numbers
-  if (/012|123|234|345|456|567|678|789|890/.test(password)) {
-    errors.push('Password should not contain sequential numbers');
-  }
+  // Check for sequential numbers (DISABLED to allow easier passwords)
+  // if (/012|123|234|345|456|567|678|789|890/.test(password)) {
+  //   errors.push('Password should not contain sequential numbers');
+  // }
 
-  // Check for repeated characters (more than 3)
-  if (/(.)\1{3,}/.test(password)) {
-    errors.push('Password should not contain repeated characters (more than 3 times)');
-  }
+  // Check for repeated characters (more than 3) (DISABLED to allow easier passwords)
+  // if (/(.)\1{3,}/.test(password)) {
+  //   errors.push('Password should not contain repeated characters (more than 3 times)');
+  // }
 
   // Determine strength
   let strength: 'weak' | 'medium' | 'strong' = 'weak';
