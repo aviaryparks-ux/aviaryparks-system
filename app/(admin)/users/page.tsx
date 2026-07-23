@@ -27,6 +27,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import Select from "react-select";
 
 type User = {
   id: string;
@@ -67,6 +68,19 @@ const normalizeText = (text: string): string => {
   return text.trim().toUpperCase();
 };
 
+const selectStyles = {
+  control: (base: any) => ({
+    ...base,
+    borderRadius: '0.5rem',
+    borderColor: '#d1d5db',
+    padding: '2px',
+    boxShadow: 'none',
+    '&:hover': {
+      borderColor: '#22c55e'
+    }
+  })
+};
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,9 +117,9 @@ export default function UsersPage() {
   const [bankAccountName, setBankAccountName] = useState("");
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterRole, setFilterRole] = useState("ALL");
-  const [filterDepartment, setFilterDepartment] = useState("ALL");
-  const [filterDivision, setFilterDivision] = useState("ALL");
+  const [filterRole, setFilterRole] = useState<string[]>([]);
+  const [filterDepartment, setFilterDepartment] = useState<string[]>([]);
+  const [filterDivision, setFilterDivision] = useState<string[]>([]);
   const [departmentsList, setDepartmentsList] = useState<any[]>([]);
 
   // Attendance history state
@@ -442,6 +456,7 @@ export default function UsersPage() {
       });
   };
 
+
   const downloadTemplate = () => {
     const template = [
       {
@@ -589,8 +604,8 @@ export default function UsersPage() {
 
   const filterDivisionsList = useMemo(() => {
     let emps = users;
-    if (filterDepartment !== "ALL") {
-      emps = emps.filter(u => u.department === filterDepartment);
+    if (filterDepartment.length > 0) {
+      emps = emps.filter(u => filterDepartment.includes(u.department || ""));
     }
     return Array.from(new Set(emps.map(u => u.division).filter(Boolean))).sort();
   }, [users, filterDepartment]);
@@ -599,11 +614,46 @@ export default function UsersPage() {
     const matchesSearch =
       user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = filterRole === "ALL" || user.role === filterRole;
-    const matchesDept = filterDepartment === "ALL" || user.department === filterDepartment;
-    const matchesDiv = filterDivision === "ALL" || user.division === filterDivision;
+    const matchesRole = filterRole.length === 0 || filterRole.includes(user.role);
+    const matchesDept = filterDepartment.length === 0 || filterDepartment.includes(user.department || "");
+    const matchesDiv = filterDivision.length === 0 || filterDivision.includes(user.division || "");
     return matchesSearch && matchesRole && matchesDept && matchesDiv;
   });
+
+  const exportData = () => {
+    if (filteredUsers.length === 0) {
+      toast.error("No data to export");
+      return;
+    }
+    
+    const dataToExport = filteredUsers.map(user => ({
+      "Nama": user.name || "-",
+      "Email": user.email || "-",
+      "Role": user.role || "-",
+      "Department": user.department || "-",
+      "Division": user.division || "-",
+      "Position": user.position || "-",
+      "Job Level": user.jobLevel || user.jabatan || "-",
+      "Employee Status": user.employeeStatus || "-",
+      "Daily Rate": user.dailyRate || 0,
+      "Monthly Salary": user.monthlySalary || 0,
+      "Company": user.company || "-",
+      "Location": user.location || "-",
+      "Join Date": user.joinDate ? String(user.joinDate) : "-",
+      "Phone": (user.phone || user.phoneNumber) ? String(user.phone || user.phoneNumber) : "-",
+      "Status": user.isActive ? "Active" : "Inactive",
+      "Bank Name": user.bankName || "-",
+      "Bank Account Number": user.bankAccountNumber ? String(user.bankAccountNumber) : "-",
+      "Bank Account Name": user.bankAccountName || "-"
+    }));
+    
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Users Data");
+    XLSX.writeFile(wb, "data_pegawai.xlsx");
+    toast.success("Data exported successfully");
+  };
+
 
   const roleOptions = [
     { value: "ALL", label: "All Roles" },
@@ -686,52 +736,48 @@ export default function UsersPage() {
               />
             </div>
             <div className="lg:col-span-2">
-              <select
-                value={filterDepartment}
-                onChange={(e) => {
-                  setFilterDepartment(e.target.value);
-                  setFilterDivision("ALL");
+              <Select
+                isMulti
+                placeholder="All Departments"
+                options={filterDepartmentsList.map(dept => ({ value: dept, label: dept }))}
+                value={filterDepartment.map(dept => ({ value: dept, label: dept }))}
+                onChange={(selected: any) => {
+                  setFilterDepartment(selected ? selected.map((item: any) => item.value) : []);
+                  setFilterDivision([]);
                 }}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
-              >
-                <option value="ALL">All Departments</option>
-                {filterDepartmentsList.map((dept) => (
-                  <option key={dept} value={dept}>{dept}</option>
-                ))}
-              </select>
+                className="w-full text-sm"
+                styles={selectStyles}
+              />
             </div>
             <div className="lg:col-span-2">
-              <select
-                value={filterDivision}
-                onChange={(e) => setFilterDivision(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
-              >
-                <option value="ALL">All Divisions</option>
-                {filterDivisionsList.map((div) => (
-                  <option key={div} value={div}>{div}</option>
-                ))}
-              </select>
+              <Select
+                isMulti
+                placeholder="All Divisions"
+                options={filterDivisionsList.map(div => ({ value: div, label: div }))}
+                value={filterDivision.map(div => ({ value: div, label: div }))}
+                onChange={(selected: any) => setFilterDivision(selected ? selected.map((item: any) => item.value) : [])}
+                className="w-full text-sm"
+                styles={selectStyles}
+              />
             </div>
             <div className="lg:col-span-2">
-              <select
-                value={filterRole}
-                onChange={(e) => { setFilterRole(e.target.value); }}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
-              >
-                {roleOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+              <Select
+                isMulti
+                placeholder="All Roles"
+                options={roleOptions}
+                value={filterRole.map(r => roleOptions.find(o => o.value === r) || { value: r, label: r })}
+                onChange={(selected: any) => setFilterRole(selected ? selected.map((item: any) => item.value) : [])}
+                className="w-full text-sm"
+                styles={selectStyles}
+              />
             </div>
             <div className="lg:col-span-2">
               <button
                 onClick={() => {
                   setSearchTerm("");
-                  setFilterRole("ALL");
-                  setFilterDepartment("ALL");
-                  setFilterDivision("ALL");
+                  setFilterRole([]);
+                  setFilterDepartment([]);
+                  setFilterDivision([]);
                 }}
                 className="w-full px-4 py-2 bg-slate-500 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors"
               >
@@ -774,6 +820,12 @@ export default function UsersPage() {
             className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all shadow-sm"
           >
             Template
+          </button>
+          <button
+            onClick={exportData}
+            className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all shadow-sm"
+          >
+            Download Data
           </button>
         </div>
 
@@ -918,95 +970,99 @@ export default function UsersPage() {
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
                 />
                 <div>
-                  <select
-                    value={role || ""}
-                    onChange={(e) => setRole(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                  >
-                    <option value="employee">Employee</option>
-                    <option value="spv">Supervisor (SPV)</option>
-                    <option value="manager">Manager</option>
-                    <option value="hod">Head of Department (HOD)</option>
-                    <option value="hr">HR</option>
-                    <option value="admin">Admin</option>
-                    <option value="gm">General Manager (GM)</option>
-                    <option value="owner">Owner</option>
-                    <option value="super_admin">Super Admin</option>
-                    <option value="training">Training</option>
-                    <option value="intern">Intern / Magang</option>
-                  </select>
+                  <Select
+                    options={[
+                      { value: "employee", label: "Employee" },
+                      { value: "spv", label: "Supervisor (SPV)" },
+                      { value: "manager", label: "Manager" },
+                      { value: "hod", label: "Head of Department (HOD)" },
+                      { value: "hr", label: "HR" },
+                      { value: "admin", label: "Admin" },
+                      { value: "gm", label: "General Manager (GM)" },
+                      { value: "owner", label: "Owner" },
+                      { value: "super_admin", label: "Super Admin" },
+                      { value: "training", label: "Training" },
+                      { value: "intern", label: "Intern / Magang" }
+                    ]}
+                    value={{ value: role, label: roleOptions.find(o => o.value === role)?.label || role || "Select Role" }}
+                    onChange={(selected) => setRole(selected?.value || "")}
+                    className="w-full text-sm"
+                    styles={selectStyles}
+                  />
                   <p className="text-[11px] text-gray-500 mt-1">Akses sistem (Contoh: Manager bisa akses persetujuan, Employee hanya absen).</p>
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <select
-                      value={department || ""}
-                      onChange={(e) => { setDepartment(e.target.value); setDivision(""); setPosition(""); }}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                    >
-                      <option value="">-- Select Department --</option>
-                      {departmentsList.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-                      {department && !departmentsList.find(d => d.name === department) && <option value={department}>{department} (Current)</option>}
-                    </select>
+                    <Select
+                      options={[
+                        { value: "", label: "-- Select Department --" },
+                        ...departmentsList.map(d => ({ value: d.name, label: d.name })),
+                        ...(department && !departmentsList.find(d => d.name === department) ? [{ value: department, label: `${department} (Current)` }] : [])
+                      ]}
+                      value={{ value: department, label: department || "-- Select Department --" }}
+                      onChange={(selected) => { setDepartment(selected?.value || ""); setDivision(""); setPosition(""); }}
+                      className="w-full text-sm"
+                      styles={selectStyles}
+                    />
                     <p className="text-[11px] text-gray-500 mt-1">Pilih Department utama sesuai struktur organisasi.</p>
                   </div>
                   
                   <div>
-                    <select
-                      value={division || ""}
-                      onChange={(e) => { setDivision(e.target.value); setPosition(""); }}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                      disabled={!department}
-                    >
-                      <option value="">-- Select Division --</option>
-                      {departmentsList.find((d: any) => d.name === department)?.divisions?.map((div: any) => (
-                        <option key={div.id} value={div.name}>{div.name}</option>
-                      ))}
-                      {division && <option value={division}>{division} (Current)</option>}
-                    </select>
+                    <Select
+                      options={[
+                        { value: "", label: "-- Select Division --" },
+                        ...(departmentsList.find((d: any) => d.name === department)?.divisions?.map((div: any) => ({ value: div.name, label: div.name })) || []),
+                        ...(division ? [{ value: division, label: `${division} (Current)` }] : [])
+                      ]}
+                      value={{ value: division, label: division || "-- Select Division --" }}
+                      onChange={(selected) => { setDivision(selected?.value || ""); setPosition(""); }}
+                      className="w-full text-sm"
+                      styles={selectStyles}
+                      isDisabled={!department}
+                    />
                     <p className="text-[11px] text-gray-500 mt-1">Cabang Division di bawah Department (jika ada).</p>
                   </div>
                   
                   <div>
-                    <select
-                      value={position || ""}
-                      onChange={(e) => setPosition(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                      disabled={!division}
-                    >
-                      <option value="">-- Select Position --</option>
-                      {departmentsList.find((d: any) => d.name === department)?.divisions?.find((div: any) => div.name === division)?.positions?.map((pos: any) => (
-                        <option key={pos.id} value={pos.name}>{pos.name}</option>
-                      ))}
-                      {position && <option value={position}>{position} (Current)</option>}
-                    </select>
+                    <Select
+                      options={[
+                        { value: "", label: "-- Select Position --" },
+                        ...(departmentsList.find((d: any) => d.name === department)?.divisions?.find((div: any) => div.name === division)?.positions?.map((pos: any) => ({ value: pos.name, label: pos.name })) || []),
+                        ...(position ? [{ value: position, label: `${position} (Current)` }] : [])
+                      ]}
+                      value={{ value: position, label: position || "-- Select Position --" }}
+                      onChange={(selected) => setPosition(selected?.value || "")}
+                      className="w-full text-sm"
+                      styles={selectStyles}
+                      isDisabled={!division}
+                    />
                     <p className="text-[11px] text-gray-500 mt-1">Pilih Jabatan spesifik dari Master Department.</p>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <select
-                        value={jobLevel || ""}
-                        onChange={(e) => setJobLevel(e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                      >
-                        <option value="">Select Job Level</option>
-                        {jobLevelOptions.map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
+                      <Select
+                        options={[
+                          { value: "", label: "Select Job Level" },
+                          ...jobLevelOptions.map(opt => ({ value: opt, label: opt }))
+                        ]}
+                        value={{ value: jobLevel, label: jobLevel || "Select Job Level" }}
+                        onChange={(selected) => setJobLevel(selected?.value || "")}
+                        className="w-full text-sm"
+                        styles={selectStyles}
+                      />
                       <p className="text-[11px] text-gray-500 mt-1">Level jabatan (Staff, Manager, dll).</p>
                     </div>
                     <div>
-                      <select
-                        value={employeeStatus || ""}
-                        onChange={(e) => setEmployeeStatus(e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                      >
-                        <option value="">Select Employee Status</option>
-                        {employeeStatusOptions.map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
+                      <Select
+                        options={[
+                          { value: "", label: "Select Employee Status" },
+                          ...employeeStatusOptions.map(opt => ({ value: opt, label: opt }))
+                        ]}
+                        value={{ value: employeeStatus, label: employeeStatus || "Select Employee Status" }}
+                        onChange={(selected) => setEmployeeStatus(selected?.value || "")}
+                        className="w-full text-sm"
+                        styles={selectStyles}
+                      />
                       <p className="text-[11px] text-gray-500 mt-1">Status kepegawaian (Contract, dll).</p>
                     </div>
                   </div>
@@ -1070,14 +1126,16 @@ export default function UsersPage() {
                     <p className="text-sm font-medium text-gray-700 mb-2">🏦 Informasi Bank</p>
                   </div>
                 </div>
-                <select
-                  value={bankName || ""}
-                  onChange={(e) => setBankName(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none"
-                >
-                  <option value="">Pilih Bank</option>
-                  {bankOptions.map((bank) => (<option key={bank} value={bank}>{bank}</option>))}
-                </select>
+                <Select
+                  options={[
+                    { value: "", label: "Pilih Bank" },
+                    ...bankOptions.map(bank => ({ value: bank, label: bank }))
+                  ]}
+                  value={{ value: bankName, label: bankName || "Pilih Bank" }}
+                  onChange={(selected) => setBankName(selected?.value || "")}
+                  className="w-full text-sm"
+                  styles={selectStyles}
+                />
                 <input
                   placeholder="Nomor Rekening"
                   value={bankAccountNumber || ""}

@@ -1,0 +1,410 @@
+{
+  "nodes": [
+    {
+      "id": "agents_nextjs_agent_rules",
+      "label": "Next.js Agent Rules",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Agung\\web-admin\\AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "aviarypark_hr_flowchart_presentation_aviarypark_hr_system",
+      "label": "AviaryPark HR Management System",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Agung\\web-admin\\AVIARYPARK_HR_FLOWCHART_PRESENTATION.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "aviarypark_hr_flowchart_presentation_attendance",
+      "label": "Attendance Module",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Agung\\web-admin\\AVIARYPARK_HR_FLOWCHART_PRESENTATION.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "aviarypark_hr_flowchart_presentation_mod",
+      "label": "Manager on Duty (MOD) Module",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Agung\\web-admin\\AVIARYPARK_HR_FLOWCHART_PRESENTATION.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "aviarypark_hr_flowchart_presentation_work_order",
+      "label": "Work Order Module",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Agung\\web-admin\\AVIARYPARK_HR_FLOWCHART_PRESENTATION.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "claude_claude_instructions",
+      "label": "Claude Instructions",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Agung\\web-admin\\CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "ppt_detail_prompt_ppt_prompt",
+      "label": "PPT Detail Prompt",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Agung\\web-admin\\PPT_DETAIL_PROMPT.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "ppt_prompt_aviarypark_hr_ppt_prompt",
+      "label": "PPT Prompt AviaryPark HR",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Agung\\web-admin\\PPT_PROMPT_AVIARYPARK_HR.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "ppt_quick_prompt_quick_prompt",
+      "label": "PPT Quick Prompt",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Agung\\web-admin\\PPT_QUICK_PROMPT.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_nextjs_readme",
+      "label": "Next.js README",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Agung\\web-admin\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "security_security_guide",
+      "label": "Security Configuration Guide",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Agung\\web-admin\\SECURITY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "security_session_encryption",
+      "label": "Session Encryption (AES-256-GCM)",
+      "file_type": "rationale",
+      "source_file": "C:\\Users\\Agung\\web-admin\\SECURITY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "security_rate_limiting",
+      "label": "Rate Limiting",
+      "file_type": "rationale",
+      "source_file": "C:\\Users\\Agung\\web-admin\\SECURITY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "security_security_headers",
+      "label": "Security Headers",
+      "file_type": "rationale",
+      "source_file": "C:\\Users\\Agung\\web-admin\\SECURITY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "spec_mod_mod_spec",
+      "label": "SPEC: Manager on Duty (MOD)",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Agung\\web-admin\\SPEC-MOD.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "spec_mod_mod_schedules",
+      "label": "mod_schedules Collection",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Agung\\web-admin\\SPEC-MOD.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "spec_mod_mod_reports",
+      "label": "mod_reports Collection",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Agung\\web-admin\\SPEC-MOD.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "spec_wo_wo_spec",
+      "label": "SPEC: Work Order (WO)",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Agung\\web-admin\\SPEC-WO.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "spec_wo_urgent_work_order",
+      "label": "Urgent Work Order",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Agung\\web-admin\\SPEC-WO.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "spec_wo_project_work_order",
+      "label": "Project Work Order",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Agung\\web-admin\\SPEC-WO.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "spec_wo_work_orders",
+      "label": "work_orders Collection",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\Agung\\web-admin\\SPEC-WO.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "morning_briefing_agents_nextjs_agent_rules",
+      "label": "Morning Briefing Next.js Agent Rules",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Agung\\web-admin\\morning-briefing\\AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "morning_briefing_claude_claude_instructions",
+      "label": "Morning Briefing Claude Instructions",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Agung\\web-admin\\morning-briefing\\CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "morning_briefing_readme_nextjs_readme",
+      "label": "Morning Briefing README",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Agung\\web-admin\\morning-briefing\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "presentation_hr_presentation",
+      "label": "HTML Presentation for AviaryPark HR",
+      "file_type": "document",
+      "source_file": "C:\\Users\\Agung\\web-admin\\presentation.html",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    }
+  ],
+  "edges": [
+    {
+      "source": "claude_claude_instructions",
+      "target": "agents_nextjs_agent_rules",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Agung\\web-admin\\CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "morning_briefing_claude_claude_instructions",
+      "target": "morning_briefing_agents_nextjs_agent_rules",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\Agung\\web-admin\\morning-briefing\\CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "morning_briefing_agents_nextjs_agent_rules",
+      "target": "agents_nextjs_agent_rules",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Agung\\web-admin\\morning-briefing\\AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "morning_briefing_readme_nextjs_readme",
+      "target": "readme_nextjs_readme",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Agung\\web-admin\\morning-briefing\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "ppt_detail_prompt_ppt_prompt",
+      "target": "aviarypark_hr_flowchart_presentation_aviarypark_hr_system",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Users\\Agung\\web-admin\\PPT_DETAIL_PROMPT.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "ppt_prompt_aviarypark_hr_ppt_prompt",
+      "target": "aviarypark_hr_flowchart_presentation_aviarypark_hr_system",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Users\\Agung\\web-admin\\PPT_PROMPT_AVIARYPARK_HR.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "ppt_quick_prompt_quick_prompt",
+      "target": "aviarypark_hr_flowchart_presentation_aviarypark_hr_system",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Users\\Agung\\web-admin\\PPT_QUICK_PROMPT.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "presentation_hr_presentation",
+      "target": "aviarypark_hr_flowchart_presentation_aviarypark_hr_system",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Users\\Agung\\web-admin\\presentation.html",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "spec_mod_mod_spec",
+      "target": "aviarypark_hr_flowchart_presentation_mod",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Agung\\web-admin\\SPEC-MOD.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "spec_wo_wo_spec",
+      "target": "aviarypark_hr_flowchart_presentation_work_order",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Agung\\web-admin\\SPEC-WO.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "spec_wo_work_orders",
+      "target": "spec_mod_mod_reports",
+      "relation": "shares_data_with",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Users\\Agung\\web-admin\\SPEC-WO.md",
+      "source_location": null,
+      "weight": 1.0
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "aviarypark_hr_presentations",
+      "label": "AviaryPark HR Presentations",
+      "nodes": [
+        "ppt_detail_prompt_ppt_prompt",
+        "ppt_prompt_aviarypark_hr_ppt_prompt",
+        "ppt_quick_prompt_quick_prompt",
+        "presentation_hr_presentation",
+        "aviarypark_hr_flowchart_presentation_aviarypark_hr_system"
+      ],
+      "relation": "participate_in",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Users\\Agung\\web-admin\\AVIARYPARK_HR_FLOWCHART_PRESENTATION.md"
+    }
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

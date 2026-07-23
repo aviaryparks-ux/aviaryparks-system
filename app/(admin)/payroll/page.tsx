@@ -23,6 +23,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import Select from "react-select";
 
 type User = {
   uid: string;
@@ -70,6 +71,7 @@ type PayrollSummary = {
   name: string;
   email: string;
   jabatan: string;
+  role?: string;
   employeeStatus?: string;
   division?: string;
   department: string;
@@ -98,6 +100,20 @@ type PaymentStatus = {
   paidBy: string | null;
 };
 
+const selectStyles = {
+  control: (base: any) => ({
+    ...base,
+    borderRadius: '0.75rem',
+    borderColor: '#e2e8f0',
+    padding: '4px',
+    boxShadow: 'none',
+    backgroundColor: '#f8fafc',
+    '&:hover': {
+      borderColor: '#0ea5e9'
+    }
+  })
+};
+
 export default function PayrollPage() {
   const [users, setUsers] = useState<Map<string, User>>(new Map());
   const [payrollSummary, setPayrollSummary] = useState<PayrollSummary[]>([]);
@@ -115,15 +131,26 @@ export default function PayrollPage() {
   });
 
   const [departments, setDepartments] = useState<string[]>([]);
-  const [selectedDepartment, setSelectedDepartment] = useState<string>("ALL");
+  const [selectedDepartment, setSelectedDepartment] = useState<string[]>([]);
   const [divisions, setDivisions] = useState<string[]>([]);
-  const [selectedDivision, setSelectedDivision] = useState<string>("ALL");
-  const [jabatans, setJabatans] = useState<string[]>([]);
-  const [selectedJabatan, setSelectedJabatan] = useState<string>("ALL");
-  const [employeeStatuses, setEmployeeStatuses] = useState<string[]>([]);
-  const [selectedEmployeeStatus, setSelectedEmployeeStatus] = useState<string>("ALL");
+  const [selectedDivision, setSelectedDivision] = useState<string[]>([]);
+  const [selectedRole, setSelectedRole] = useState<string[]>([]);
 
-  const [allEmployees, setAllEmployees] = useState<{ uid: string; name: string; department: string; division: string; jabatan: string; employeeStatus: string }[]>([]);
+  const roleOptions = [
+    { value: "employee", label: "Employee" },
+    { value: "spv", label: "Supervisor (SPV)" },
+    { value: "manager", label: "Manager" },
+    { value: "hod", label: "Head of Department (HOD)" },
+    { value: "hr", label: "HR" },
+    { value: "admin", label: "Admin" },
+    { value: "gm", label: "General Manager (GM)" },
+    { value: "owner", label: "Owner" },
+    { value: "super_admin", label: "Super Admin" },
+    { value: "training", label: "Training" },
+    { value: "intern", label: "Intern / Magang" }
+  ];
+
+  const [allEmployees, setAllEmployees] = useState<{ uid: string; name: string; department: string; division: string; role: string; jabatan: string; employeeStatus: string }[]>([]);
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
   const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
@@ -140,8 +167,8 @@ export default function PayrollPage() {
 
   const filteredDivisions = useMemo(() => {
     let emps = allEmployees;
-    if (selectedDepartment !== "ALL") {
-      emps = emps.filter(e => e.department === selectedDepartment);
+    if (selectedDepartment.length > 0) {
+      emps = emps.filter(e => selectedDepartment.includes(e.department || ""));
     }
     const divSet = new Set(emps.map(e => e.division).filter(Boolean));
     return Array.from(divSet).sort();
@@ -161,50 +188,21 @@ export default function PayrollPage() {
     return s.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
   };
 
-  const filteredJabatans = useMemo(() => {
-    let emps = allEmployees;
-    if (selectedDepartment !== "ALL") {
-      emps = emps.filter(e => e.department === selectedDepartment);
-    }
-    if (selectedDivision !== "ALL") {
-      emps = emps.filter(e => e.division === selectedDivision);
-    }
-    const jabSet = new Set(emps.map(e => e.jabatan).filter(Boolean).map(normalizeString));
-    return Array.from(jabSet).sort();
-  }, [allEmployees, selectedDepartment, selectedDivision]);
 
-  const filteredStatuses = useMemo(() => {
-    let emps = allEmployees;
-    if (selectedDepartment !== "ALL") {
-      emps = emps.filter(e => e.department === selectedDepartment);
-    }
-    if (selectedDivision !== "ALL") {
-      emps = emps.filter(e => e.division === selectedDivision);
-    }
-    if (selectedJabatan !== "ALL") {
-      emps = emps.filter(e => e.jabatan && normalizeString(e.jabatan).toLowerCase() === selectedJabatan.toLowerCase());
-    }
-    const statusSet = new Set(emps.map(e => e.employeeStatus).filter(Boolean).map(normalizeString));
-    return Array.from(statusSet).sort();
-  }, [allEmployees, selectedDepartment, selectedDivision, selectedJabatan]);
 
-  // Compute available employees based on selected filters
   const availableEmployees = useMemo(() => {
     let filtered = allEmployees;
-    if (selectedDepartment !== "ALL") {
-      filtered = filtered.filter((emp) => emp.department === selectedDepartment);
+    if (selectedDepartment.length > 0) {
+      filtered = filtered.filter((emp) => selectedDepartment.includes(emp.department || ""));
     }
-    if (selectedDivision !== "ALL") {
-      filtered = filtered.filter((emp) => emp.division === selectedDivision);
+    if (selectedDivision.length > 0) {
+      filtered = filtered.filter((emp) => selectedDivision.includes(emp.division || ""));
     }
-    if (selectedJabatan !== "ALL") {
-      filtered = filtered.filter((emp) => emp.jabatan && normalizeString(emp.jabatan).toLowerCase() === selectedJabatan.toLowerCase());
-    }
-    if (selectedEmployeeStatus !== "ALL") {
-      filtered = filtered.filter((emp) => emp.employeeStatus && normalizeString(emp.employeeStatus).toLowerCase() === selectedEmployeeStatus.toLowerCase());
+    if (selectedRole.length > 0) {
+      filtered = filtered.filter((emp) => emp.role && selectedRole.includes(emp.role));
     }
     return filtered;
-  }, [allEmployees, selectedDepartment, selectedDivision, selectedJabatan, selectedEmployeeStatus]);
+  }, [allEmployees, selectedDepartment, selectedDivision, selectedRole]);
 
   const filteredEmployees = useMemo(() => {
     if (!employeeSearchTerm.trim()) return availableEmployees;
@@ -245,7 +243,7 @@ export default function PayrollPage() {
 
   useEffect(() => {
     applyFilters();
-  }, [selectedDepartment, selectedDivision, selectedJabatan, selectedEmployeeStatus, selectedEmployees, payrollSummary]);
+  }, [selectedDepartment, selectedDivision, selectedRole, selectedEmployees, payrollSummary]);
 
   useEffect(() => {
     loadPaymentStatus();
@@ -257,9 +255,7 @@ export default function PayrollPage() {
       const usersMap = new Map<string, User>();
       const deptSet = new Set<string>();
       const divSet = new Set<string>();
-      const jabSet = new Set<string>();
-      const statusSet = new Set<string>();
-      const empList: { uid: string; name: string; department: string; division: string; jabatan: string; employeeStatus: string }[] = [];
+      const empList: { uid: string; name: string; department: string; division: string; role: string; jabatan: string; employeeStatus: string }[] = [];
 
       usersSnap.forEach((doc) => {
         const data = doc.data();
@@ -267,13 +263,12 @@ export default function PayrollPage() {
         const division = data.division || "";
         const jabatan = data.jabatan || "";
         const employeeStatus = data.employeeStatus || "";
+        const role = data.role || "";
 
         if (data.isActive === false) return;
 
         if (department) deptSet.add(department);
         if (division) divSet.add(division);
-        if (jabatan) jabSet.add(jabatan);
-        if (employeeStatus) statusSet.add(employeeStatus);
 
         usersMap.set(doc.id, {
           uid: doc.id,
@@ -285,6 +280,7 @@ export default function PayrollPage() {
           bankAccountNumber: data.bankAccountNumber || "",
           bankAccountName: data.bankAccountName || "",
           jabatan: jabatan,
+          role: role,
           employeeStatus: employeeStatus,
           division: division,
           department: department,
@@ -297,6 +293,7 @@ export default function PayrollPage() {
           name: data.name || "",
           department: department,
           division: division,
+          role: role,
           jabatan: jabatan,
           employeeStatus: employeeStatus,
         });
@@ -305,8 +302,6 @@ export default function PayrollPage() {
       setUsers(usersMap);
       setDepartments(Array.from(deptSet).sort());
       setDivisions(Array.from(divSet).sort());
-      setJabatans(Array.from(jabSet).sort());
-      setEmployeeStatuses(Array.from(statusSet).sort());
       setAllEmployees(empList.sort((a, b) => a.name.localeCompare(b.name)));
       return usersMap;
     } catch (error) {
@@ -347,17 +342,14 @@ export default function PayrollPage() {
   const applyFilters = () => {
     let filtered = [...payrollSummary];
 
-    if (selectedDepartment !== "ALL") {
-      filtered = filtered.filter((item) => item.department === selectedDepartment);
+    if (selectedDepartment.length > 0) {
+      filtered = filtered.filter((item) => selectedDepartment.includes(item.department));
     }
-    if (selectedDivision !== "ALL") {
-      filtered = filtered.filter((item) => item.division === selectedDivision);
+    if (selectedDivision.length > 0) {
+      filtered = filtered.filter((item) => item.division && selectedDivision.includes(item.division));
     }
-    if (selectedJabatan !== "ALL") {
-      filtered = filtered.filter((item) => item.jabatan && normalizeString(item.jabatan).toLowerCase() === selectedJabatan.toLowerCase());
-    }
-    if (selectedEmployeeStatus !== "ALL") {
-      filtered = filtered.filter((item) => item.employeeStatus && normalizeString(item.employeeStatus).toLowerCase() === selectedEmployeeStatus.toLowerCase());
+    if (selectedRole.length > 0) {
+      filtered = filtered.filter((item) => item.role && selectedRole.includes(item.role));
     }
 
     if (selectedEmployees.length > 0) {
@@ -492,6 +484,7 @@ export default function PayrollPage() {
           name: att.name || user?.name || "-",
           email: att.email || user?.email || "-",
           jabatan: user?.jabatan || "-",
+          role: user?.role || "-",
           employeeStatus: user?.employeeStatus || "-",
           division: user?.division || "-",
           department: department,
@@ -882,8 +875,8 @@ export default function PayrollPage() {
 
     const safeName = selectedEmployees.length === 1
       ? sanitizeFilename(filteredSummary[0]?.name || "data")
-      : selectedDepartment !== "ALL"
-        ? sanitizeFilename(selectedDepartment)
+      : selectedDepartment.length > 0
+        ? sanitizeFilename(selectedDepartment[0] + (selectedDepartment.length > 1 ? "_others" : ""))
         : "all";
 
     const fileName = `rekap_gaji_${safeName}_${dateRange.startDate}_${dateRange.endDate}.xlsx`;
@@ -1158,73 +1151,50 @@ export default function PayrollPage() {
             {/* Department */}
             <div className="space-y-2">
               <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Departemen</label>
-              <select
-                value={selectedDepartment}
-                onChange={(e) => {
-                  setSelectedDepartment(e.target.value);
-                  setSelectedDivision("ALL");
-                  setSelectedJabatan("ALL");
-                  setSelectedEmployeeStatus("ALL");
+              <Select
+                isMulti
+                placeholder="Semua Departemen"
+                options={departments.map((dept) => ({ value: dept, label: dept }))}
+                value={selectedDepartment.map(dept => ({ value: dept, label: dept }))}
+                onChange={(selected: any) => {
+                  setSelectedDepartment(selected ? selected.map((item: any) => item.value) : []);
+                  setSelectedDivision([]);
+                  setSelectedRole([]);
                 }}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
-              >
-                <option value="ALL">Semua Departemen</option>
-                {departments.map((dept) => (
-                  <option key={dept} value={dept}>{dept}</option>
-                ))}
-              </select>
+                className="w-full text-sm"
+                styles={selectStyles}
+              />
             </div>
 
             {/* Division */}
             <div className="space-y-2">
               <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Divisi</label>
-              <select
-                value={selectedDivision}
-                onChange={(e) => {
-                  setSelectedDivision(e.target.value);
-                  setSelectedJabatan("ALL");
-                  setSelectedEmployeeStatus("ALL");
+              <Select
+                isMulti
+                placeholder="Semua Divisi"
+                options={filteredDivisions.map((div) => ({ value: div, label: div }))}
+                value={selectedDivision.map(div => ({ value: div, label: div }))}
+                onChange={(selected: any) => {
+                  setSelectedDivision(selected ? selected.map((item: any) => item.value) : []);
+                  setSelectedRole([]);
                 }}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
-              >
-                <option value="ALL">Semua Divisi</option>
-                {filteredDivisions.map((div) => (
-                  <option key={div} value={div}>{div}</option>
-                ))}
-              </select>
+                className="w-full text-sm"
+                styles={selectStyles}
+              />
             </div>
 
-            {/* Jabatan */}
+            {/* Role */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Jabatan</label>
-              <select
-                value={selectedJabatan}
-                onChange={(e) => {
-                  setSelectedJabatan(e.target.value);
-                  setSelectedEmployeeStatus("ALL");
-                }}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
-              >
-                <option value="ALL">Semua Jabatan</option>
-                {filteredJabatans.map((jab) => (
-                  <option key={jab} value={jab}>{jab}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Status Pegawai */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Status Pegawai</label>
-              <select
-                value={selectedEmployeeStatus}
-                onChange={(e) => setSelectedEmployeeStatus(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
-              >
-                <option value="ALL">Semua Status</option>
-                {filteredStatuses.map((stat) => (
-                  <option key={stat} value={stat}>{stat}</option>
-                ))}
-              </select>
+              <label className="text-xs font-medium text-slate-500 uppercase tracking-wider">Role</label>
+              <Select
+                isMulti
+                placeholder="Semua Role"
+                options={roleOptions}
+                value={selectedRole.map(role => roleOptions.find(opt => opt.value === role) || { value: role, label: role })}
+                onChange={(selected: any) => setSelectedRole(selected ? selected.map((item: any) => item.value) : [])}
+                className="w-full text-sm"
+                styles={selectStyles}
+              />
             </div>
 
             {/* Action Buttons */}
@@ -1367,8 +1337,8 @@ export default function PayrollPage() {
                           className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
                         />
                         <span className="text-sm text-slate-700 flex-1">{emp.name}</span>
-                        {selectedDepartment === "ALL" && (
-                          <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{emp.department}</span>
+                        {selectedDepartment.length === 0 && (
+                          <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md truncate max-w-[100px]">{emp.department}</span>
                         )}
                         {paymentStatus.get(emp.uid)?.paidAt && (
                           <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-medium">Paid</span>

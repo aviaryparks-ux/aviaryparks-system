@@ -285,6 +285,10 @@ export default function AttendancePage() {
   const [showTodayOnly, setShowTodayOnly] = useState(true);
   const [isFilterOpen, setIsFilterOpen] = useState(true);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 25;
+
   const isSuperAdmin = currentUser?.role === "super_admin";
   const isAdmin = currentUser?.role === "admin";
   const isHR = currentUser?.role === "hr";
@@ -446,6 +450,10 @@ export default function AttendancePage() {
     });
   }, [data, dept, jabatan, selectedEmployees, status, startDate, endDate, scopeDepartment]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filtered]);
+
   // Stats
   const stats = useMemo(() => {
     const total = filtered.length;
@@ -459,24 +467,7 @@ export default function AttendancePage() {
   }, [filtered]);
 
   // Recap list
-  const recapList = useMemo(() => {
-    const recap: Record<string, RecapItem> = {};
-    filtered.forEach((a) => {
-      if (!recap[a.uid]) recap[a.uid] = {
-        uid: a.uid, name: a.name, department: a.department || "-", jabatan: a.jabatan || "-",
-        rate: a.dailyRate || 0, totalHari: 0, totalJam: 0, totalGaji: 0, attendanceDetails: [],
-      };
-      const statusInfo = getAttendanceStatus(a);
-      if (statusInfo.status === "hadir" || statusInfo.status === "terlambat") {
-        recap[a.uid].totalHari++;
-        const jamKerja = getWorkHours(a);
-        recap[a.uid].totalJam += jamKerja;
-        recap[a.uid].attendanceDetails.push(a);
-      }
-      recap[a.uid].totalGaji = recap[a.uid].totalHari * (recap[a.uid].rate || 0);
-    });
-    return Object.values(recap).sort((a, b) => b.totalGaji - a.totalGaji);
-  }, [filtered]);
+
 
   // 🔥 FUNGSI UNTUK MENAMPILKAN HARI INI
   const setTodayFilter = () => {
@@ -933,60 +924,6 @@ export default function AttendancePage() {
     }
   };
 
-  const exportRecapExcel = async () => {
-    setExporting("recap-excel");
-    try {
-      const rows = recapList.map((r) => ({
-        Nama: r.name || "-",
-        Department: r.department || "-",
-        Jabatan: r.jabatan || "-",
-        Hari_Kerja: r.totalHari,
-        Total_Jam: `${r.totalJam.toFixed(2)} jam`,
-        Rata_Rata_Jam: r.totalHari > 0 ? `${(r.totalJam / r.totalHari).toFixed(2)} jam` : "-",
-        Rate: r.rate ? `Rp ${r.rate.toLocaleString()}` : "-",
-        Total_Gaji: r.totalGaji ? `Rp ${r.totalGaji.toLocaleString()}` : "-",
-      }));
-      const ws = XLSX.utils.json_to_sheet(rows);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Rekap Gaji");
-      XLSX.writeFile(wb, `attendance_rekap_${new Date().toISOString().split("T")[0]}.xlsx`);
-      toast.success("Export Excel berhasil");
-    } catch (err) {
-      console.error("Export error:", err);
-      toast.error("Gagal mengexport data");
-    } finally {
-      setExporting(null);
-    }
-  };
-
-  const exportRecapPDF = async () => {
-    setExporting("recap-pdf");
-    try {
-      const doc = new jsPDF({ orientation: "landscape" });
-      autoTable(doc, {
-        head: [["Nama", "Dept", "Jabatan", "Hari", "Total Jam", "Rata-rata", "Rate", "Total Gaji"]],
-        body: recapList.map((r) => [
-          r.name || "-",
-          r.department || "-",
-          r.jabatan || "-",
-          r.totalHari,
-          `${r.totalJam.toFixed(2)} jam`,
-          r.totalHari > 0 ? `${(r.totalJam / r.totalHari).toFixed(2)} jam` : "-",
-          r.rate ? `Rp ${r.rate.toLocaleString()}` : "-",
-          r.totalGaji ? `Rp ${r.totalGaji.toLocaleString()}` : "-",
-        ]) as any,
-        headStyles: { fillColor: [5, 150, 105] },
-        startY: 20,
-      });
-      doc.save(`attendance_rekap_${new Date().toISOString().split("T")[0]}.pdf`);
-      toast.success("Export PDF berhasil");
-    } catch (err) {
-      console.error("Export error:", err);
-      toast.error("Gagal mengexport data");
-    } finally {
-      setExporting(null);
-    }
-  };
 
   if (loading || usersLoading || correctionsLoading) {
     return <LoadingScreen fullScreen={false} message="Memuat data absensi..." />;
@@ -1206,17 +1143,9 @@ export default function AttendancePage() {
                     {exporting === "detail-excel" ? <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" /> : <FileSpreadsheet className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />}
                     <span className="hidden xl:inline">Excel</span>
                   </button>
-                  <button onClick={exportDetailPDF} disabled={exporting !== null} className="hover:bg-slate-50 text-slate-700 px-3 py-2 text-sm font-medium transition-colors border-r border-slate-200 flex items-center gap-1.5 group" title="Export PDF">
+                  <button onClick={exportDetailPDF} disabled={exporting !== null} className="hover:bg-slate-50 text-slate-700 px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 group" title="Export PDF">
                     {exporting === "detail-pdf" ? <RefreshCw className="w-4 h-4 animate-spin text-red-600" /> : <FileText className="w-4 h-4 text-red-600 group-hover:scale-110 transition-transform" />}
                     <span className="hidden xl:inline">PDF</span>
-                  </button>
-                  <button onClick={exportRecapExcel} disabled={exporting !== null} className="hover:bg-slate-50 text-slate-700 px-3 py-2 text-sm font-medium transition-colors border-r border-slate-200 flex items-center gap-1.5 group" title="Export Rekap Excel">
-                    {exporting === "recap-excel" ? <RefreshCw className="w-4 h-4 animate-spin text-blue-600" /> : <FileSpreadsheet className="w-4 h-4 text-blue-600 group-hover:scale-110 transition-transform" />}
-                    <span className="hidden xl:inline">Rekap XLS</span>
-                  </button>
-                  <button onClick={exportRecapPDF} disabled={exporting !== null} className="hover:bg-slate-50 text-slate-700 px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 group" title="Export Rekap PDF">
-                    {exporting === "recap-pdf" ? <RefreshCw className="w-4 h-4 animate-spin text-purple-600" /> : <FileText className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />}
-                    <span className="hidden xl:inline">Rekap PDF</span>
                   </button>
                 </div>
               </div>
@@ -1249,7 +1178,7 @@ export default function AttendancePage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.slice(0, 100).map((a, idx) => {
+                {filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((a, idx) => {
                   const workHours = getWorkHours(a);
                   const masukDisplay = a.isCorrected && a.correctedCheckIn ? a.correctedCheckIn : formatTime(a.checkIn?.time);
                   const pulangDisplay = a.isCorrected && a.correctedCheckOut ? a.correctedCheckOut : formatTime(a.checkOut?.time);
@@ -1272,48 +1201,37 @@ export default function AttendancePage() {
               </tbody>
             </table>
             {filtered.length === 0 && <div className="p-12 text-center text-gray-500"><div className="text-5xl mb-4">📭</div><p className="text-lg font-medium">Tidak ada data absensi hari ini</p></div>}
-            {filtered.length > 100 && <div className="p-4 text-center text-gray-500 text-sm border-t">Menampilkan 100 dari {filtered.length} record. Export untuk melihat semua data.</div>}
+            
+            {filtered.length > 0 && (
+              <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-slate-200 sm:px-6">
+                <div className="flex justify-between flex-1 sm:hidden">
+                  <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="relative inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50">Previous</button>
+                  <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filtered.length / itemsPerPage)))} disabled={currentPage >= Math.ceil(filtered.length / itemsPerPage)} className="relative ml-3 inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50">Next</button>
+                </div>
+                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm text-gray-700">
+                      Menampilkan <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> hingga <span className="font-medium">{Math.min(currentPage * itemsPerPage, filtered.length)}</span> dari <span className="font-medium">{filtered.length}</span> hasil
+                    </p>
+                  </div>
+                  <div>
+                    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                      <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50">
+                        <span className="sr-only">Previous</span>
+                        <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                      </button>
+                      <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filtered.length / itemsPerPage)))} disabled={currentPage >= Math.ceil(filtered.length / itemsPerPage)} className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50">
+                        <span className="sr-only">Next</span>
+                        <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" /></svg>
+                      </button>
+                    </nav>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Recap Table */}
-        {recapList.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
-              <h2 className="text-md font-semibold text-gray-800 flex items-center gap-2"><span>💰</span> Rekap Gaji (Harian / Borongan)</h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50/50">
-                  <tr className="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
-                    <th className="px-4 py-4 text-left">Nama</th>
-                    <th className="px-4 py-4 text-left">Dept</th>
-                    <th className="px-4 py-4 text-left">Jabatan</th>
-                    <th className="px-4 py-4 text-left">Hari Kerja</th>
-                    <th className="px-4 py-4 text-left">Total Jam</th>
-                    <th className="px-4 py-4 text-left">Rata-rata Jam</th>
-                    <th className="px-4 py-4 text-left">Rate</th>
-                    <th className="px-4 py-4 text-left">Total Gaji</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recapList.map((r, idx) => (
-                    <tr key={r.uid} className={`border-b ${idx % 2 === 0 ? "bg-white" : "bg-gray-50"} hover:bg-gray-50`}>
-                      <td className="px-4 py-3 font-medium text-gray-800">{r.name}</td>
-                      <td className="px-4 py-3 text-gray-600">{r.department}</td>
-                      <td className="px-4 py-3 text-gray-600">{r.jabatan}</td>
-                      <td className="px-4 py-3"><span className="font-bold text-blue-600">{r.totalHari}</span> hari</td>
-                      <td className="px-4 py-3"><span className="font-bold text-green-600">{r.totalJam.toFixed(2)}</span> jam</td>
-                      <td className="px-4 py-3">{r.totalHari > 0 ? `${(r.totalJam / r.totalHari).toFixed(2)} jam` : "-"}</td>
-                      <td className="px-4 py-3">Rp {r.rate?.toLocaleString() || 0}</td>
-                      <td className="px-4 py-3"><span className="font-bold text-green-600">Rp {r.totalGaji?.toLocaleString() || 0}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* MODAL DETAIL ABSENSI DENGAN FOTO LENGKAP */}
@@ -1567,63 +1485,48 @@ export default function AttendancePage() {
                 )}
               </div>
 
-              {/* Tombol Edit dan Hapus untuk Super Admin */}
+              {/* Tombol Aksi Super Admin */}
               {isSuperAdmin && !isEditingShift && !isEditingTime && !isEditingDate && (
-                <div className="mt-8 pt-6 border-t border-slate-200 flex flex-wrap justify-end gap-3">
-                  <button
-                    onClick={() => setIsEditingDate(true)}
-                    className="px-4 py-2.5 bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-700 font-medium text-sm rounded-xl transition-all shadow-sm flex items-center gap-2 group"
-                  >
-                    <Calendar className="w-4 h-4 text-slate-400 group-hover:text-slate-600" />
-                    Edit Tanggal
-                  </button>
-                  <button
-                    onClick={() => setIsEditingShift(true)}
-                    className="px-4 py-2.5 bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-700 font-medium text-sm rounded-xl transition-all shadow-sm flex items-center gap-2 group"
-                  >
-                    <RefreshCw className="w-4 h-4 text-slate-400 group-hover:text-slate-600" />
-                    Edit Shift
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsEditingTime(true);
-                      setEditDailyRate(selectedAttendance.dailyRate?.toString() || "");
-                    }}
-                    className="px-4 py-2.5 bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-700 font-medium text-sm rounded-xl transition-all shadow-sm flex items-center gap-2 group"
-                  >
-                    <Clock className="w-4 h-4 text-slate-400 group-hover:text-slate-600" />
-                    Edit Jam Kerja
-                  </button>
-                  <div className="w-px h-10 bg-slate-200 mx-1 hidden sm:block"></div>
-                  <button 
-                    onClick={openDeleteModal.bind(null, "all")} 
-                    className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-medium text-sm rounded-xl transition-all shadow-sm flex items-center gap-2 group"
-                  >
-                    <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                    Hapus Absensi
-                  </button>
-                </div>
-              )}
+                <div className="mt-8 pt-6 border-t border-slate-200">
+                  <div className="flex flex-col gap-4">
+                    {/* Action Group: Edits */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mr-2 w-full sm:w-auto">Mode Edit</div>
+                      <button onClick={() => setIsEditingDate(true)} className="flex-1 sm:flex-none px-4 py-2.5 bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-700 font-medium text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 group">
+                        <Calendar className="w-4 h-4 text-slate-400 group-hover:text-slate-600" /> Edit Tanggal
+                      </button>
+                      <button onClick={() => setIsEditingShift(true)} className="flex-1 sm:flex-none px-4 py-2.5 bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-700 font-medium text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 group">
+                        <RefreshCw className="w-4 h-4 text-slate-400 group-hover:text-slate-600" /> Edit Shift
+                      </button>
+                      <button onClick={() => { setIsEditingTime(true); setEditDailyRate(selectedAttendance.dailyRate?.toString() || ""); }} className="flex-1 sm:flex-none px-4 py-2.5 bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-700 font-medium text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 group">
+                        <Clock className="w-4 h-4 text-slate-400 group-hover:text-slate-600" /> Edit Jam
+                      </button>
+                    </div>
 
-              {/* Tombol Hapus Check-in / Check-out terpisah */}
-              {isSuperAdmin && !isEditingShift && !isEditingTime && !isEditingDate && (selectedAttendance.checkIn || selectedAttendance.checkOut) && (
-                <div className="mt-4 flex flex-wrap justify-end gap-2">
-                  {selectedAttendance.checkIn && (
-                    <button
-                      onClick={openDeleteModal.bind(null, "checkin")}
-                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors flex items-center gap-1.5 text-sm font-medium border border-rose-100"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> Hapus Check-in ({formatTime(selectedAttendance.checkIn?.time)})
-                    </button>
-                  )}
-                  {selectedAttendance.checkOut && (
-                    <button
-                      onClick={openDeleteModal.bind(null, "checkout")}
-                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors flex items-center gap-1.5 text-sm font-medium border border-rose-100"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> Hapus Check-out ({formatTime(selectedAttendance.checkOut?.time)})
-                    </button>
-                  )}
+                    {/* Action Group: Deletes */}
+                    <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-slate-100">
+                      <div className="text-xs font-semibold text-rose-400 uppercase tracking-wider mr-2 w-full sm:w-auto flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5"/> Zona Bahaya
+                      </div>
+                      {(selectedAttendance.checkIn || selectedAttendance.checkOut) && (
+                        <div className="flex flex-wrap gap-2 flex-1">
+                          {selectedAttendance.checkIn && (
+                            <button onClick={openDeleteModal.bind(null, "checkin")} className="flex-1 sm:flex-none px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors flex items-center justify-center gap-1.5 text-sm font-medium border border-rose-100">
+                              <Trash2 className="w-3.5 h-3.5" /> Hapus In
+                            </button>
+                          )}
+                          {selectedAttendance.checkOut && (
+                            <button onClick={openDeleteModal.bind(null, "checkout")} className="flex-1 sm:flex-none px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors flex items-center justify-center gap-1.5 text-sm font-medium border border-rose-100">
+                              <Trash2 className="w-3.5 h-3.5" /> Hapus Out
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      <button onClick={openDeleteModal.bind(null, "all")} className="flex-1 sm:flex-none px-4 py-2.5 bg-rose-500 hover:bg-rose-600 text-white font-medium text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 group ml-auto">
+                        <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" /> Hapus Absensi
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
