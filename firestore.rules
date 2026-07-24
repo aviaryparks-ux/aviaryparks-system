@@ -172,6 +172,11 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && isSuperAdmin();
     }
 
+    match /assessmentAspects/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isHR());
+    }
+
     match /assessments/{assessmentId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && (isSuperAdmin() || isHR() || isSPV());
@@ -201,6 +206,11 @@ service cloud.firestore {
       allow create: if isAuthenticated() && (isSuperAdmin() || isHR());
       allow update: if isAuthenticated() && (isSuperAdmin() || isHR());
       allow delete: if isAuthenticated() && isSuperAdmin();
+    }
+
+    match /kpiSettings/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (isSuperAdmin() || isAdmin() || isHR());
     }
 
     // ==================== ARTICLES / PENGUMUMAN ====================

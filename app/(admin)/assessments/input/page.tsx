@@ -13,11 +13,17 @@ interface Employee {
   position: string;
 }
 
-interface Aspect {
+interface KPISetting {
   id: string;
-  name: string;
-  indicators: string[];
+  division: string;
+  department: string;
+  position: string;
+  level: string;
+  indicator: string;
+  description: string;
+  measurement: string;
   weight: number;
+  isActive: boolean;
 }
 
 interface Period {
@@ -34,7 +40,8 @@ interface Score {
 
 export default function InputAssessmentPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [aspects, setAspects] = useState<Aspect[]>([]);
+  const [kpis, setKpis] = useState<KPISetting[]>([]);
+  const [activeKpis, setActiveKpis] = useState<KPISetting[]>([]);
   const [periods, setPeriods] = useState<Period[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState("");
   const [selectedPeriod, setSelectedPeriod] = useState("");
@@ -51,12 +58,12 @@ export default function InputAssessmentPage() {
     try {
       const [employeesSnap, aspectsSnap, periodsSnap] = await Promise.all([
         getDocs(query(collection(db, "users"), where("role", "in", ["employee", "spv", "manager"]))),
-        getDocs(collection(db, "assessmentAspects")),
+        getDocs(collection(db, "kpiSettings")),
         getDocs(query(collection(db, "assessmentPeriods"), where("status", "==", "active"))),
       ]);
       
       setEmployees(employeesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee)));
-      setAspects(aspectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Aspect)));
+      setKpis(aspectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as KPISetting)));
       setPeriods(periodsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Period)));
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -67,8 +74,16 @@ export default function InputAssessmentPage() {
 
   const handleEmployeeSelect = async (employeeId: string) => {
     setSelectedEmployee(employeeId);
+    
+    const employee = employees.find(e => e.id === employeeId);
+    let filtered = kpis.filter(kpi => kpi.isActive);
+    if (employee) {
+      filtered = filtered.filter(kpi => kpi.department === employee.department);
+    }
+    setActiveKpis(filtered);
+
     // Initialize scores for all aspects
-    setScores(aspects.map(aspect => ({ aspectId: aspect.id, score: 0, notes: "" })));
+    setScores(filtered.map(kpi => ({ aspectId: kpi.id, score: 0, notes: "" })));
   };
 
   const updateScore = (aspectId: string, field: keyof Score, value: any) => {
@@ -78,9 +93,9 @@ export default function InputAssessmentPage() {
   const calculateTotalScore = () => {
     let total = 0;
     scores.forEach(score => {
-      const aspect = aspects.find(a => a.id === score.aspectId);
-      if (aspect) {
-        total += (score.score / 100) * aspect.weight;
+      const kpi = activeKpis.find(a => a.id === score.aspectId);
+      if (kpi) {
+        total += (score.score / 100) * kpi.weight;
       }
     });
     return total;
@@ -160,16 +175,34 @@ export default function InputAssessmentPage() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 bg-gray-50 border-b border-gray-200"><h2 className="font-semibold text-gray-800">Form Penilaian</h2></div>
           <div className="p-6 space-y-6">
-            {aspects.map((aspect) => (
-              <div key={aspect.id} className="border-b border-gray-100 pb-4 last:border-0">
-                <div className="flex justify-between items-start mb-2"><h3 className="font-medium text-gray-800">{aspect.name}</h3><span className="text-sm text-gray-500">Bobot: {aspect.weight}%</span></div>
-                <ul className="mb-3 text-sm text-gray-500 list-disc list-inside">{aspect.indicators?.map((ind, i) => <li key={i}>{ind}</li>)}</ul>
-                <div className="flex gap-4 items-start">
-                  <div className="flex-1"><label className="block text-sm text-gray-600 mb-1">Nilai (0-100)</label><input type="range" min="0" max="100" value={scores.find(s => s.aspectId === aspect.id)?.score || 0} onChange={(e) => updateScore(aspect.id, "score", parseInt(e.target.value))} className="w-full" /><div className="text-right text-sm font-semibold mt-1">{scores.find(s => s.aspectId === aspect.id)?.score || 0}</div></div>
-                  <div className="flex-1"><label className="block text-sm text-gray-600 mb-1">Catatan</label><textarea rows={2} value={scores.find(s => s.aspectId === aspect.id)?.notes || ""} onChange={(e) => updateScore(aspect.id, "notes", e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Catatan untuk aspek ini..." /></div>
+            {activeKpis.length === 0 ? (
+               <div className="text-center text-gray-500 py-4">Tidak ada KPI yang ditemukan untuk Karyawan/Departemen ini. Pastikan KPI sudah di-set di Pengaturan KPI.</div>
+            ) : (
+              activeKpis.map((kpi) => (
+                <div key={kpi.id} className="border-b border-gray-100 pb-4 last:border-0">
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="font-medium text-gray-800">{kpi.indicator}</h3>
+                    <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-md">Bobot: {kpi.weight}%</span>
+                  </div>
+                  {kpi.description && <p className="text-sm text-gray-500 mb-2">{kpi.description}</p>}
+                  {kpi.measurement && <p className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md inline-block mb-3">Cara Mengukur: {kpi.measurement}</p>}
+                  
+                  <div className="flex gap-4 items-start">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Nilai (0-100)</label>
+                      <div className="flex items-center gap-3">
+                        <input type="range" min="0" max="100" value={scores.find(s => s.aspectId === kpi.id)?.score || 0} onChange={(e) => updateScore(kpi.id, "score", parseInt(e.target.value))} className="w-full accent-blue-600" />
+                        <div className="text-sm font-semibold w-8 text-center">{scores.find(s => s.aspectId === kpi.id)?.score || 0}</div>
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Catatan</label>
+                      <textarea rows={2} value={scores.find(s => s.aspectId === kpi.id)?.notes || ""} onChange={(e) => updateScore(kpi.id, "notes", e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-shadow" placeholder="Catatan untuk KPI ini..." />
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
             <div><span className="text-sm text-gray-600">Total Skor: </span><span className="text-xl font-bold text-green-600">{calculateTotalScore().toFixed(1)}</span><span className="text-sm text-gray-500 ml-2">({getRating(calculateTotalScore())})</span></div>
